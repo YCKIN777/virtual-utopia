@@ -29,6 +29,22 @@ services:
     depends_on:
       - phase5
 
+  # 分层记忆 Agent 服务
+  memory:
+    build: .
+    command: node backend/src/memory/server.mjs
+    ports:
+      - "3600:3600"
+    environment:
+      MEMORY_DB_PATH: /data/virtual_utopia_memory.sqlite
+      MEMORY_RETRIEVAL_MODE: ${MEMORY_RETRIEVAL_MODE:-vector}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GUARD_RATE_MAX: ${GUARD_RATE_MAX:-120}
+    volumes:
+      - ./data:/data
+    depends_on:
+      - phase5
+
   # RAG 向量库（阶段三/四依赖）
   chromadb:
     image: chromadb/chroma:latest
