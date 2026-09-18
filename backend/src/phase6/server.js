@@ -3,15 +3,26 @@ import { fileURLToPath } from 'node:url';
 import { createAuditStore } from './auditStore.js';
 import { createPhase6App } from './app.js';
 import { readPhase6Config, validatePhase6Config } from './config.js';
+import { createGuardedApp } from '../runtime/guard.js';
 
 export const startPhase6Server = async ({
   config = readPhase6Config(),
 } = {}) => {
   validatePhase6Config(config);
   const auditStore = createAuditStore(config.auditDatabasePath);
-  const app = createPhase6App({
+  const frozenApp = createPhase6App({
     config,
     auditStore,
+  });
+  const { app } = createGuardedApp({
+    service: 'virtual-utopia-phase6',
+    app: frozenApp,
+    options: {
+      isProduction: process.env.NODE_ENV === 'production',
+      rateLimit: {
+        maxRequests: Number(process.env.GUARD_RATE_MAX) || 120,
+      },
+    },
   });
   const server = await new Promise((resolve, reject) => {
     const listeningServer = app.listen(config.port, config.host);

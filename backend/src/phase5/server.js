@@ -5,6 +5,7 @@ import { readPhase5Config, validatePhase5ServiceConfig } from './config.js';
 import { openPhase5Database } from './database.js';
 import { createPhase5App, startPhase5HttpServer } from './httpServer.js';
 import { createRepositories } from './repositories.js';
+import { createGuardedApp } from '../runtime/guard.js';
 
 export const startPhase5Server = async ({
   config = readPhase5Config(),
@@ -13,10 +14,20 @@ export const startPhase5Server = async ({
 
   const database = await openPhase5Database(config);
   const repositories = createRepositories(database);
-  const app = createPhase5App({
+  const frozenApp = createPhase5App({
     repositories,
     config,
     database,
+  });
+  const { app } = createGuardedApp({
+    service: 'virtual-utopia-phase5',
+    app: frozenApp,
+    options: {
+      isProduction: process.env.NODE_ENV === 'production',
+      rateLimit: {
+        maxRequests: Number(process.env.GUARD_RATE_MAX) || 120,
+      },
+    },
   });
   const server = await startPhase5HttpServer({
     app,

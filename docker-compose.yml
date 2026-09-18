@@ -10,6 +10,8 @@ services:
       PHASE5_DB_PATH: /data/virtual_utopia_phase5.sqlite
       PHASE5_AUTH_SECRET: ${PHASE5_AUTH_SECRET:-changeme}
       PHASE5_SERVICE_TOKEN: ${PHASE5_SERVICE_TOKEN:-changeme}
+      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: ${PHASE5_BOOTSTRAP_ADMIN_PASSWORD:-changeme}
+      GUARD_RATE_MAX: ${GUARD_RATE_MAX:-120}
     volumes:
       - ./data:/data
 
@@ -23,5 +25,40 @@ services:
       PHASE5_BASE_URL: http://phase5:3300
       PHASE5_SERVICE_TOKEN: ${PHASE5_SERVICE_TOKEN:-changeme}
       PHASE6_ALLOWED_ORIGINS: ${PHASE6_ALLOWED_ORIGINS:-http://localhost:5175}
+      GUARD_RATE_MAX: ${GUARD_RATE_MAX:-120}
     depends_on:
       - phase5
+
+  # RAG 向量库（阶段三/四依赖）
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts/rag-chroma:/chroma/chroma
+
+  # BP4 生产化持久层（SQLite → PostgreSQL 迁移目标）
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: virtual_utopia
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 前端（世界入口，构建后由 vite 提供）
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5175:5175"
+    depends_on:
+      - phase5
+      - phase6
+
+volumes:
+  pgdata:

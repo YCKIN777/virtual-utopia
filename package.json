@@ -14,12 +14,15 @@
     "start": "npm run start --workspace backend",
     "check": "npm run build --workspace frontend && npm run test --workspace frontend && npm run check --workspace backend && npm test --workspace backend",
     "test:e2e": "node scripts/scene-flow.e2e.mjs",
+    "test:all": "node scripts/test-all.mjs",
+    "coverage": "c8 --reporter=text npm test --workspace backend",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "c8": "^12.0.0",
     "dotenv": "^17.4.2",
     "eslint": "^10.10.0",
     "globals": "^17.12.0",

@@ -161,3 +161,20 @@ node scripts/remediate-risk.mjs
 3. **告警渠道 / 限流阈值 / CSP 白名单**：参数需按业务与运维口径定值。
 4. **定时备份 / 告警定时任务**：需挂接 Windows 计划任务或 pm2 cron。
 5. **`js` 包**：已通过 `npm remove js` 移除。
+
+### 6.6 P2 中风险整改记录（2026-09-18）
+
+| 编号 | 风险 | 处理方式 | 状态 |
+| --- | --- | --- | --- |
+| R-04 | 生产硬编码开关 | 确认为保护机制（生产强制关闭代码生成），无需修改 | ✅ 已确认 |
+| R-07 | GBK 编码历史文档 | 核验全部关键文档为 UTF-8，无 GBK 文件；`stage3_memory.md.txt` 为 UTF-8 冗余副本 | ✅ 已核验 |
+| R-13 | node_modules/dist 体积冗余 | 已由 `.gitignore` 排除（不入库），磁盘冗余不影响版本控制 | ✅ 已修复 |
+| R-15 | 阶段冻结规则执行风险 | 新增 `scripts/check-frozen.mjs`（git 检测冻结目录变更） | ✅ 已修复 |
+| R-18 | 环境隔离依赖 NODE_ENV | 新增 `scripts/check-env.mjs`（启动前必填环境变量校验） | ✅ 已修复 |
+| R-19 | 3D 首屏体积/无代码分割 | 需改前端业务代码，受冻结约束延期 | ⏸ 延期 |
+| R-20 | presence/chat HTTP 轮询+连接泄漏 | 需改后端业务代码，受冻结约束延期 | ⏸ 延期 |
+| R-21 | Node/ChromaDB/PostgreSQL 未容器化 | 扩展 `docker-compose.yml`（chromadb/postgres/frontend）+ `frontend/Dockerfile` | ✅ 已修复 |
+| R-22 | 无覆盖率工具 | 安装 c8 + `coverage` 脚本，后端语句覆盖 **91.42%** | ✅ 已修复 |
+| R-23 | E2E 回归基线未聚合 | 新增 `scripts/test-all.mjs` + `test:all` 脚本 | ✅ 已修复 |
+
+> R-19 / R-20 涉及前端与后端业务代码改造，与「禁止修改 phaseN 业务源码」的冻结约束冲突，已标注为延期项，待解冻后再排期。
