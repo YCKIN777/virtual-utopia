@@ -111,3 +111,53 @@ node scripts/remediate-risk.mjs
 6. **R-02 限流阈值 / R-03 CSP 白名单 / R-10 告警渠道**：参数依赖业务与运维口径，需人工定值。
 7. **R-07 GBK 转码**：转码会改动历史文档字节，需人工确认「哪些 .txt 是废弃重复件」后再删除，避免误删唯一稿。
 8. **冻结规则**：所有触及 `backend/src/{agents,routes,services,rag,phase4}` 及 `stage2~4_memory.md` 的改动，一律不得由脚本自动执行，必须逐项人工确认。
+
+---
+
+## 6. 整改执行记录（截至 2026-09-18）
+
+### 6.1 已完成 P0 致命风险
+
+| 编号 | 风险 | 修复方式 | 状态 |
+| --- | --- | --- | --- |
+| R-01 | 密钥明文存储 | 脱敏 `.env`/`backend/.env`/`key.txt`，新增 `scripts/audit-secrets.mjs` | ✅ 已修复 |
+| R-05 | 无数据备份 | 新增 `scripts/backup-data.mjs`，生成首份快照 `backups/` | ✅ 已修复 |
+| R-08 | 无进程守卫 | 12 个服务入口加优雅关闭+异常监听，新增 `scripts/supervise.mjs` | ✅ 已修复 |
+
+### 6.2 已完成 P1 高风险
+
+| 编号 | 风险 | 修复方式（独立中间件/脚本/配置，未侵入冻结代码） | 状态 |
+| --- | --- | --- | --- |
+| R-02 | 登录限流 | 新增 `backend/src/runtime/rateLimit.js`（含 `createLoginRateLimiter`） | ✅ 已提供 |
+| R-03 | 安全响应头 | 新增 `backend/src/runtime/securityHeaders.js`（CSP/HSTS/X-Frame-Options 等） | ✅ 已提供 |
+| R-06 | 迁移版本 | 新增 `scripts/migrate.mjs` + `migrations/`（`schema_migrations` 表） | ✅ 已提供 |
+| R-09 | 结构化日志 | 新增 `backend/src/runtime/logger.js` + `requestLogger.js`（requestId+耗时） | ✅ 已提供 |
+| R-10 | 告警机制 | 新增 `scripts/alert.mjs`（健康探测+webhook） | ✅ 已提供 |
+| R-11 | Git 版本控制 | `git init` + 首次提交 `4f7a53c` + tag `baseline-2026-09-18`（837 文件） | ✅ 已修复 |
+| R-12 | Lint/Prettier | `eslint.config.js` + `.prettierrc.json` + `lint`/`lint:fix`/`format` 脚本 | ✅ 已修复 |
+| R-14 | 前端入口隔离 | 新增 `frontend/ENTRY-ISOLATION.md`，排除 dist/miniprogram 扫描 | ✅ 已修复 |
+| R-16 | 服务启动编排 | 新增 `scripts/start-all.mjs`（依赖顺序+健康探测） | ✅ 已提供 |
+| R-17 | 部署自动化 | 新增 `Dockerfile` + `docker-compose.yml` + `scripts/deploy.mjs` | ✅ 已提供 |
+
+### 6.3 配套新增产物
+
+- `backend/src/runtime/guard.js`：非侵入式受防护应用组装器（包裹冻结 app，注入日志/安全头/限流）。
+- `.editorconfig`、`.prettierignore`：工程规范。
+- 独立中间件/脚本均未修改 `backend/src/{agents,routes,services,rag,phase4}` 冻结源码。
+
+### 6.4 全套校验结果（2026-09-18）
+
+| 校验项 | 结果 |
+| --- | --- |
+| `npm run lint`（eslint .） | ✅ no-undef=0；剩 51 处存量 `no-unused-vars` 等风格提示 |
+| `node scripts/remediate-risk.mjs --check` | ✅ 17 项语法全部通过 |
+| `node scripts/audit-secrets.mjs` | ⚠️ 2 项含真实值（新轮换的 DeepSeek key，见 6.5） |
+| `node scripts/check-structure.mjs` | ✅ 结构校验通过 |
+
+### 6.5 待人工操作 / 需注意
+
+1. **密钥（新轮换）**：`2026-09-18 21:16` 检测到 `.env` 与 `backend/.env` 中出现**新轮换**的 `DEEPSEEK_API_KEY`（旧泄露 key 已消失）。审计脚本据此报 2 项明文敏感项。若要达成「0 明文」，请将该 key 移入系统环境变量，`.env` 改回占位符；若仅本地开发可保留并接受该告警。
+2. **中间件接入**：限流/安全头/日志中间件已作为独立模块提供，需在服务入口（或 `guard.js` 组装器）中按需挂载才能真正生效——挂载点涉及服务启动方式，需人工确认后接线。
+3. **告警渠道 / 限流阈值 / CSP 白名单**：参数需按业务与运维口径定值。
+4. **定时备份 / 告警定时任务**：需挂接 Windows 计划任务或 pm2 cron。
+5. **`js` 包**：已通过 `npm remove js` 移除。
