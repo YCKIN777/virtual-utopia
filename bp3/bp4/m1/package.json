@@ -1,0 +1,17 @@
+{
+  "name": "virtual-utopia-bp4-m1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node backend/src/server.js",
+    "migrate": "node backend/scripts/migrate-sqlite-to-postgres.js",
+    "test": "node --test backend/tests/*.test.js",
+    "test:e2e": "node tests/bp4-m1.e2e.mjs",
+    "check": "node --check backend/src/server.js && node --check backend/src/realtimeHub.js && node --check backend/src/realtimeServer.js && node --check backend/src/migration/migrate.js && node --check backend/src/migration/postgresTarget.js && node --check backend/scripts/migrate-sqlite-to-postgres.js && npm run test"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "ws": "^8.21.3"
+  }
+}

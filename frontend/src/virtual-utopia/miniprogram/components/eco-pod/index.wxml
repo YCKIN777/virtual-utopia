@@ -1,0 +1,19 @@
+<view
+  class="eco-pod {{item.status}} {{active ? 'is-active' : ''}}"
+  style="left: {{item.x}}px; top: {{item.y}}px;"
+  catchtap="handleTap"
+  bindtouchstart="handleTouchStart"
+  bindtouchend="handleTouchEnd"
+  bindlongpress="handleLongPress"
+>
+  <view class="support support-left"></view>
+  <view class="support support-right"></view>
+  <view class="pod-shell">
+    <view class="pod-glass"></view>
+    <view class="pod-roof"></view>
+    <view class="pod-core"></view>
+  </view>
+  <view class="pod-platform"></view>
+  <view class="pod-label">舱 {{item.number}}</view>
+  <view class="pod-status">{{statusLabel}}</view>
+</view>

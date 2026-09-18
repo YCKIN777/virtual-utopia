@@ -1,0 +1,10 @@
+node_modules
+dist
+**/dist
+artifacts
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.glb
+*.png
+*.webp

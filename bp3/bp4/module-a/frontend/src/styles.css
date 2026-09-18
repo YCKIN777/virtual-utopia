@@ -1,0 +1,401 @@
+:root {
+  color: #e8f1ec;
+  background: #101917;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: linear-gradient(135deg, #101917 0%, #17231f 48%, #202b24 100%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.ma-login {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 20px;
+}
+
+.ma-login__panel,
+.ma-header,
+.ma-metrics article,
+.ma-homes,
+.ma-editor,
+.ma-events {
+  border: 1px solid rgb(255 255 255 / 10%);
+  background: rgb(18 30 27 / 92%);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 24%);
+}
+
+.ma-login__panel {
+  width: min(390px, 100%);
+  padding: 28px;
+  border-radius: 10px;
+}
+
+.ma-login__panel h1 {
+  margin: 8px 0 6px;
+  font-size: 28px;
+}
+
+.ma-login__panel p {
+  margin: 0 0 22px;
+  color: #9caf9f;
+}
+
+.ma-login form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+label > span {
+  color: #a9bbb1;
+  font-size: 12px;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 5px;
+  background: #0d1714;
+  color: #edf6f0;
+}
+
+button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 5px;
+  background: #294b3d;
+  color: #f2f8f4;
+}
+
+button:hover:not(:disabled) {
+  background: #35634f;
+}
+
+.ma-kicker {
+  color: #79b393;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ma-error {
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #743d38;
+}
+
+.ma-shell {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.ma-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 72px;
+  padding: 14px 18px;
+  border-radius: 8px;
+}
+
+.ma-header h1,
+.ma-homes h2,
+.ma-editor h2,
+.ma-events h2 {
+  margin: 3px 0 0;
+}
+
+.ma-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #bed0c5;
+  font-size: 12px;
+}
+
+.ma-session > span:first-child {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #67453a;
+}
+
+.ma-session > span.is-online {
+  background: #285b44;
+}
+
+.ma-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ma-metrics article {
+  padding: 13px;
+  border-radius: 7px;
+}
+
+.ma-metrics span {
+  color: #9fb1a7;
+  font-size: 12px;
+}
+
+.ma-metrics strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 23px;
+}
+
+.ma-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(390px, 1.35fr) minmax(
+      240px,
+      0.8fr
+    );
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ma-homes,
+.ma-editor,
+.ma-events {
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.ma-homes,
+.ma-events {
+  padding: 13px;
+}
+
+.ma-homes header,
+.ma-editor > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ma-home-list {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 260px);
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.ma-home-list button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  text-align: left;
+}
+
+.ma-home-list button span {
+  grid-column: 1 / -1;
+  color: #9fb1a7;
+  font-size: 11px;
+}
+
+.ma-home-list button em {
+  grid-row: 1;
+  grid-column: 2;
+  color: #c8dcce;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.ma-home-list button.is-active {
+  border-color: #63a77f;
+  background: #35634f;
+}
+
+.ma-editor {
+  padding: 16px;
+}
+
+.ma-version {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #1d3029;
+  color: #9fd2b3;
+  font-size: 11px;
+}
+
+.ma-section {
+  padding: 14px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.ma-section:last-child {
+  border-bottom: 0;
+}
+
+.ma-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.ma-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.ma-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ma-modes button.is-active {
+  border-color: #78bd91;
+  background: #3a7257;
+}
+
+.ma-friend-input {
+  margin-bottom: 10px;
+}
+
+.ma-primary {
+  width: 100%;
+}
+
+.ma-evaluation {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 5px;
+  background: #673d39;
+}
+
+.ma-evaluation.is-allowed {
+  background: #285b44;
+}
+
+.ma-events ul {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ma-events li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 5px;
+}
+
+.ma-events li span {
+  grid-column: 1 / -1;
+  color: #9fb1a7;
+  font-size: 11px;
+}
+
+.ma-events li em {
+  grid-row: 1;
+  grid-column: 2;
+  color: #9fd2b3;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.ma-toast {
+  position: fixed;
+  z-index: 20;
+  bottom: 18px;
+  left: 50%;
+  padding: 9px 13px;
+  border-radius: 6px;
+  background: rgb(16 28 24 / 96%);
+  transform: translateX(-50%);
+}
+
+.ma-observability {
+  display: none;
+}
+
+@media (max-width: 1050px) {
+  .ma-layout {
+    grid-template-columns: minmax(220px, 0.8fr) 1.2fr;
+  }
+
+  .ma-events {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .ma-shell {
+    padding: 10px;
+  }
+
+  .ma-header {
+    align-items: flex-start;
+  }
+
+  .ma-session {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .ma-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ma-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ma-home-list {
+    max-height: 260px;
+  }
+
+  .ma-form-row {
+    grid-template-columns: 1fr;
+  }
+}

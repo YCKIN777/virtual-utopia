@@ -1,0 +1,15 @@
+{
+  "name": "virtual-utopia-bp3-p2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:backend": "node backend/src/server.js",
+    "dev:frontend": "vite --config frontend/vite.config.js",
+    "build": "vite build --config frontend/vite.config.js",
+    "test": "node --test backend/tests/*.test.js",
+    "test:perf": "node tests/bp3-m3.perf.mjs",
+    "test:e2e": "node tests/bp3-m3.e2e.mjs",
+    "check": "node --check backend/src/server.js && node --check backend/src/app.js && node --check backend/src/avatarService.js && node --check backend/src/messageService.js && node --check frontend/src/main.js && npm run test"
+  }
+}

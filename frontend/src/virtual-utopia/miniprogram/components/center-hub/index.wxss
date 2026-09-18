@@ -1,0 +1,69 @@
+.center-hub {
+  position: absolute;
+  width: 260rpx;
+  height: 180rpx;
+  margin-left: -130rpx;
+  margin-top: -90rpx;
+  transition: transform 180ms ease;
+}
+
+.center-hub.is-active {
+  transform: translateY(-8rpx) scale(1.02);
+}
+
+.hub-ring {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.hub-ring-outer {
+  left: 12rpx;
+  top: 18rpx;
+  width: 236rpx;
+  height: 136rpx;
+  border: 8rpx solid rgba(176, 132, 81, 0.92);
+  background: rgba(247, 250, 241, 0.82);
+  box-shadow: 0 10rpx 24rpx rgba(18, 47, 35, 0.28);
+}
+
+.hub-ring-inner {
+  left: 52rpx;
+  top: 43rpx;
+  width: 156rpx;
+  height: 86rpx;
+  border: 5rpx solid rgba(215, 188, 139, 0.92);
+  background: rgba(97, 160, 137, 0.78);
+}
+
+.hub-deck {
+  position: absolute;
+  left: 78rpx;
+  top: 68rpx;
+  width: 104rpx;
+  height: 42rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.hub-core {
+  position: absolute;
+  left: 120rpx;
+  top: 79rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: #c9ffe8;
+  box-shadow: 0 0 24rpx rgba(174, 255, 222, 0.94);
+}
+
+.hub-label {
+  position: absolute;
+  left: 70rpx;
+  top: 154rpx;
+  width: 120rpx;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 2rpx 5rpx rgba(10, 34, 25, 0.84);
+}

@@ -1,0 +1,10 @@
+{
+  "pages": ["pages/map/index"],
+  "window": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#10251f",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

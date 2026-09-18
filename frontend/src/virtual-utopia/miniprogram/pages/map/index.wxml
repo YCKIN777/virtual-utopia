@@ -1,0 +1,65 @@
+<view class="map-page">
+  <view
+    class="map-viewport"
+    catchtouchstart="handleTouchStart"
+    catchtouchmove="handleTouchMove"
+    catchtouchend="handleTouchEnd"
+    catchtouchcancel="handleTouchEnd"
+  >
+    <view
+      class="map-scene"
+      style="width: {{sceneWidth}}px; height: {{sceneHeight}}px; transform: {{sceneTransform}};"
+    >
+      <image
+        class="layer-image"
+        src="{{dayMode ? '../../assets/terrain-day.webp' : '../../assets/terrain-night.webp'}}"
+        mode="scaleToFill"
+      />
+      <image
+        class="layer-image layer-infrastructure"
+        src="{{dayMode ? '../../assets/infrastructure-day.webp' : '../../assets/infrastructure-night.webp'}}"
+        mode="scaleToFill"
+      />
+
+      <view class="bridge-glow bridge-glow-a"></view>
+      <view class="bridge-glow bridge-glow-b"></view>
+
+      <center-hub
+        hub="{{centerHub}}"
+        bind:select="handleCenterSelect"
+      />
+
+      <eco-pod
+        wx:for="{{pods}}"
+        wx:key="id"
+        item="{{item}}"
+        bind:select="handlePodSelect"
+        bind:highlight="handlePodHighlight"
+      />
+    </view>
+  </view>
+
+  <view class="top-bar">
+    <view>
+      <view class="eyebrow">NEBULA FOREST HABITAT</view>
+      <view class="title">山林生态聚落</view>
+    </view>
+    <view class="top-actions">
+      <button size="mini" bindtap="toggleDayMode">
+        {{dayMode ? '夜晚' : '日间'}}
+      </button>
+      <button size="mini" bindtap="resetView">复位</button>
+    </view>
+  </view>
+
+  <view class="zoom-controls">
+    <button size="mini" bindtap="zoomIn">+</button>
+    <button size="mini" bindtap="zoomOut">−</button>
+  </view>
+
+  <view class="legend">
+    <view><i class="free"></i>空闲</view>
+    <view><i class="booked"></i>已预约</view>
+    <view><i class="active"></i>活动中</view>
+  </view>
+</view>

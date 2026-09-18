@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --c-canvas: 244 246 243;
+  --c-surface: 255 255 255;
+  --c-surface-muted: 237 241 238;
+  --c-ink: 35 40 38;
+  --c-muted: 113 122 117;
+  --c-line: 218 224 219;
+  --c-accent: 100 126 114;
+  --c-accent-strong: 73 99 87;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: rgb(var(--c-canvas));
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  color: rgb(var(--c-ink));
+  background: rgb(var(--c-canvas));
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  color: rgb(var(--c-ink));
+  background: rgb(var(--c-accent) / 0.2);
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--c-accent) / 0.55);
+  outline-offset: 3px;
+}
+
+.app-shell {
+  min-height: 100dvh;
+}
+
+.page-container {
+  width: min(100% - 32px, 1440px);
+  margin-inline: auto;
+}
+
+.hairline {
+  border-color: rgb(var(--c-line) / 0.8);
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    width: min(100% - 24px, 1440px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

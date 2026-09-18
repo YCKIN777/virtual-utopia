@@ -1,0 +1,13 @@
+<view
+  class="center-hub {{active ? 'is-active' : ''}}"
+  style="left: {{hub.x}}px; top: {{hub.y}}px;"
+  catchtap="handleTap"
+  bindtouchstart="handleTouchStart"
+  bindtouchend="handleTouchEnd"
+>
+  <view class="hub-ring hub-ring-outer"></view>
+  <view class="hub-ring hub-ring-inner"></view>
+  <view class="hub-deck"></view>
+  <view class="hub-core"></view>
+  <view class="hub-label">{{hub.label}}</view>
+</view>

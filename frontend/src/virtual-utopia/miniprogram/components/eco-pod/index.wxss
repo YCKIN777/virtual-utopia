@@ -1,0 +1,126 @@
+.eco-pod {
+  position: absolute;
+  width: 86rpx;
+  height: 72rpx;
+  margin-left: -43rpx;
+  margin-top: -36rpx;
+  transition: transform 160ms ease;
+}
+
+.eco-pod.is-active {
+  transform: translateY(-10rpx);
+}
+
+.support {
+  position: absolute;
+  bottom: 7rpx;
+  width: 4rpx;
+  height: 34rpx;
+  background: rgba(224, 239, 231, 0.72);
+}
+
+.support-left {
+  left: 26rpx;
+  transform: rotate(7deg);
+}
+
+.support-right {
+  right: 26rpx;
+  transform: rotate(-7deg);
+}
+
+.pod-platform {
+  position: absolute;
+  left: 8rpx;
+  bottom: 3rpx;
+  width: 70rpx;
+  height: 18rpx;
+  border: 2rpx solid rgba(132, 197, 178, 0.72);
+  border-radius: 50%;
+}
+
+.pod-shell {
+  position: absolute;
+  left: 12rpx;
+  top: 6rpx;
+  width: 62rpx;
+  height: 45rpx;
+  overflow: hidden;
+  border: 2rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 50% 50% 46% 46%;
+  background: rgba(248, 253, 250, 0.96);
+  box-shadow: 0 7rpx 14rpx rgba(20, 52, 40, 0.26);
+}
+
+.pod-glass {
+  position: absolute;
+  left: 11rpx;
+  top: 11rpx;
+  width: 40rpx;
+  height: 25rpx;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    rgba(151, 222, 217, 0.88),
+    rgba(70, 137, 145, 0.78)
+  );
+}
+
+.pod-roof {
+  position: absolute;
+  left: 13rpx;
+  top: 2rpx;
+  width: 35rpx;
+  height: 9rpx;
+  border-radius: 50%;
+  background: rgba(74, 137, 91, 0.9);
+}
+
+.pod-core {
+  position: absolute;
+  left: 29rpx;
+  top: 21rpx;
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #cfffe9;
+  box-shadow: 0 0 12rpx rgba(194, 255, 229, 0.9);
+}
+
+.pod-label {
+  position: absolute;
+  left: -9rpx;
+  top: 55rpx;
+  width: 104rpx;
+  color: #f4fff9;
+  font-size: 18rpx;
+  text-align: center;
+  text-shadow: 0 1rpx 3rpx rgba(9, 31, 23, 0.8);
+}
+
+.pod-status {
+  position: absolute;
+  right: -8rpx;
+  top: -5rpx;
+  padding: 2rpx 7rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: #3d8b69;
+  font-size: 16rpx;
+  white-space: nowrap;
+}
+
+.eco-pod.booked .pod-status {
+  background: #b77a36;
+}
+
+.eco-pod.active .pod-status {
+  background: #4f8f9c;
+}
+
+.eco-pod.is-active .pod-shell {
+  border-color: #cfffe7;
+  box-shadow:
+    0 0 0 4rpx rgba(191, 255, 224, 0.26),
+    0 10rpx 20rpx rgba(13, 45, 34, 0.3);
+}

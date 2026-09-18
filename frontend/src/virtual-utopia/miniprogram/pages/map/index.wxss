@@ -1,0 +1,178 @@
+.map-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #10251f;
+}
+
+.map-viewport {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.map-scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -800px;
+  margin-top: -380px;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.layer-image {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.layer-infrastructure {
+  pointer-events: none;
+}
+
+.bridge-glow {
+  position: absolute;
+  width: 210px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(189, 255, 228, 0.38);
+  box-shadow: 0 0 14px rgba(173, 255, 220, 0.62);
+  animation: bridge-flow 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.bridge-glow-a {
+  left: 520px;
+  top: 390px;
+  transform: rotate(19deg);
+}
+
+.bridge-glow-b {
+  left: 740px;
+  top: 460px;
+  transform: rotate(-24deg);
+  animation-delay: 1.2s;
+}
+
+@keyframes bridge-flow {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.top-bar {
+  position: absolute;
+  z-index: 20;
+  top: 120rpx;
+  left: 28rpx;
+  right: 28rpx;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 24rpx;
+  border: 1rpx solid rgba(210, 246, 229, 0.22);
+  border-radius: 18rpx;
+  background: rgba(13, 39, 30, 0.78);
+  color: #f2fff8;
+  backdrop-filter: blur(12px);
+}
+
+.eyebrow {
+  color: #9ee6c8;
+  font-size: 18rpx;
+  letter-spacing: 3rpx;
+}
+
+.title {
+  margin-top: 6rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.top-actions {
+  display: flex;
+  gap: 10rpx;
+}
+
+.top-actions button,
+.zoom-controls button {
+  margin: 0;
+  border: 1rpx solid rgba(211, 249, 232, 0.28);
+  color: #f3fff9;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 22rpx;
+}
+
+.zoom-controls {
+  position: absolute;
+  z-index: 20;
+  right: 28rpx;
+  top: 310rpx;
+  display: grid;
+  gap: 12rpx;
+}
+
+.zoom-controls button {
+  width: 72rpx;
+  height: 72rpx;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 34rpx;
+}
+
+.legend {
+  position: absolute;
+  z-index: 20;
+  left: 28rpx;
+  bottom: 34rpx;
+  display: flex;
+  gap: 22rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 999rpx;
+  color: rgba(242, 255, 248, 0.86);
+  background: rgba(13, 39, 30, 0.78);
+  font-size: 20rpx;
+}
+
+.legend view {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.legend i {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #45a77b;
+}
+
+.legend .booked {
+  background: #c58a43;
+}
+
+.legend .active {
+  background: #5aa8b7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bridge-glow {
+    animation: none;
+  }
+}

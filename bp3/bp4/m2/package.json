@@ -1,0 +1,19 @@
+{
+  "name": "virtual-utopia-bp4-m2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node backend/src/server.js",
+    "test": "node --test backend/tests/*.test.js",
+    "test:e2e": "node tests/bp4-m2.e2e.mjs",
+    "backup": "node backend/scripts/backup-postgres.js",
+    "restore": "node backend/scripts/restore-postgres.js",
+    "check": "node --check backend/src/server.js && node --check backend/src/mediaCluster.js && node --check backend/src/mediaSignaling.js && node --check backend/src/realtimeClusterServer.js && node --check backend/src/turnService.js && node --check backend/src/monitoring.js && node --check backend/src/backupService.js && node --check backend/scripts/backup-postgres.js && node --check backend/scripts/restore-postgres.js && npm run test"
+  },
+  "dependencies": {
+    "node-turn": "^0.0.6",
+    "pg": "^8.23.0",
+    "ws": "^8.21.3"
+  }
+}

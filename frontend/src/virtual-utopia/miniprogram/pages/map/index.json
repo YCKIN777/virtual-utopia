@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "eco-pod": "../../components/eco-pod/index",
+    "center-hub": "../../components/center-hub/index"
+  }
+}
