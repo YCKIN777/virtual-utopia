@@ -82,6 +82,37 @@ export const createMemoryOrchestrator = ({
       )
       .all(userId);
 
+  // ===== 增量提炼游标 =====
+  const getCursor = (conversationId) => {
+    const row = db
+      .prepare('SELECT last_processed_message_id FROM conversations WHERE id = ?')
+      .get(conversationId);
+    return row ? row.last_processed_message_id : null;
+  };
+
+  const updateCursor = (conversationId, messageId) => {
+    db.prepare(
+      'UPDATE conversations SET last_processed_message_id = ? WHERE id = ?',
+    ).run(messageId, conversationId);
+  };
+
+  const getMessagesAfter = (conversationId, cursorId) => {
+    if (cursorId) {
+      return db
+        .prepare(
+          `SELECT id, role, content FROM messages
+           WHERE conversation_id = ? AND rowid > (SELECT rowid FROM messages WHERE id = ?)
+           ORDER BY rowid ASC`,
+        )
+        .all(conversationId, cursorId);
+    }
+    return db
+      .prepare(
+        'SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY rowid ASC',
+      )
+      .all(conversationId);
+  };
+
   /**
    * 组装上下文：召回长期记忆 + 世界状态 + 会话历史（不含即将写入的当前消息）。
    */
@@ -165,15 +196,19 @@ export const createMemoryOrchestrator = ({
     }
     appendMessage(convId, 'assistant', reply);
 
-    // 异步记忆提炼：不阻塞主响应
-    const extractMessages = [
-      ...context.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message },
-      { role: 'assistant', content: reply },
-    ];
+    // 异步记忆提炼（增量）：只处理游标之后的新消息，不再全量扫描历史
+    const cursor = getCursor(convId);
+    const newMessages = getMessagesAfter(convId, cursor);
+    const lastNew = newMessages[newMessages.length - 1];
+    if (lastNew) updateCursor(convId, lastNew.id);
+
     setImmediate(() => {
       extractor
-        .extractFacts({ userId, conversationId: convId, messages: extractMessages })
+        .extractFacts({
+          userId,
+          conversationId: convId,
+          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
         .catch((error) =>
           console.error('[memory] 记忆提炼失败:', error && error.message),
         );

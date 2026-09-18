@@ -29,6 +29,12 @@ export const openMemoryDatabase = ({ databasePath } = {}) => {
     db.exec('ALTER TABLE user_memory ADD COLUMN embedding TEXT');
   }
 
+  // 兼容旧库：conversations 若无 last_processed_message_id 列则补充（增量提炼游标）
+  const convColumns = db.prepare('PRAGMA table_info(conversations)').all();
+  if (!convColumns.some((column) => column.name === 'last_processed_message_id')) {
+    db.exec('ALTER TABLE conversations ADD COLUMN last_processed_message_id TEXT');
+  }
+
   return db;
 };
 
