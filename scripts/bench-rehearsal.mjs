@@ -1,5 +1,5 @@
 // 最终生产预演：性能采样 + 备份恢复验证（自包含，独立 DB）
-import { rmSync, cpSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { rmSync, cpSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { openMemoryDatabase, newId, now } from '../backend/src/memory/database.mjs';
 import { createLlmClient } from '../backend/src/memory/llmClient.mjs';
@@ -12,7 +12,7 @@ const PORT = 3620;
 const BASE = 'http://localhost:' + PORT;
 const userId = 'u_bench';
 
-for (const s of ['', '-wal', '-shm']) { try { rmSync(dbPath + s, { force: true }); } catch {} }
+for (const s of ['', '-wal', '-shm']) { try { rmSync(dbPath + s, { force: true }); } catch { /* ignore */ } }
 
 const db = openMemoryDatabase({ databasePath: dbPath });
 const orchestrator = createMemoryOrchestrator({ db, llmClient: createLlmClient({ apiKey: '' }) });
@@ -29,7 +29,7 @@ const call = async (path, body) => {
   return res.json();
 };
 
-const close = () => new Promise((res) => { server.close(() => { try { db.close(); } catch {} res(); }); });
+const close = () => new Promise((res) => { server.close(() => { try { db.close(); } catch { /* ignore */ } res(); }); });
 
 try {
   // 首条 chat 建会话
@@ -90,5 +90,5 @@ try {
   console.log('备份恢复验证: ' + (count >= 1 ? '通过' : '失败'));
 } finally {
   await close();
-  for (const s of ['', '-wal', '-shm']) { try { rmSync(dbPath + s, { force: true }); } catch {} }
+  for (const s of ['', '-wal', '-shm']) { try { rmSync(dbPath + s, { force: true }); } catch { /* ignore */ } }
 }
