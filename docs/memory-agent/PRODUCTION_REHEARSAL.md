@@ -8,7 +8,7 @@
 
 | 项 | 结果 |
 | --- | --- |
-| 交付包解压 | ✅ `memory-agent-v1.0.0.tar.gz` → 隔离目录，49 文件 |
+| 交付包解压 | ✅ `memory-agent-v1.0.1.tar.gz` → 隔离目录，49 文件 |
 | 依赖安装 | ✅ 隔离环境 `npm install express`（68 包，7s） |
 | 密钥替换 | ✅ 占位密钥替换为预演值（`rehearsal-secret-*`） |
 | 密钥扫描 | ✅ `audit-secrets.mjs` 0 个明文敏感项 |
