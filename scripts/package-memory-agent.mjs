@@ -22,7 +22,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.0.1';
 const STAGE = join(ROOT, 'deliverables', 'memory-agent-' + VERSION);
 
 const SOURCES = [
