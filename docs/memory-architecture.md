@@ -33,9 +33,10 @@ memoryOrchestrator（调度总入口）
 
 | 模块 | 职责 |
 | --- | --- |
-| `database.mjs` | 打开独立 SQLite + 应用 `migrate-memory.sql` |
+| `database.mjs` | 打开独立 SQLite + 应用 `migrate-memory.sql`（含 `embedding` 列兼容迁移） |
 | `llmClient.mjs` | 轻量 LLM 客户端（无 key 自动 mock 模式） |
-| `memoryRetriever.mjs` | 长期记忆召回，`importance` 降序；`retrieveByVector` 预留向量接口 |
+| `embedding.mjs` | 确定性本地 Embedding 向量生成（字符 n-gram 哈希）+ 余弦相似度 |
+| `memoryRetriever.mjs` | 长期记忆召回：向量相似度召回（默认）+ importance 二次排序，支持权重/向量模式切换 |
 | `memoryExtractor.mjs` | 异步提炼事实入库；去重（规范化全等）+ 冲突权重降级（×0.5） |
 | `worldState.mjs` | 世界状态 upsert 读写，JSON 存场景/NPC 数据 |
 | `memoryOrchestrator.mjs` | 调度入口，组装 prompt，异步触发提炼 |
@@ -88,7 +89,7 @@ memoryOrchestrator（调度总入口）
 
 ## 7. 扩展方案
 
-1. **向量检索**：`memoryRetriever.retrieveByVector` 已预留接口。未来在 `user_memory` 增 `embedding` 列（或接 ChromaDB），按 `queryEmbedding` 余弦相似度召回，替代当前 importance 排序。
+1. **真实 Embedding 模型**：当前已内置确定性本地 embedding（字符 n-gram 哈希，`user_memory.embedding` 列存储向量），`retrieveByVector` 已实现余弦相似度召回。后续替换为真实模型（DeepSeek/OpenAI/本地模型）时，仅需将 `embedding.mjs` 的 `generate` 改为异步调用远程 API，召回逻辑不变。
 2. **记忆遗忘/衰减**：按 `importance` 与 `updated_at` 实现时间衰减（低权重久未更新记忆自动降级或归档）。
 3. **世界状态多实例**：`world_state` 的 `key` 已支持 `scene:*`/`npc:*`/`global` 多命名空间，可平滑扩展。
 4. **记忆服务鉴权**：当前 API 依赖 guard 全局限流 + 安全头；后续可在路由层加 `userId` 归属校验（防越权读他人记忆）。

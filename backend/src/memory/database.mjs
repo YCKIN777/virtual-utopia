@@ -22,6 +22,13 @@ export const openMemoryDatabase = ({ databasePath } = {}) => {
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(readFileSync(schemaPath, 'utf8'));
+
+  // 兼容旧库：user_memory 若无 embedding 列则补充（向量召回扩展，旧数据 embedding 为 NULL）
+  const columns = db.prepare('PRAGMA table_info(user_memory)').all();
+  if (!columns.some((column) => column.name === 'embedding')) {
+    db.exec('ALTER TABLE user_memory ADD COLUMN embedding TEXT');
+  }
+
   return db;
 };
 

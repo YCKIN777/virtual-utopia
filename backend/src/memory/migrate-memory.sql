@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS user_memory (
   category TEXT,
   importance REAL NOT NULL DEFAULT 0.5,
   source_conversation_id TEXT,
+  embedding TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

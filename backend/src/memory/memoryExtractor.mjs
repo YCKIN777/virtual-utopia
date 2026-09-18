@@ -3,6 +3,7 @@
  * 特性：LLM 提取（无 key 时启发式回退）、事实去重、冲突权重降级。
  */
 import { newId, now } from './database.mjs';
+import { createEmbeddingGenerator } from './embedding.mjs';
 
 const EXTRACT_PROMPT = `你是记忆提炼器。从以下对话中提取值得长期记住的用户事实。
 只输出 JSON 数组，每个元素格式：
@@ -22,7 +23,8 @@ const clampImportance = (value) => {
   return Math.min(1, Math.max(0, n));
 };
 
-export const createMemoryExtractor = ({ db, llmClient }) => {
+export const createMemoryExtractor = ({ db, llmClient, embeddingGenerator } = {}) => {
+  const emb = embeddingGenerator || createEmbeddingGenerator();
   const extractFacts = async ({ userId, conversationId, messages }) => {
     const facts = await callLlmForFacts(messages);
     const inserted = [];
@@ -61,11 +63,12 @@ export const createMemoryExtractor = ({ db, llmClient }) => {
       }
 
       const id = newId('mem');
+      const embedding = JSON.stringify(emb.generate(content));
       db.prepare(
         `INSERT INTO user_memory
-         (id, user_id, content, category, importance, source_conversation_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, userId, content, category, importance, conversationId, now(), now());
+         (id, user_id, content, category, importance, source_conversation_id, embedding, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, userId, content, category, importance, conversationId, embedding, now(), now());
 
       inserted.push({ id, content, category, importance });
     }

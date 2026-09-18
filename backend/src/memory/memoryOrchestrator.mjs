@@ -5,6 +5,7 @@
 import { createMemoryRetriever } from './memoryRetriever.mjs';
 import { createWorldStateStore } from './worldState.mjs';
 import { createMemoryExtractor } from './memoryExtractor.mjs';
+import { createEmbeddingGenerator } from './embedding.mjs';
 import { newId, now } from './database.mjs';
 
 const DEFAULT_SYSTEM_PROMPT = '你是虚拟乌托邦的社区助手，请结合用户的长期记忆与当前世界状态，给出连贯、个性化的回答。';
@@ -13,10 +14,13 @@ export const createMemoryOrchestrator = ({
   db,
   llmClient,
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
+  embeddingGenerator,
+  retrievalMode,
 } = {}) => {
-  const retriever = createMemoryRetriever({ db });
+  const emb = embeddingGenerator || createEmbeddingGenerator();
+  const retriever = createMemoryRetriever({ db, embeddingGenerator: emb, mode: retrievalMode });
   const worldState = createWorldStateStore({ db });
-  const extractor = createMemoryExtractor({ db, llmClient });
+  const extractor = createMemoryExtractor({ db, llmClient, embeddingGenerator: emb });
 
   const ensureUser = (userId) => {
     if (!userId) throw new Error('userId is required');
@@ -81,8 +85,8 @@ export const createMemoryOrchestrator = ({
   /**
    * 组装上下文：召回长期记忆 + 世界状态 + 会话历史（不含即将写入的当前消息）。
    */
-  const buildContext = ({ userId, conversationId }) => {
-    const memories = retriever.retrieve({ userId, limit: 20 });
+  const buildContext = ({ userId, conversationId, query }) => {
+    const memories = retriever.retrieve({ userId, query, limit: 20 });
     const worldStates = worldState.list();
     const history = conversationId ? getMessages(conversationId) : [];
     return { userId, conversationId, memories, worldStates, history, systemPrompt };
@@ -145,7 +149,7 @@ export const createMemoryOrchestrator = ({
     }
     convId = convId || createConversation({ userId, sceneId }).id;
 
-    const context = buildContext({ userId, conversationId: convId });
+    const context = buildContext({ userId, conversationId: convId, query: message });
     appendMessage(convId, 'user', message);
     const prompt = assemblePrompt(context, message);
 

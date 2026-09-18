@@ -3,6 +3,7 @@
  */
 export { openMemoryDatabase, newId, now } from './database.mjs';
 export { createLlmClient } from './llmClient.mjs';
+export { createEmbeddingGenerator } from './embedding.mjs';
 export { createMemoryRetriever } from './memoryRetriever.mjs';
 export { createMemoryExtractor } from './memoryExtractor.mjs';
 export { createWorldStateStore } from './worldState.mjs';
