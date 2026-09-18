@@ -23,6 +23,16 @@ export const createMemoryApp = ({ orchestrator }) => {
     }
   });
 
+  app.get('/api/conversation/list', (req, res) => {
+    const { userId } = req.query;
+    if (!userId) {
+      res.status(400).json({ error: 'userId required' });
+      return;
+    }
+    const conversations = orchestrator.listConversations({ userId });
+    res.json({ userId, conversations });
+  });
+
   app.get('/api/conversation/:id', (req, res) => {
     const messages = orchestrator.getMessages(req.params.id);
     res.json({ id: req.params.id, messages });

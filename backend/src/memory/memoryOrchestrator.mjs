@@ -64,6 +64,13 @@ export const createMemoryOrchestrator = ({
     return result.changes > 0;
   };
 
+  const listConversations = ({ userId }) =>
+    db
+      .prepare(
+        'SELECT id, user_id, scene_id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC',
+      )
+      .all(userId);
+
   /**
    * 组装上下文：召回长期记忆 + 世界状态 + 会话历史（不含即将写入的当前消息）。
    */
@@ -167,6 +174,7 @@ export const createMemoryOrchestrator = ({
   return {
     ensureUser,
     createConversation,
+    listConversations,
     getMessages,
     appendMessage,
     deleteMemory,
