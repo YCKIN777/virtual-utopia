@@ -33,5 +33,15 @@ export const createSessionApi = ({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ userId, sceneId, title }),
       }),
+    listMemories: (userId) =>
+      request('/api/user/memory?userId=' + encodeURIComponent(userId)),
+    deleteMemory: (memoryId) =>
+      request('/api/user/memory/' + encodeURIComponent(memoryId), {
+        method: 'DELETE',
+      }),
+    clearMemories: (userId) =>
+      request('/api/user/memory?userId=' + encodeURIComponent(userId), {
+        method: 'DELETE',
+      }),
   };
 };

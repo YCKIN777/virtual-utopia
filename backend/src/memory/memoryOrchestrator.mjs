@@ -64,6 +64,13 @@ export const createMemoryOrchestrator = ({
     return result.changes > 0;
   };
 
+  const clearMemory = ({ userId }) => {
+    const result = db
+      .prepare('DELETE FROM user_memory WHERE user_id = ?')
+      .run(userId);
+    return result.changes;
+  };
+
   const listConversations = ({ userId }) =>
     db
       .prepare(
@@ -185,6 +192,7 @@ export const createMemoryOrchestrator = ({
     getMessages,
     appendMessage,
     deleteMemory,
+    clearMemory,
     buildContext,
     chat,
     retrieveMemory: retriever.retrieve,

@@ -182,6 +182,31 @@ try {
     assert.equal(r6.historyCount, 0, '场景6 新会话应无历史');
   }
 
+  // ===== 场景7：记忆管理 CRUD（列表 / 单条删除 / 一键清空）=====
+  {
+    const list = await memApi.listMemories(userId);
+    const beforeCount = (list.memories || []).length;
+    const first = (list.memories || [])[0];
+    console.log('[场景7] 记忆列表 ' + beforeCount + ' 条，首条=' + (first && first.id));
+    assert.ok(beforeCount >= 2, '场景7 应有记忆可删');
+
+    const delRes = await fetch(BASE + '/api/user/memory/' + first.id, {
+      method: 'DELETE',
+    }).then((r) => r.json());
+    console.log('[场景7] 删除单条 ' + first.id + ' → deleted=' + delRes.deleted);
+    assert.equal(delRes.deleted, true, '场景7 单条删除应成功');
+
+    const clearRes = await fetch(BASE + '/api/user/memory?userId=' + userId, {
+      method: 'DELETE',
+    }).then((r) => r.json());
+    console.log('[场景7] 清空全部 → cleared=' + clearRes.cleared);
+    assert.ok(clearRes.cleared >= 1, '场景7 清空应返回删除数');
+
+    const after = await memApi.listMemories(userId);
+    console.log('[场景7] 清空后记忆 ' + (after.memories || []).length + ' 条');
+    assert.equal((after.memories || []).length, 0, '场景7 清空后应为 0');
+  }
+
   // ===== 场景5：修改世界状态 → 关闭重开 → world_state 持久化加载 =====
   {
     orchestrator.worldState.set({
@@ -205,7 +230,7 @@ try {
     db2.close();
   }
 
-  console.log('\n[全链路 E2E 联调] 5 个场景全部通过 ✅');
+  console.log('\n[全链路 E2E 联调] 全部场景通过 ✅');
 } finally {
   await closeServer().catch(() => null);
   for (const s of ['', '-wal', '-shm']) {

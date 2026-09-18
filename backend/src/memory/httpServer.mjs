@@ -63,6 +63,16 @@ export const createMemoryApp = ({ orchestrator }) => {
     res.json({ userId, memories });
   });
 
+  app.delete('/api/user/memory', (req, res) => {
+    const { userId } = req.query;
+    if (!userId) {
+      res.status(400).json({ error: 'userId required' });
+      return;
+    }
+    const cleared = orchestrator.clearMemory({ userId });
+    res.json({ userId, cleared });
+  });
+
   app.delete('/api/user/memory/:mid', (req, res) => {
     const deleted = orchestrator.deleteMemory(req.params.mid);
     res.json({ deleted });

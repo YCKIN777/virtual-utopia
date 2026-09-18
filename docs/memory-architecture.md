@@ -47,12 +47,16 @@ memoryOrchestrator（调度总入口）
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/conversation/create` | 新建会话（body: `userId`, `sceneId?`, `title?`） |
+| GET | `/api/conversation/list?userId=` | 获取用户历史会话列表 |
 | GET | `/api/conversation/:id` | 获取会话消息 |
 | POST | `/api/chat` | 对话主入口（body: `userId`, `conversationId?`, `message`, `sceneId?`） |
 | GET | `/api/user/memory?userId=` | 获取用户记忆列表 |
 | DELETE | `/api/user/memory/:mid` | 删除单条记忆 |
+| DELETE | `/api/user/memory?userId=` | 一键清空该用户全部记忆 |
 
 默认端口 `3600`（`MEMORY_PORT` 可覆盖）。
+
+前端配套（`frontend/src/session/`）：`MemoryPanel.vue` 记忆管理面板（复用 `sessionStore` 鉴权，支持列表加载/单条删除/一键清空）；`sessionApi.js` 已提供 `listMemories` / `deleteMemory` / `clearMemories` 客户端方法。
 
 ## 5. 调用时序
 
