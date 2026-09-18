@@ -129,7 +129,14 @@ export const createMemoryOrchestrator = ({
    */
   const chat = async ({ userId, conversationId, message, sceneId }) => {
     ensureUser(userId);
-    const convId = conversationId || createConversation({ userId, sceneId }).id;
+    let convId = conversationId;
+    if (convId) {
+      const owned = db
+        .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+        .get(convId, userId);
+      if (!owned) convId = null; // 会话不存在或不属于该用户 → 回退新建
+    }
+    convId = convId || createConversation({ userId, sceneId }).id;
 
     const context = buildContext({ userId, conversationId: convId });
     appendMessage(convId, 'user', message);

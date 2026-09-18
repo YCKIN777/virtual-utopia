@@ -93,4 +93,24 @@ memoryOrchestrator（调度总入口）
 
 ```powershell
 node scripts/test-memory.mjs      # 冒烟测试：验证场景1/场景2 + 异步提炼
+node scripts/test-memory-e2e.mjs  # 全链路 E2E：真实 HTTP + SQLite 持久化
 ```
+
+## 9. 全链路联调结论（2026-09-18）
+
+前后端记忆架构端到端联调（真实 HTTP 服务 + 真实 SQLite 持久化）全部通过：
+
+| 场景 | 验证内容 | 结果 |
+| --- | --- | --- |
+| 1 | 新会话（不传 conversation_id）→ 自动加载长期记忆 + 世界状态，历史=0 | ✅ |
+| 2 | 新窗口带 conversation_id → 完整拉取历史消息 + 续接（历史>0） | ✅ |
+| 3 | F5 刷新 → URL/localStorage 恢复 conversation_id，上下文不丢 | ✅ |
+| 4 | 发送消息 → 异步记忆提炼不阻塞（主响应 ~200ms），新事实写入 user_memory | ✅ |
+| 5 | 修改世界状态 → 重启后 world_state 正确持久化加载 | ✅ |
+
+**联调中发现并修复的问题**：
+- `chat` 入口对陈旧/越权的 `conversation_id` 未做归属校验，可能导致 FK 约束失败或跨用户访问。已修复：`conversation_id` 不存在或不属于当前 `user_id` 时自动回退新建会话（见 memoryOrchestrator 的 `chat`）。
+
+**已知设计约定（非 bug）**：
+- `world_state` 写入为程序化接口（`orchestrator.worldState.set`），暂无 HTTP 写接口；若未来 3D 游戏层需前端直接写入，可新增 `/api/world/state`。
+- 记忆提炼 `extractFacts` 假设用户已存在（由 `chat` 的 `ensureUser` 保证）；直接调用需先确保用户。
