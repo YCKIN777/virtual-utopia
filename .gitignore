@@ -18,3 +18,4 @@ key.txt
 *.sqlite3
 data/
 backups/
+deliverables/memory-agent-v1.0.0/
