@@ -15,13 +15,18 @@ const WOOD = '#9b7547';
 const WOOD_DARK = '#694d32';
 const LEAF = '#2f704c';
 
-// 原住民 plotId -> 户主名（用于屋顶光柱木牌署名）
+// 原住民 plotId -> 户主名（用于屋顶灯笼木牌署名）
 const RESIDENT_PLOTS = Object.fromEntries(
   seedResidents.map((resident) => [resident.homePlotId, resident.residentName]),
 );
 
-// 屋顶光柱统一暖黄色
-const RESIDENT_BEAM_COLOR = '#ffc964';
+// 屋顶暖黄小灯笼（柔光、不刺眼）：白天是普通小灯笼不发光，傍晚/夜间随 nightBlend 自动亮起
+const LANTERN_DAY = '#caa063'; // 白天未点亮时纸灯笼的暗暖色
+const LANTERN_WARM = '#ffd591'; // 夜晚点亮时提亮的暖芯色
+const LANTERN_LIGHT = '#ffb24d'; // 灯笼点光源暖色
+const LANTERN_HALO = '#ffcf8f'; // 柔光晕色
+const LANTERN_DAY_COLOR = new THREE.Color(LANTERN_DAY);
+const LANTERN_WARM_COLOR = new THREE.Color(LANTERN_WARM);
 
 const clamp = (value, minimum, maximum) =>
   Math.min(Math.max(value, minimum), maximum);
@@ -297,6 +302,32 @@ const createWoodSignSprite = (text) => {
   sprite.renderOrder = 999;
   sprite.scale.set(3.8, 1.58, 1);
   return sprite;
+};
+
+// 生成一张白色径向渐变贴图（中心不透明→边缘透明），用于灯笼柔光晕，颜色由材质 color 染色。
+const createRadialSpriteTexture = (size = 128) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
+  grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.32, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 };
 
 const createBeamBetween = (start, end, radius, material) => {
@@ -2839,8 +2870,9 @@ export class ThreeWorld {
     return box;
   }
 
-  // 给已分配户主（原住民）的宅院屋顶，生成一道暖黄色光柱 + 木牌署名。
-  // 光柱与木牌稳定锚定在屋顶世界坐标，木牌 Sprite 始终朝向镜头但位置不随镜头漂移。
+  // 给已分配户主（原住民）的宅院屋顶，挂一盏暖黄小灯笼 + 木牌署名。
+  // 灯笼白天是普通小灯笼（不发光）；傍晚/夜间随 nightBlend 自动亮起：柔光晕 + 低强度暖点光，不刺眼。
+  // 灯笼与木牌稳定锚定屋顶世界坐标，木牌 Sprite 始终朝向镜头但位置不随镜头漂移。
   addResidentBeacon(home, residentName) {
     const scale = home.scale * (home.variant === 2 ? 1.16 : 1) * 1.18;
     const modelBox = this.getModelBounds(home.group);
@@ -2848,92 +2880,101 @@ export class ThreeWorld {
     const roofTopY = home.y + 0.2 + modelBox.max.y * scale;
     const anchorX = home.x + center.x * scale;
     const anchorZ = home.z + center.z * scale;
-    const height = 10; // 8~12 米范围内
 
     const group = new THREE.Group();
     group.position.set(anchorX, roofTopY, anchorZ);
 
-    // 外层柔光柱：普通混合(非加色)，在明亮的山林背景上依然清晰；关雾以免远处被冲淡。
-    const outerMaterial = new THREE.MeshBasicMaterial({
-      color: RESIDENT_BEAM_COLOR,
+    // 挂绳：从屋顶连到灯笼顶部，细木色，营造"挂在屋顶"的感觉。
+    const cordMaterial = new THREE.MeshBasicMaterial({
+      color: '#6f5a3c',
       transparent: true,
-      opacity: 0.42,
-      side: THREE.DoubleSide,
+      opacity: 0.85,
       depthWrite: false,
       fog: false,
     });
-    const outer = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.32, 0.66, height, 20, 1, true),
-      outerMaterial,
+    const cord = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 1.5, 6),
+      cordMaterial,
     );
-    outer.position.y = height / 2;
-    outer.userData = {
+    cord.position.y = 0.85;
+    group.add(cord);
+
+    // 灯笼上下木盖：小巧，给纸灯笼轮廓。
+    const capMaterial = new THREE.MeshStandardMaterial({
+      color: '#7a5a36',
+      roughness: 0.85,
+      metalness: 0.04,
+    });
+    const capTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.26, 0.3, 0.16, 14),
+      capMaterial,
+    );
+    capTop.position.y = 1.68;
+    capTop.userData = {
       selectionType: 'residentHome',
       residentName,
       homeId: home.id,
     };
-    group.add(outer);
-
-    // 内层亮芯：奶油色实心感，强调光柱主体。
-    const coreMaterial = new THREE.MeshBasicMaterial({
-      color: '#fff3cf',
-      transparent: true,
-      opacity: 0.9,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      fog: false,
-    });
-    const core = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.13, 0.28, height, 16, 1, true),
-      coreMaterial,
+    const capBottom = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.26, 0.16, 14),
+      capMaterial,
     );
-    core.position.y = height / 2;
-    core.userData = {
+    capBottom.position.y = 1.34;
+    capBottom.userData = {
       selectionType: 'residentHome',
       residentName,
       homeId: home.id,
     };
-    group.add(core);
+    group.add(capTop, capBottom);
 
-    // 屋顶底座光晕：暗示光柱确实从这栋屋顶发出，避免"悬空"错觉。
-    const baseMaterial = new THREE.MeshBasicMaterial({
-      color: RESIDENT_BEAM_COLOR,
+    // 灯笼纸身：暖色半透明，始终可见；夜晚才提亮并配合光晕/点光"亮起"。
+    const paperMaterial = new THREE.MeshBasicMaterial({
+      color: LANTERN_DAY_COLOR.clone(),
       transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
+      opacity: 0.96,
       depthWrite: false,
       fog: false,
     });
-    const base = new THREE.Mesh(new THREE.CircleGeometry(0.95, 24), baseMaterial);
-    base.rotation.x = -Math.PI / 2;
-    base.position.y = 0.05;
-    group.add(base);
+    const paper = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.27, 0.27, 0.64, 16, 1, true),
+      paperMaterial,
+    );
+    paper.position.y = 1.51;
+    paper.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(paper);
 
-    const glow = new THREE.PointLight(RESIDENT_BEAM_COLOR, 0.6, 20, 2);
-    glow.position.y = 0.4;
-    group.add(glow);
-
-    // 不可见的点击命中柱：让用户在光柱附近任意位置点击都能识别归属，无需精确点到细柱体。
-    const hitMaterial = new THREE.MeshBasicMaterial({
+    // 柔光晕：径向渐变 Sprite，加色混合但低透明度，夜晚才显现，避免白天/刺眼光。
+    const haloTexture =
+      this._lanternHaloTexture ||
+      (this._lanternHaloTexture = createRadialSpriteTexture(128));
+    const haloMaterial = new THREE.SpriteMaterial({
+      map: haloTexture,
+      color: new THREE.Color(LANTERN_HALO),
       transparent: true,
       opacity: 0,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
-      side: THREE.DoubleSide,
+      depthTest: true,
+      fog: false,
     });
-    const hit = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.15, 1.4, height + 1.6, 12, 1, true),
-      hitMaterial,
-    );
-    hit.position.y = height / 2;
-    hit.userData = {
-      selectionType: 'residentHome',
-      residentName,
-      homeId: home.id,
-    };
-    group.add(hit);
+    const halo = new THREE.Sprite(haloMaterial);
+    halo.scale.set(3.0, 3.0, 1);
+    halo.position.y = 1.51;
+    group.add(halo);
 
+    // 点光源：傍晚/夜间低强度暖光，在屋顶投出柔和暖色光池（不刺眼）。
+    const light = new THREE.PointLight(LANTERN_LIGHT, 0, 13, 2);
+    light.position.y = 1.51;
+    group.add(light);
+
+    // 木牌（灯笼下方）：户主名，始终朝向镜头、不被树木遮挡。
     const sign = createWoodSignSprite(`${residentName}的家`);
-    sign.position.set(0, height * 0.74, 0);
+    sign.position.set(0, 0.5, 0);
+    sign.scale.set(3.2, 1.33, 1);
     sign.userData = {
       selectionType: 'residentHome',
       residentName,
@@ -2941,14 +2982,34 @@ export class ThreeWorld {
     };
     group.add(sign);
 
+    // 不可见点击命中体：覆盖灯笼+木牌区域，方便点击识别归属，无需精确点到小灯笼。
+    const hitMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const hit = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.1, 1.3, 2.8, 12, 1, true),
+      hitMaterial,
+    );
+    hit.position.y = 1.35;
+    hit.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(hit);
+
     this.scene.add(group);
-    this.clickableMeshes.push(outer, core, hit, sign);
+    this.clickableMeshes.push(paper, capTop, capBottom, sign, hit);
     this.residentBeacons.set(home.id, {
       group,
-      outerMaterial,
-      coreMaterial,
-      baseMaterial,
+      haloMaterial,
+      paperMaterial,
+      light,
       sign,
+      phase: Math.random() * Math.PI * 2,
       roofTopY,
     });
   }
@@ -5283,12 +5344,14 @@ export class ThreeWorld {
     });
 
     this.residentBeacons.forEach((beacon) => {
-      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 1.6 + beacon.roofTopY);
-      beacon.outerMaterial.opacity = 0.34 + pulse * 0.16;
-      beacon.coreMaterial.opacity = 0.78 + pulse * 0.18;
-      if (beacon.baseMaterial) {
-        beacon.baseMaterial.opacity = 0.4 + pulse * 0.22;
-      }
+      // 暖黄小灯笼：白天不发光（光晕/点光为 0），傍晚/夜间随 nightBlend 自动亮起，带轻微烛火呼吸。
+      const night = this.nightBlend || 0;
+      const flicker = 0.9 + 0.1 * Math.sin(elapsed * 3.1 + beacon.phase);
+      beacon.haloMaterial.opacity = 0.5 * night * flicker;
+      beacon.light.intensity = 1.0 * night * flicker;
+      beacon.paperMaterial.color
+        .copy(LANTERN_DAY_COLOR)
+        .lerp(LANTERN_WARM_COLOR, night * flicker);
     });
 
     this.waterfallMaterials?.forEach((material, index) => {
