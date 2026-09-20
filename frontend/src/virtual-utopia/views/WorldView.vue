@@ -278,10 +278,15 @@ const goHome = () => {
   world?.flyToHome(worldStore.getOwnedHome()?.id || 'plot-1');
 };
 
-const goCenter = () => {
-  controlsState.overview = false;
-  world?.flyToCenter();
-};
+  const goCenter = () => {
+    controlsState.overview = false;
+    world?.flyToCenter();
+  };
+
+  const flyToResident = (homeId) => {
+    controlsState.overview = false;
+    world?.flyToHome(homeId);
+  };
 
 const toggleOverview = () => {
   if (controlsState.overview) {
@@ -646,7 +651,13 @@ watch(currentUser, () => {
         ×
       </button>
       <span class="vu-kicker">
-        {{ selectedInfo.type === 'center' ? 'LIFE PLAZA' : 'ECO MANOR' }}
+        {{
+          selectedInfo.type === 'center'
+            ? 'LIFE PLAZA'
+            : selectedInfo.type === 'residentHome'
+              ? 'RESIDENT HOME'
+              : 'ECO MANOR'
+        }}
       </span>
       <h2>{{ selectedInfo.title }}</h2>
       <p>{{ selectedInfo.description }}</p>
@@ -655,6 +666,21 @@ watch(currentUser, () => {
         <span>独立庭院</span>
         <span>屋顶花园</span>
       </div>
+      <div
+        v-else-if="selectedInfo.type === 'residentHome'"
+        class="vu-world-info__tags"
+      >
+        <span>原住民宅院</span>
+        <span>{{ selectedInfo.homeId }}</span>
+      </div>
+      <button
+        v-if="selectedInfo.type === 'residentHome'"
+        type="button"
+        class="vu-world-info__action"
+        @click="flyToResident(selectedInfo.homeId)"
+      >
+        飞向此地
+      </button>
     </article>
 
     <HomePanel

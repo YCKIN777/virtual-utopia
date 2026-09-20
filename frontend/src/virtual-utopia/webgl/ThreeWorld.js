@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadWorldModels } from './modelLoader.js';
+import { seedResidents } from '../data/residents.js';
 import {
   bridgeNetwork,
   crossGroupBridges,
@@ -13,6 +14,14 @@ import {
 const WOOD = '#9b7547';
 const WOOD_DARK = '#694d32';
 const LEAF = '#2f704c';
+
+// 原住民 plotId -> 户主名（用于屋顶光柱木牌署名）
+const RESIDENT_PLOTS = Object.fromEntries(
+  seedResidents.map((resident) => [resident.homePlotId, resident.residentName]),
+);
+
+// 屋顶光柱统一暖黄色
+const RESIDENT_BEAM_COLOR = '#ffc964';
 
 const clamp = (value, minimum, maximum) =>
   Math.min(Math.max(value, minimum), maximum);
@@ -221,6 +230,75 @@ const createAvatarLabel = (displayName, color) => {
   return sprite;
 };
 
+// 山林庄园风格的木牌文字标签：始终朝向镜头，固定锚定在世界坐标，不随镜头漂移。
+const createWoodSignSprite = (text) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 384;
+  canvas.height = 160;
+  const context = canvas.getContext('2d');
+
+  // 木牌底板（带圆角与木纹）
+  const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, '#b8814a');
+  gradient.addColorStop(0.5, '#956233');
+  gradient.addColorStop(1, '#7c4f29');
+  context.fillStyle = gradient;
+  context.beginPath();
+  context.roundRect(10, 20, canvas.width - 20, canvas.height - 40, 24);
+  context.fill();
+
+  context.lineWidth = 7;
+  context.strokeStyle = '#5d3b1f';
+  context.stroke();
+
+  context.strokeStyle = 'rgba(93, 59, 31, 0.35)';
+  context.lineWidth = 2;
+  for (const offset of [-28, 0, 28]) {
+    const y = canvas.height / 2 + offset;
+    context.beginPath();
+    context.moveTo(26, y);
+    context.bezierCurveTo(
+      canvas.width * 0.35,
+      y - 6,
+      canvas.width * 0.65,
+      y + 6,
+      canvas.width - 26,
+      y,
+    );
+    context.stroke();
+  }
+
+  // 户主名（奶油色，带描边提升远处可读性）
+  context.font =
+    '700 62px "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.shadowColor = 'rgba(36, 20, 8, 0.6)';
+  context.shadowBlur = 5;
+  context.lineWidth = 5;
+  context.strokeStyle = 'rgba(36, 20, 8, 0.7)';
+  context.strokeText(text, canvas.width / 2, canvas.height / 2 + 2);
+  context.shadowBlur = 0;
+  context.fillStyle = '#fff3da';
+  context.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  sprite.renderOrder = 999;
+  sprite.scale.set(3.8, 1.58, 1);
+  return sprite;
+};
+
 const createBeamBetween = (start, end, radius, material) => {
   const direction = end.clone().sub(start);
   const length = direction.length();
@@ -287,6 +365,8 @@ export class ThreeWorld {
     this.pointerStart = null;
     this.clickableMeshes = [];
     this.homeObjects = new Map();
+    this.residentBeacons = new Map();
+    this._modelBoundsCache = {};
     this.clouds = [];
     this.leafPoints = null;
     this.leafVelocities = [];
@@ -2742,6 +2822,137 @@ export class ThreeWorld {
     }
   }
 
+  getModelBounds(group) {
+    const key =
+      group === 'cliff' ? 'cliff' : group === 'forest' ? 'forest' : 'terrace';
+    if (this._modelBoundsCache[key]) {
+      return this._modelBoundsCache[key];
+    }
+    const model =
+      key === 'cliff'
+        ? this.models.cliffManor
+        : key === 'forest'
+          ? this.models.forestManor
+          : this.models.terraceManor;
+    const box = new THREE.Box3().setFromObject(model);
+    this._modelBoundsCache[key] = box;
+    return box;
+  }
+
+  // 给已分配户主（原住民）的宅院屋顶，生成一道暖黄色光柱 + 木牌署名。
+  // 光柱与木牌稳定锚定在屋顶世界坐标，木牌 Sprite 始终朝向镜头但位置不随镜头漂移。
+  addResidentBeacon(home, residentName) {
+    const scale = home.scale * (home.variant === 2 ? 1.16 : 1) * 1.18;
+    const modelBox = this.getModelBounds(home.group);
+    const center = modelBox.getCenter(new THREE.Vector3());
+    const roofTopY = home.y + 0.2 + modelBox.max.y * scale;
+    const anchorX = home.x + center.x * scale;
+    const anchorZ = home.z + center.z * scale;
+    const height = 10; // 8~12 米范围内
+
+    const group = new THREE.Group();
+    group.position.set(anchorX, roofTopY, anchorZ);
+
+    // 外层柔光柱：普通混合(非加色)，在明亮的山林背景上依然清晰；关雾以免远处被冲淡。
+    const outerMaterial = new THREE.MeshBasicMaterial({
+      color: RESIDENT_BEAM_COLOR,
+      transparent: true,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const outer = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.66, height, 20, 1, true),
+      outerMaterial,
+    );
+    outer.position.y = height / 2;
+    outer.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(outer);
+
+    // 内层亮芯：奶油色实心感，强调光柱主体。
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: '#fff3cf',
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.28, height, 16, 1, true),
+      coreMaterial,
+    );
+    core.position.y = height / 2;
+    core.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(core);
+
+    // 屋顶底座光晕：暗示光柱确实从这栋屋顶发出，避免"悬空"错觉。
+    const baseMaterial = new THREE.MeshBasicMaterial({
+      color: RESIDENT_BEAM_COLOR,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const base = new THREE.Mesh(new THREE.CircleGeometry(0.95, 24), baseMaterial);
+    base.rotation.x = -Math.PI / 2;
+    base.position.y = 0.05;
+    group.add(base);
+
+    const glow = new THREE.PointLight(RESIDENT_BEAM_COLOR, 0.6, 20, 2);
+    glow.position.y = 0.4;
+    group.add(glow);
+
+    // 不可见的点击命中柱：让用户在光柱附近任意位置点击都能识别归属，无需精确点到细柱体。
+    const hitMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const hit = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.15, 1.4, height + 1.6, 12, 1, true),
+      hitMaterial,
+    );
+    hit.position.y = height / 2;
+    hit.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(hit);
+
+    const sign = createWoodSignSprite(`${residentName}的家`);
+    sign.position.set(0, height * 0.74, 0);
+    sign.userData = {
+      selectionType: 'residentHome',
+      residentName,
+      homeId: home.id,
+    };
+    group.add(sign);
+
+    this.scene.add(group);
+    this.clickableMeshes.push(outer, core, hit, sign);
+    this.residentBeacons.set(home.id, {
+      group,
+      outerMaterial,
+      coreMaterial,
+      baseMaterial,
+      sign,
+      roofTopY,
+    });
+  }
+
   buildHomes() {
     const haloGeometry = new THREE.TorusGeometry(3.15, 0.045, 6, 28);
     const haloMaterial = new THREE.MeshBasicMaterial({
@@ -2942,6 +3153,11 @@ export class ThreeWorld {
         interiorGroup,
         shellMaterials,
       });
+
+      const residentName = RESIDENT_PLOTS[home.id];
+      if (residentName) {
+        this.addResidentBeacon(home, residentName);
+      }
     });
   }
 
@@ -4821,6 +5037,17 @@ export class ThreeWorld {
 
     const object = hit.object;
 
+    if (object.userData.selectionType === 'residentHome') {
+      this.onSelect({
+        type: 'residentHome',
+        residentName: object.userData.residentName,
+        homeId: object.userData.homeId,
+        title: `${object.userData.residentName}的家`,
+        description: `原住民 ${object.userData.residentName} 的宅院 · ${object.userData.homeId}`,
+      });
+      return;
+    }
+
     if (object.userData.selectionType === 'center') {
       this.onSelect({
         type: 'center',
@@ -5053,6 +5280,15 @@ export class ThreeWorld {
       ripple.scale.setScalar(wave);
       ripple.material.opacity =
         0.08 + (0.5 + 0.5 * Math.sin(elapsed * 2.2 + index)) * 0.13;
+    });
+
+    this.residentBeacons.forEach((beacon) => {
+      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 1.6 + beacon.roofTopY);
+      beacon.outerMaterial.opacity = 0.34 + pulse * 0.16;
+      beacon.coreMaterial.opacity = 0.78 + pulse * 0.18;
+      if (beacon.baseMaterial) {
+        beacon.baseMaterial.opacity = 0.4 + pulse * 0.22;
+      }
     });
 
     this.waterfallMaterials?.forEach((material, index) => {
