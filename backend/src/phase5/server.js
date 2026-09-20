@@ -25,7 +25,7 @@ export const startPhase5Server = async ({
     options: {
       isProduction: process.env.NODE_ENV === 'production',
       rateLimit: {
-        maxRequests: Number(process.env.GUARD_RATE_MAX) || 120,
+        maxRequests: Number(process.env.GUARD_RATE_MAX) || 300,
       },
     },
   });

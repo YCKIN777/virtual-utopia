@@ -22,6 +22,12 @@ const mapUser = (row) => {
     role: row.role,
     status: row.status,
     displayName: row.display_name,
+    hobbies: row.hobbies || null,
+    occupation: row.occupation || null,
+    selfIntro: row.self_intro || null,
+    contact: row.contact || null,
+    address: row.address || null,
+    rejectReason: row.reject_reason || null,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -109,6 +115,11 @@ export const createRepositories = (database) => {
       role,
       status = 'active',
       displayName = null,
+      hobbies = null,
+      occupation = null,
+      selfIntro = null,
+      contact = null,
+      address = null,
     }) {
       const currentTime = timestamp();
       const result = run(
@@ -118,15 +129,25 @@ export const createRepositories = (database) => {
           role,
           status,
           display_name,
+          hobbies,
+          occupation,
+          self_intro,
+          contact,
+          address,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           username,
           passwordHash,
           role,
           status,
           displayName,
+          hobbies,
+          occupation,
+          selfIntro,
+          contact,
+          address,
           currentTime,
           currentTime,
         ],
@@ -140,7 +161,23 @@ export const createRepositories = (database) => {
     getByUsername(username) {
       return mapUser(get('SELECT * FROM users WHERE username = ?', [username]));
     },
-    list({ limit = 100, offset = 0 } = {}) {
+    getByDisplayName(displayName) {
+      return mapUser(
+        get('SELECT * FROM users WHERE display_name = ?', [displayName]),
+      );
+    },
+    list({ limit = 100, offset = 0, status } = {}) {
+      if (status) {
+        return all(
+          `SELECT *
+           FROM users
+           WHERE status = ?
+           ORDER BY created_at ASC
+           LIMIT ? OFFSET ?`,
+          [status, limit, offset],
+        ).map(mapUser);
+      }
+
       return all(
         `SELECT *
          FROM users
@@ -148,6 +185,23 @@ export const createRepositories = (database) => {
          LIMIT ? OFFSET ?`,
         [limit, offset],
       ).map(mapUser);
+    },
+    updatePassword(id, passwordHash) {
+      const current = users.getById(id);
+
+      if (!current) {
+        throw new Phase5NotFoundError('user not found');
+      }
+
+      run(
+        `UPDATE users
+         SET password_hash = ?,
+             updated_at = ?
+         WHERE id = ?`,
+        [passwordHash, timestamp(), id],
+      );
+
+      return users.getById(id);
     },
     update(id, fields) {
       const current = users.getById(id);
@@ -161,12 +215,24 @@ export const createRepositories = (database) => {
          SET role = ?,
              status = ?,
              display_name = ?,
+             hobbies = ?,
+             occupation = ?,
+             self_intro = ?,
+             contact = ?,
+             address = ?,
+             reject_reason = ?,
              updated_at = ?
          WHERE id = ?`,
         [
           fields.role ?? current.role,
           fields.status ?? current.status,
           fields.displayName ?? current.displayName,
+          fields.hobbies ?? current.hobbies,
+          fields.occupation ?? current.occupation,
+          fields.selfIntro ?? current.selfIntro,
+          fields.contact ?? current.contact,
+          fields.address ?? current.address,
+          fields.rejectReason ?? current.rejectReason,
           timestamp(),
           id,
         ],

@@ -7,8 +7,14 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
   status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'disabled')),
+    CHECK (status IN ('active', 'disabled', 'pending', 'moved_out')),
   display_name TEXT,
+  hobbies TEXT,
+  occupation TEXT,
+  self_intro TEXT,
+  contact TEXT,
+  address TEXT,
+  reject_reason TEXT,
   last_login_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

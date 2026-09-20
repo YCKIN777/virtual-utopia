@@ -49,6 +49,7 @@ export const createPresenceStore = ({ now = Date.now } = {}) => {
       displayName: user.displayName || user.username,
       role: user.role,
       color: getAvatarColor(user.id),
+      appearance: position.appearance || null,
       x: position.x,
       y: position.y,
       z: position.z,

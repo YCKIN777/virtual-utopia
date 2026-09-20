@@ -2,6 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAuditStore } from './auditStore.js';
 import { createPhase6App } from './app.js';
+import { createGuestbookStore } from './guestbookStore.js';
+import { createPlotAssignmentStore } from './plotAssignmentStore.js';
+import { createResidentCardStore } from './residentCardStore.js';
+import { createResidentSocialStore } from './residentSocialStore.js';
+import { createVisitorQuotaStore } from './visitorQuotaStore.js';
 import { readPhase6Config, validatePhase6Config } from './config.js';
 import { createGuardedApp } from '../runtime/guard.js';
 
@@ -10,9 +15,29 @@ export const startPhase6Server = async ({
 } = {}) => {
   validatePhase6Config(config);
   const auditStore = createAuditStore(config.auditDatabasePath);
+  const visitorQuotaStore = createVisitorQuotaStore({
+    databasePath: config.quotaDatabasePath,
+  });
+  const plotAssignmentStore = createPlotAssignmentStore({
+    databasePath: config.plotDatabasePath,
+  });
+  const residentCardStore = createResidentCardStore({
+    databasePath: config.cardDatabasePath,
+  });
+  const guestbookStore = createGuestbookStore({
+    databasePath: config.guestbookDatabasePath,
+  });
+  const residentSocialStore = createResidentSocialStore({
+    databasePath: config.socialDatabasePath,
+  });
   const frozenApp = createPhase6App({
     config,
     auditStore,
+    visitorQuotaStore,
+    plotAssignmentStore,
+    residentCardStore,
+    guestbookStore,
+    residentSocialStore,
   });
   const { app } = createGuardedApp({
     service: 'virtual-utopia-phase6',
@@ -20,7 +45,7 @@ export const startPhase6Server = async ({
     options: {
       isProduction: process.env.NODE_ENV === 'production',
       rateLimit: {
-        maxRequests: Number(process.env.GUARD_RATE_MAX) || 120,
+        maxRequests: Number(process.env.GUARD_RATE_MAX) || 300,
       },
     },
   });
@@ -35,6 +60,11 @@ export const startPhase6Server = async ({
     new Promise((resolve, reject) => {
       server.close((error) => {
         auditStore.close();
+        visitorQuotaStore.close();
+        plotAssignmentStore.close();
+        residentCardStore.close();
+        guestbookStore.close();
+        residentSocialStore.close();
 
         if (error) {
           reject(error);

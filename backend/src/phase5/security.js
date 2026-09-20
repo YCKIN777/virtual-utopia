@@ -1,9 +1,14 @@
 import { createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { Phase5UnauthorizedError } from './errors.js';
 
 const scryptAsync = promisify(scrypt);
 const KEY_LENGTH = 64;
+
+/** 前端「密码加密传输」使用的 SHA-256 摘要（十六进制）。 */
+export const sha256Hex = (value) =>
+  createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 
 const encode = (value) =>
   Buffer.from(JSON.stringify(value)).toString('base64url');

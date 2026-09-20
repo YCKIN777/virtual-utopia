@@ -54,6 +54,26 @@ export const readPhase6Config = (environment = process.env) => {
       environment.PHASE6_AUDIT_DB_PATH ||
         path.join(rootDirectory, 'data', 'phase6_audit.sqlite'),
     ),
+    quotaDatabasePath: path.resolve(
+      environment.PHASE6_QUOTA_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_visitor_quota.sqlite'),
+    ),
+    plotDatabasePath: path.resolve(
+      environment.PHASE6_PLOT_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_plot_assignment.sqlite'),
+    ),
+    cardDatabasePath: path.resolve(
+      environment.PHASE6_CARD_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_resident_cards.sqlite'),
+    ),
+    guestbookDatabasePath: path.resolve(
+      environment.PHASE6_GUESTBOOK_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_guestbook.sqlite'),
+    ),
+    socialDatabasePath: path.resolve(
+      environment.PHASE6_SOCIAL_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_resident_social.sqlite'),
+    ),
     maxUploadBytes: toInteger(
       environment.PHASE6_MAX_UPLOAD_BYTES,
       10 * 1024 * 1024,

@@ -938,11 +938,13 @@ a {
   min-height: 680px;
   padding: 64px;
   color: #ffffff;
-  background-image:
-    linear-gradient(180deg, rgba(17, 38, 31, 0.2), rgba(17, 38, 31, 0.94)),
-    url('./assets/world-map.png');
-  background-position: center;
-  background-size: cover;
+  background-color: #d7e8e1;
+  background-image: linear-gradient(
+    180deg,
+    rgba(17, 38, 31, 0.05),
+    rgba(17, 38, 31, 0.78)
+  );
+  overflow: hidden;
 }
 
 .vu-login-visual__copy {

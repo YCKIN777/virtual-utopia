@@ -177,6 +177,144 @@ export const createPhase5App = ({ repositories, config, database }) => {
     }),
   );
 
+  app.post(
+    '/api/phase5/auth/register',
+    asyncHandler(async (request, response) => {
+      const username = requireString(request.body?.username, 'username');
+      const password = requireString(request.body?.password, 'password');
+      const displayName = requireString(request.body?.displayName, 'displayName');
+
+      if (username.length < 3) {
+        throw new Phase5ValidationError('username must be at least 3 characters');
+      }
+
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        throw new Phase5ValidationError('username can only contain letters, digits and underscore');
+      }
+
+      if (displayName.length < 2 || displayName.length > 24) {
+        throw new Phase5ValidationError('displayName must be between 2 and 24 characters');
+      }
+
+      if (password.length < 6) {
+        throw new Phase5ValidationError('password must be at least 6 characters');
+      }
+
+      const existing = repositories.users.getByUsername(username);
+
+      if (existing && existing.status !== 'disabled') {
+        throw new Phase5ValidationError('用户名已被占用');
+      }
+
+      const nameTaken = repositories.users.getByDisplayName(displayName);
+
+      if (nameTaken && nameTaken.status !== 'disabled' && nameTaken.id !== existing?.id) {
+        throw new Phase5ValidationError('昵称已被占用');
+      }
+
+      const passwordHash = await hashPassword(password);
+      const profile = {
+        hobbies: request.body?.hobbies?.trim() || null,
+        occupation: request.body?.occupation?.trim() || null,
+        selfIntro: request.body?.selfIntro?.trim() || null,
+        contact: request.body?.contact?.trim() || null,
+        address: request.body?.address?.trim() || null,
+      };
+
+      const user = existing
+        ? repositories.users.updatePassword(existing.id, passwordHash)
+        : repositories.users.create({
+            username,
+            passwordHash,
+            role: 'editor',
+            status: 'pending',
+            displayName,
+            ...profile,
+          });
+
+      if (existing) {
+        repositories.users.update(existing.id, {
+          status: 'pending',
+          displayName,
+          ...profile,
+        });
+      }
+
+      response.status(201).json({
+        id: user.id,
+        username: user.username,
+        displayName,
+        role: user.role,
+        status: 'pending',
+      });
+    }),
+  );
+
+  // 公开查询入驻申请状态（访客登录弹窗「查询我的申请」使用，无需登录）
+  app.get('/api/phase5/resident-applications/query', (request, response) => {
+    const username = String(request.query.username || '').trim();
+
+    if (!username) {
+      throw new Phase5ValidationError('username is required');
+    }
+
+    const user = repositories.users.getByUsername(username);
+
+    if (!user) {
+      response.json({
+        found: false,
+        username,
+        status: null,
+        rejectReason: null,
+      });
+      return;
+    }
+
+    response.json({
+      found: true,
+      username: user.username,
+      displayName: user.displayName,
+      status: user.status,
+      rejectReason: user.rejectReason || null,
+    });
+  });
+
+  app.put(
+    '/api/phase5/auth/password',
+    authMiddleware,
+    asyncHandler(async (request, response) => {
+      requireAuth(request);
+
+      if (request.auth.isService) {
+        throw new Phase5ForbiddenError();
+      }
+
+      const currentPassword = requireString(
+        request.body?.currentPassword,
+        'currentPassword',
+      );
+      const newPassword = requireString(request.body?.newPassword, 'newPassword');
+
+      if (newPassword.length < 6) {
+        throw new Phase5ValidationError('password must be at least 6 characters');
+      }
+
+      const user = repositories.users.getById(request.auth.userId);
+      const passwordMatches = await verifyPassword(
+        currentPassword,
+        user.passwordHash,
+      );
+
+      if (!passwordMatches) {
+        throw new Phase5UnauthorizedError('current password is incorrect');
+      }
+
+      repositories.users.updatePassword(user.id, await hashPassword(newPassword));
+
+      response.json({ status: 'updated' });
+    }),
+  );
+
   app.get('/api/phase5/auth/me', authMiddleware, (request, response) => {
     requireAuth(request);
 
@@ -242,7 +380,10 @@ export const createPhase5App = ({ repositories, config, database }) => {
 
   app.get('/api/phase5/users', authMiddleware, (request, response) => {
     requireRoles(request, ['admin']);
-    const users = repositories.users.list(readPagination(request.query));
+    const users = repositories.users.list({
+      ...readPagination(request.query),
+      status: request.query.status || undefined,
+    });
 
     response.json({
       users: users.map((user) => ({
@@ -251,6 +392,12 @@ export const createPhase5App = ({ repositories, config, database }) => {
         role: user.role,
         status: user.status,
         displayName: user.displayName,
+        hobbies: user.hobbies,
+        occupation: user.occupation,
+        selfIntro: user.selfIntro,
+        contact: user.contact,
+        address: user.address,
+        rejectReason: user.rejectReason,
         lastLoginAt: user.lastLoginAt,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -264,6 +411,12 @@ export const createPhase5App = ({ repositories, config, database }) => {
       role: request.body?.role,
       status: request.body?.status,
       displayName: request.body?.displayName,
+      hobbies: request.body?.hobbies,
+      occupation: request.body?.occupation,
+      selfIntro: request.body?.selfIntro,
+      contact: request.body?.contact,
+      address: request.body?.address,
+      rejectReason: request.body?.rejectReason,
     });
 
     response.json({
@@ -272,8 +425,48 @@ export const createPhase5App = ({ repositories, config, database }) => {
       role: user.role,
       status: user.status,
       displayName: user.displayName,
+      hobbies: user.hobbies,
+      occupation: user.occupation,
+      selfIntro: user.selfIntro,
+      contact: user.contact,
+      address: user.address,
+      rejectReason: user.rejectReason,
     });
   });
+
+  app.put(
+    '/api/phase5/users/:id/password',
+    authMiddleware,
+    asyncHandler(async (request, response) => {
+      requireRoles(request, ['admin']);
+      const newPassword = requireString(request.body?.password, 'password');
+
+      if (newPassword.length < 6) {
+        throw new Phase5ValidationError('password must be at least 6 characters');
+      }
+
+      const target = repositories.users.getById(readId(request.params.id, 'id'));
+
+      if (!target) {
+        throw new Phase5NotFoundError('user not found');
+      }
+
+      if (target.role === 'admin') {
+        throw new Phase5ForbiddenError('不能重置城主账号密码');
+      }
+
+      const user = repositories.users.updatePassword(
+        target.id,
+        await hashPassword(newPassword),
+      );
+
+      response.json({
+        id: user.id,
+        username: user.username,
+        status: 'updated',
+      });
+    }),
+  );
 
   app.post('/api/phase5/sessions', authMiddleware, (request, response) => {
     requireRoles(request, ['admin', 'editor']);

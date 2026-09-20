@@ -142,8 +142,6 @@ try {
   const snapshot = {
     version: 1,
     plotId: 'plot-28',
-    courtyardItems: [],
-    interiorFurniture: [],
     permissions: {
       role: 'editor',
       canManageHome: true,
@@ -199,21 +197,7 @@ try {
     username: 'editor-account',
     password: 'editor-account-password',
   });
-  const placedItem = editorStore.addHomeItem({
-    plotId: 'plot-28',
-    materialId: 'house-cabin',
-    x: 0.35,
-    y: 0.2,
-  });
-  const interiorItem = editorStore.addInteriorItem({
-    plotId: 'plot-28',
-    materialId: 'pot-ceramic',
-    x: 0.62,
-    y: 0.35,
-  });
-
-  assert.equal(placedItem.materialId, 'house-cabin');
-  assert.equal(interiorItem.materialId, 'pot-ceramic');
+  assert.equal(editorStore.setVisitPermission('plot-28', true), true);
   assert.equal(await editorStore.persistNow(), true);
 
   const reloadedStore = createWorldStore({
@@ -225,18 +209,7 @@ try {
   });
 
   assert.equal(await reloadedStore.restoreSession(), true);
-  assert.equal(
-    reloadedStore
-      .getHomePlot('plot-28')
-      .items.some((item) => item.materialId === 'house-cabin'),
-    true,
-  );
-  assert.equal(
-    reloadedStore
-      .getHomePlot('plot-28')
-      .interiorItems.some((item) => item.materialId === 'pot-ceramic'),
-    true,
-  );
+  assert.equal(reloadedStore.getHomePlot('plot-28').visibility, 'public');
 
   const viewerStore = createWorldStore({
     persistence,

@@ -1,6 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import LoginView from '../views/LoginView.vue';
+import PortalView from '../views/PortalView.vue';
 import ProfileView from '../views/ProfileView.vue';
+import RegisterView from '../views/RegisterView.vue';
 import SceneDetailView from '../views/SceneDetailView.vue';
 
 export const router = createRouter({
@@ -9,7 +11,7 @@ export const router = createRouter({
     {
       path: '/',
       name: 'home',
-      redirect: { name: 'world' },
+      component: PortalView,
     },
     {
       path: '/scenes',
@@ -31,6 +33,11 @@ export const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView,
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: RegisterView,
     },
     {
       path: '/profile',

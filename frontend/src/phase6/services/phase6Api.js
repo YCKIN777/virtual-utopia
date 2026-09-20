@@ -1,3 +1,6 @@
+const viteEnv = import.meta.env || {};
+const defaultBaseUrl = viteEnv.VITE_PHASE6_API_BASE_URL || 'http://localhost:3400';
+
 export class Phase6ApiError extends Error {
   constructor(
     message,
@@ -43,7 +46,7 @@ const parsePayload = async (response) => {
 };
 
 export const createPhase6Api = ({
-  baseUrl = 'http://localhost:3400',
+  baseUrl = defaultBaseUrl,
   fetchImpl = globalThis.fetch,
   getToken = () => null,
   onUnauthorized = () => {},
@@ -151,6 +154,80 @@ export const createPhase6Api = ({
     },
     getSession(id) {
       return request(`/api/phase6/sessions/${encodeURIComponent(id)}`);
+    },
+    onboardResident(payload) {
+      return request('/api/phase6/residents', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    listResidents() {
+      return request('/api/phase6/residents');
+    },
+    departResident(userId) {
+      return request(`/api/phase6/residents/${encodeURIComponent(userId)}/depart`, {
+        method: 'POST',
+      });
+    },
+    resetResidentPassword(userId, password) {
+      return request(`/api/phase6/residents/${encodeURIComponent(userId)}/reset-password`, {
+        method: 'POST',
+        body: { password },
+      });
+    },
+    listResidentApplications() {
+      return request('/api/phase6/resident-applications');
+    },
+    approveResidentApplication(userId, payload = {}) {
+      return request(
+        `/api/phase6/resident-applications/${encodeURIComponent(userId)}/approve`,
+        {
+          method: 'POST',
+          body: payload,
+        },
+      );
+    },
+    rejectResidentApplication(userId, reason) {
+      return request(
+        `/api/phase6/resident-applications/${encodeURIComponent(userId)}/reject`,
+        {
+          method: 'POST',
+          body: { reason },
+        },
+      );
+    },
+    getVisitorQuotaStats() {
+      return request('/api/phase6/visitor-quotas/stats');
+    },
+    issueAdminInvitation() {
+      return request('/api/phase6/visitor-quotas/admin-issue', {
+        method: 'POST',
+      });
+    },
+    removeVisitor(userId) {
+      return request(`/api/phase6/visitors/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
+    },
+    listPlots() {
+      return request('/api/phase6/plots');
+    },
+    assignPlot(payload) {
+      return request('/api/phase6/plots', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    revokePlot(plotNumber) {
+      return request(`/api/phase6/plots/${encodeURIComponent(plotNumber)}`, {
+        method: 'DELETE',
+      });
+    },
+    renamePlot(plotNumber, customName) {
+      return request(`/api/phase6/plots/${encodeURIComponent(plotNumber)}`, {
+        method: 'PUT',
+        body: { customName },
+      });
     },
   });
 };

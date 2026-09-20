@@ -14,13 +14,14 @@ const WORLD_SNAPSHOT_VERSION = 1;
 const WORLD_CHAT_SESSION_ID = 'world-chat-global';
 const WORLD_CHAT_SCENE_ID = 'virtual-utopia-world-chat';
 const WORLD_CHAT_AGENT_ID = 'world-chat';
-const MAX_WORLD_CHAT_MESSAGES = 200;
+const MAX_WORLD_CHAT_MESSAGES = 50;
 const WORLD_SNAPSHOT_KEYS = new Set([
   'version',
   'plotId',
-  'courtyardItems',
-  'interiorFurniture',
   'permissions',
+  'visitEnabled',
+  'residents',
+  'residentChats',
 ]);
 
 const validateWorldSnapshot = (snapshot) => {
@@ -37,15 +38,19 @@ const validateWorldSnapshot = (snapshot) => {
   }
 
   if (
-    !Array.isArray(snapshot.courtyardItems) ||
-    !Array.isArray(snapshot.interiorFurniture) ||
     !snapshot.permissions ||
     typeof snapshot.permissions !== 'object' ||
     Array.isArray(snapshot.permissions)
   ) {
-    throw new Phase6ValidationError(
-      'snapshot item lists and permissions are required',
-    );
+    throw new Phase6ValidationError('snapshot permissions are required');
+  }
+
+  if (
+    snapshot.visitEnabled !== undefined &&
+    (typeof snapshot.visitEnabled !== 'object' ||
+      Array.isArray(snapshot.visitEnabled))
+  ) {
+    throw new Phase6ValidationError('snapshot.visitEnabled must be an object');
   }
 
   return snapshot;
@@ -471,9 +476,9 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
     const user = await authenticate(authorization);
     const normalizedContent = String(content || '').trim();
 
-    if (normalizedContent.length === 0 || normalizedContent.length > 300) {
+    if (normalizedContent.length === 0 || normalizedContent.length > 200) {
       throw new Phase6ValidationError(
-        'chat content must be between 1 and 300 characters',
+        'chat content must be between 1 and 200 characters',
       );
     }
 
@@ -585,6 +590,147 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
     });
   };
 
+  const registerResidentApplication = async ({
+    username,
+    password,
+    displayName,
+    hobbies,
+    occupation,
+    selfIntro,
+    contact,
+    address,
+  }) => {
+    if (
+      typeof username !== 'string' ||
+      username.trim() === '' ||
+      typeof password !== 'string' ||
+      password === ''
+    ) {
+      throw new Phase6ValidationError('username and password are required');
+    }
+
+    return httpClient.requestJson(`${phase5}/api/phase5/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: username.trim(),
+        password,
+        displayName,
+        hobbies,
+        occupation,
+        selfIntro,
+        contact,
+        address,
+      }),
+    });
+  };
+
+  const listPendingApplications = async ({ authorization }) => {
+    const user = await authenticate(authorization);
+    requireRole(user, ['admin']);
+
+    const payload = await httpClient.requestJson(
+      `${phase5}/api/phase5/users?status=pending`,
+      {
+        headers: {
+          Authorization: authorization,
+        },
+      },
+    );
+
+    return {
+      applications: Array.isArray(payload?.users) ? payload.users : [],
+    };
+  };
+
+  const setUserStatus = async ({ authorization, userId, status }) => {
+    const user = await authenticate(authorization);
+    requireRole(user, ['admin']);
+
+    return httpClient.requestJson(
+      `${phase5}/api/phase5/users/${encodeURIComponent(userId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      },
+    );
+  };
+
+  const rejectApplication = async ({ authorization, userId, reason }) => {
+    const user = await authenticate(authorization);
+    requireRole(user, ['admin']);
+
+    return httpClient.requestJson(
+      `${phase5}/api/phase5/users/${encodeURIComponent(userId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'disabled',
+          rejectReason: String(reason || '').trim() || null,
+        }),
+      },
+    );
+  };
+
+  const queryResidentApplication = async ({ username }) => {
+    if (typeof username !== 'string' || username.trim() === '') {
+      throw new Phase6ValidationError('username is required');
+    }
+
+    return httpClient.requestJson(
+      `${phase5}/api/phase5/resident-applications/query${createQueryString({
+        username: username.trim(),
+      })}`,
+      {
+        headers: {},
+      },
+    );
+  };
+
+  const changePassword = async ({
+    authorization,
+    currentPassword,
+    newPassword,
+  }) => {
+    await authenticate(authorization);
+
+    return httpClient.requestJson(`${phase5}/api/phase5/auth/password`, {
+      method: 'PUT',
+      headers: {
+        Authorization: authorization,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  };
+
+  const resetPassword = async ({ authorization, userId, newPassword }) => {
+    const user = await authenticate(authorization);
+    requireRole(user, ['admin']);
+
+    return httpClient.requestJson(
+      `${phase5}/api/phase5/users/${encodeURIComponent(userId)}/password`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: newPassword }),
+      },
+    );
+  };
+
   const uploadDocument = async ({ file, fields, authorization }) => {
     const user = await authenticate(authorization);
     requireRole(user, ['admin', 'editor']);
@@ -598,6 +744,7 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
 
   return Object.freeze({
     authenticate,
+    changePassword,
     createUser,
     deleteDocument,
     getDocument,
@@ -605,11 +752,17 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
     getWorldChat,
     getWorldState,
     listDocuments,
+    listPendingApplications,
     listSessions,
     login,
     logout,
+    registerResidentApplication,
+    rejectApplication,
+    resetPassword,
     saveWorldState,
     sendWorldChatMessage,
+    setUserStatus,
+    queryResidentApplication,
     uploadDocument,
   });
 };

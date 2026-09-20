@@ -20,3 +20,13 @@ data/
 backups/
 deliverables/memory-agent-v1.0.0/
 deliverables/memory-agent-v1.0.1/
+
+# 开发过程临时备份（不入库）
+*.bak
+*.matlibbak
+
+# 开发过程备份（含多段后缀）与产物目录
+*bak
+*.bak2
+vu_screens/
+release/

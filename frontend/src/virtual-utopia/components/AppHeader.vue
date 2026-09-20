@@ -29,12 +29,6 @@ const logout = () => {
       </RouterLink>
 
       <nav class="vu-nav" aria-label="主导航">
-        <RouterLink :to="{ name: 'home' }" class="vu-nav__link">
-          门户
-        </RouterLink>
-        <RouterLink :to="{ name: 'scenes' }" class="vu-nav__link">
-          场景
-        </RouterLink>
         <RouterLink :to="{ name: 'world' }" class="vu-nav__link">
           3D世界
         </RouterLink>
@@ -72,13 +66,20 @@ const logout = () => {
           </button>
         </template>
 
-        <RouterLink
-          v-else
-          :to="{ name: 'login' }"
-          class="vu-button vu-button--light vu-button--small"
-        >
-          登录
-        </RouterLink>
+        <template v-else>
+          <RouterLink
+            :to="{ name: 'register' }"
+            class="vu-button vu-button--light vu-button--small"
+          >
+            注册
+          </RouterLink>
+          <RouterLink
+            :to="{ name: 'login' }"
+            class="vu-button vu-button--light vu-button--small"
+          >
+            登录
+          </RouterLink>
+        </template>
       </div>
     </div>
   </header>

@@ -4,31 +4,77 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import express from 'express';
 import { openMemoryDatabase } from './database.mjs';
 import { createLlmClient } from './llmClient.mjs';
 import { createMemoryOrchestrator } from './memoryOrchestrator.mjs';
 import { createMemoryApp } from './httpServer.mjs';
 import { createGuardedApp } from '../runtime/guard.js';
 
+// 3D 虚拟乌托邦前端静态资源目录（默认指向已打包的 virtual-utopia dist）
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const defaultStaticDir = () =>
+  process.env.MEMORY_STATIC_DIR ||
+  path.resolve(
+    moduleDir,
+    '..',
+    '..',
+    '..',
+    'frontend',
+    'src',
+    'virtual-utopia',
+    'dist',
+  );
+
+// 开发环境 CORS 中间件：允许跨域访问 /api 接口
+const createCorsMiddleware = ({ origin } = {}) => {
+  const allowOrigin = origin || process.env.CORS_ORIGIN || '*';
+  return (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Request-Id',
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  };
+};
+
 export const startMemoryServer = async ({
   databasePath,
   port = Number(process.env.MEMORY_PORT) || 3600,
   llmClient: providedLlmClient,
+  staticDir,
+  corsOrigin,
 } = {}) => {
   const db = openMemoryDatabase({ databasePath });
   const llmClient = providedLlmClient || createLlmClient();
   const orchestrator = createMemoryOrchestrator({ db, llmClient });
   const frozenApp = createMemoryApp({ orchestrator });
-  const { app } = createGuardedApp({
+
+  // 受防护的 /api 记忆接口（保留原有安全中间件链路）
+  const { app: guardedApp } = createGuardedApp({
     service: 'virtual-utopia-memory',
     app: frozenApp,
     options: {
       isProduction: process.env.NODE_ENV === 'production',
       rateLimit: {
-        maxRequests: Number(process.env.GUARD_RATE_MAX) || 120,
+        maxRequests: Number(process.env.GUARD_RATE_MAX) || 300,
       },
     },
   });
+
+  // 顶层应用：CORS → 3D 场景静态托管 → 受防护 /api
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(createCorsMiddleware({ origin: corsOrigin }));
+  app.use(express.static(staticDir || defaultStaticDir()));
+  app.use(guardedApp);
 
   const server = await new Promise((resolve, reject) => {
     const listeningServer = app.listen(port, 'localhost');

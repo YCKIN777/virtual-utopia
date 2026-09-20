@@ -1,10 +1,7 @@
 import { reactive } from 'vue';
 import { getSceneById, scenes } from '../data/scenes.js';
-import {
-  homeMaterialCategories,
-  homeMaterialMap,
-} from '../data/homeMaterials.js';
 import { persistenceClient as defaultPersistenceClient } from '../services/gatewayClient.js';
+import { sha256Hex } from '../utils/hashPassword.js';
 
 const delay = (milliseconds) =>
   new Promise((resolve) => {
@@ -14,6 +11,8 @@ const delay = (milliseconds) =>
 const travelerId = 'traveler-001';
 const authTokenKey = 'virtual-utopia.phase5.token';
 const worldSnapshotVersion = 1;
+const KIN_HOME_ID = 'plot-39';
+const KIN_OWNER_ID = 'kin-lord';
 
 const readStoredToken = (storage) => {
   try {
@@ -50,71 +49,18 @@ const createSeedHomes = () =>
     const plotNumber = index + 1;
     const row = Math.floor(index / 10);
     const column = index % 10;
-    const isTravelerHome = plotNumber === 28;
-    const ownerNames = [
-      '风铃',
-      '木棉',
-      '远星',
-      '白鹭',
-      '青禾',
-      '云杉',
-      '小满',
-      '长夏',
-      '知行',
-    ];
+    const isKinHome = plotNumber === 39;
 
     return {
       id: `plot-${plotNumber}`,
       number: plotNumber,
       x: 3.2 + column * 1.05,
       y: 7.1 + row * 1.8,
-      ownerId: isTravelerHome
-        ? travelerId
-        : plotNumber <= 18
-          ? `resident-${plotNumber}`
-          : null,
-      ownerName: isTravelerHome
-        ? '漫游者'
-        : plotNumber <= 18
-          ? ownerNames[index % ownerNames.length]
-          : '待入住',
-      visibility: plotNumber % 7 === 0 ? 'private' : 'public',
-      items: isTravelerHome
-        ? [
-            {
-              id: 'seed-house',
-              materialId: 'house-cabin',
-              x: 0,
-              y: -0.1,
-              rotation: 0,
-            },
-            {
-              id: 'seed-tree',
-              materialId: 'tree-pine',
-              x: -0.34,
-              y: 0.2,
-              rotation: 0,
-            },
-            {
-              id: 'seed-lamp',
-              materialId: 'lamp-path',
-              x: 0.34,
-              y: 0.2,
-              rotation: 0,
-            },
-          ]
-        : [],
-      interiorItems: [],
-      messages: isTravelerHome
-        ? [
-            {
-              id: 'message-seed',
-              author: '风铃',
-              content: '广场边的松树很好看。',
-              createdAt: '2026-09-15T10:00:00.000Z',
-            },
-          ]
-        : [],
+      ownerId: isKinHome ? KIN_OWNER_ID : null,
+      ownerName: isKinHome ? 'KIN' : '',
+      visitEnabled: false,
+      visibility: 'private',
+      messages: [],
       hiddenClue: plotNumber === 1 ? '月光下的旧地图' : null,
       clueFoundBy: [],
     };
@@ -158,10 +104,6 @@ export const createWorldStore = ({
       },
     ],
     homes: createSeedHomes(),
-    unlockedMaterialIds: homeMaterialCategories
-      .flatMap((category) => category.items)
-      .filter((material) => material.cost === 0)
-      .map((material) => material.id),
     gatewayStatus: 'checking',
     persistence: {
       status: 'idle',
@@ -173,6 +115,37 @@ export const createWorldStore = ({
       canManageHome: false,
     },
     toasts: [],
+    friends: [],
+    friendRequests: [],
+    visitorQuota: {
+      loaded: false,
+      isResident: false,
+      isAdmin: false,
+      resident: null,
+      invitations: [],
+      stats: null,
+    },
+    avatarInOwnYard: false,
+    kinInOwnYard: false,
+    residentStates: [],
+    residentChats: {},
+    worldChat: {
+      loaded: false,
+      messages: [],
+    },
+    residentCards: {
+      loaded: false,
+      mine: [],
+      community: [],
+    },
+    board: {
+      loaded: false,
+      items: [],
+    },
+    guestbook: {
+      loaded: false,
+      messages: [],
+    },
   });
 
   const dismissToast = (toastId) => {
@@ -199,14 +172,15 @@ export const createWorldStore = ({
   const createWorldSnapshot = () => ({
     version: worldSnapshotVersion,
     plotId: getOwnedHome()?.id || null,
-    courtyardItems: JSON.parse(JSON.stringify(getOwnedHome()?.items || [])),
-    interiorFurniture: JSON.parse(
-      JSON.stringify(getOwnedHome()?.interiorItems || []),
+    visitEnabled: Object.fromEntries(
+      state.homes.map((home) => [home.id, home.visibility === 'public']),
     ),
     permissions: {
       role: state.user?.role || 'viewer',
       canManageHome: ['admin', 'editor'].includes(state.user?.role),
     },
+    residents: JSON.parse(JSON.stringify(state.residentStates || [])),
+    residentChats: JSON.parse(JSON.stringify(state.residentChats || {})),
   });
 
   const applyWorldSnapshot = (snapshot) => {
@@ -214,10 +188,7 @@ export const createWorldStore = ({
       return false;
     }
 
-    if (
-      Array.isArray(snapshot.courtyardItems) &&
-      Array.isArray(snapshot.interiorFurniture)
-    ) {
+    if (state.user) {
       state.homes.forEach((home) => {
         if (home.ownerId === state.user.id) {
           home.ownerId = null;
@@ -233,10 +204,6 @@ export const createWorldStore = ({
       if (home) {
         home.ownerId = state.user.id;
         home.ownerName = state.user.displayName;
-        home.items = JSON.parse(JSON.stringify(snapshot.courtyardItems));
-        home.interiorItems = JSON.parse(
-          JSON.stringify(snapshot.interiorFurniture),
-        );
       }
     }
 
@@ -245,10 +212,34 @@ export const createWorldStore = ({
       canManageHome: ['admin', 'editor'].includes(state.user.role),
     };
 
+    state.residentStates = Array.isArray(snapshot.residents)
+      ? snapshot.residents
+      : [];
+
+    state.residentChats =
+      snapshot.residentChats && typeof snapshot.residentChats === 'object'
+        ? snapshot.residentChats
+        : {};
+
+    // 恢复每户宅院参观开关状态（visitEnabled）
+    if (snapshot.visitEnabled && typeof snapshot.visitEnabled === 'object') {
+      state.homes.forEach((home) => {
+        if (typeof snapshot.visitEnabled[home.id] === 'boolean') {
+          home.visibility = snapshot.visitEnabled[home.id] ? 'public' : 'private';
+          home.visitEnabled = snapshot.visitEnabled[home.id];
+        }
+      });
+    }
+
     return true;
   };
 
   const ensureOwnedHome = (user) => {
+    // 访客（viewer）无家园地块：不分配任何 plot（需求：访客仅漫游/公聊/访问公开家园）
+    if (user?.role === 'viewer') {
+      return;
+    }
+
     const existing = state.homes.find((home) => home.ownerId === user.id);
     const home =
       existing ||
@@ -320,7 +311,7 @@ export const createWorldStore = ({
     try {
       const session = await persistence.login({
         username,
-        password,
+        password: await sha256Hex(password),
       });
       accessToken = session.token;
       writeStoredToken(storage, accessToken);
@@ -519,11 +510,29 @@ export const createWorldStore = ({
       ? state.homes.find((home) => home.ownerId === state.user.id) || null
       : null;
 
+  const assignHome = (plotId, newOwnerName) => {
+    const home = getHomePlot(plotId);
+    const name = String(newOwnerName || '').trim();
+
+    if (!home || !name) {
+      return false;
+    }
+
+    home.ownerName = name;
+    home.ownerId = `resident-${name}`;
+    home.visitEnabled = false;
+    home.visibility = 'private';
+    return true;
+  };
+
+  const isKinHome = (plotId) => plotId === KIN_HOME_ID;
+
   const canEditHome = (plotId) =>
     Boolean(
       state.user &&
       state.permissions.canManageHome &&
-      getHomePlot(plotId)?.ownerId === state.user.id,
+      (getHomePlot(plotId)?.ownerId === state.user.id ||
+        (isKinHome(plotId) && state.user.role === 'admin')),
     );
 
   const canViewHome = (plotId) => {
@@ -533,7 +542,11 @@ export const createWorldStore = ({
       return false;
     }
 
-    return home.visibility === 'public' || home.ownerId === state.user?.id;
+    return (
+      home.visibility === 'public' ||
+      home.ownerId === state.user?.id ||
+      (isKinHome(plotId) && state.user?.role === 'admin')
+    );
   };
 
   const setHomeVisibility = (plotId, visibility) => {
@@ -548,6 +561,8 @@ export const createWorldStore = ({
     }
 
     home.visibility = visibility;
+    home.visitEnabled = visibility === 'public';
+    queuePersist();
     notify(
       visibility === 'public' ? '家园已开放公开参观' : '家园已设为私密',
       'success',
@@ -555,170 +570,25 @@ export const createWorldStore = ({
     return true;
   };
 
-  const isMaterialUnlocked = (materialId) =>
-    state.unlockedMaterialIds.includes(materialId);
+  const setVisitPermission = (plotId, open) =>
+    setHomeVisibility(plotId, open ? 'public' : 'private');
 
-  const unlockMaterial = (materialId) => {
-    const material = homeMaterialMap[materialId];
-
-    if (!state.user || !material) {
-      return false;
-    }
-
-    if (isMaterialUnlocked(materialId)) {
-      return true;
-    }
-
-    if (state.user.worldShards < material.cost) {
-      notify('世界碎片不足', 'error');
-      return false;
-    }
-
-    state.user = {
-      ...state.user,
-      worldShards: state.user.worldShards - material.cost,
-    };
-    state.unlockedMaterialIds = [...state.unlockedMaterialIds, materialId];
-    notify(`已解锁素材：${material.name}`, 'success');
-    return true;
+  const setAvatarInOwnYard = (value) => {
+    state.avatarInOwnYard = Boolean(value);
   };
 
-  const addHomeItem = ({ plotId, materialId, x, y }) => {
-    const home = getHomePlot(plotId);
-    const material = homeMaterialMap[materialId];
-
-    if (
-      !home ||
-      !material ||
-      !canEditHome(plotId) ||
-      !isMaterialUnlocked(materialId)
-    ) {
-      return null;
-    }
-
-    const item = {
-      id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      materialId,
-      x,
-      y,
-      rotation: 0,
-    };
-
-    home.items = [...home.items, item];
+  const setResidentStates = (states) => {
+    state.residentStates = Array.isArray(states) ? states : [];
     queuePersist();
-    return item;
   };
 
-  const updateHomeItem = ({ plotId, itemId, x, y, rotation }) => {
-    const home = getHomePlot(plotId);
+  const getKinHome = () => getHomePlot(KIN_HOME_ID);
 
-    if (!home || !canEditHome(plotId)) {
-      return false;
-    }
+  const canEditKinHome = () =>
+    Boolean(state.user && state.user.role === 'admin');
 
-    const item = home.items.find((candidate) => candidate.id === itemId);
-
-    if (!item) {
-      return false;
-    }
-
-    if (Number.isFinite(x)) {
-      item.x = x;
-    }
-
-    if (Number.isFinite(y)) {
-      item.y = y;
-    }
-
-    if (Number.isFinite(rotation)) {
-      item.rotation = rotation;
-    }
-
-    queuePersist();
-    return true;
-  };
-
-  const removeHomeItem = ({ plotId, itemId }) => {
-    const home = getHomePlot(plotId);
-
-    if (!home || !canEditHome(plotId)) {
-      return false;
-    }
-
-    home.items = home.items.filter((item) => item.id !== itemId);
-    queuePersist();
-    return true;
-  };
-
-  const addInteriorItem = ({ plotId, materialId, x, y }) => {
-    const home = getHomePlot(plotId);
-    const material = homeMaterialMap[materialId];
-
-    if (
-      !home ||
-      !material ||
-      !canEditHome(plotId) ||
-      !isMaterialUnlocked(materialId)
-    ) {
-      return null;
-    }
-
-    const item = {
-      id: `interior-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      materialId,
-      x,
-      y,
-      rotation: 0,
-    };
-
-    home.interiorItems = [...(home.interiorItems || []), item];
-    queuePersist();
-    return item;
-  };
-
-  const updateInteriorItem = ({ plotId, itemId, x, y, rotation }) => {
-    const home = getHomePlot(plotId);
-
-    if (!home || !canEditHome(plotId)) {
-      return false;
-    }
-
-    const item = (home.interiorItems || []).find(
-      (candidate) => candidate.id === itemId,
-    );
-
-    if (!item) {
-      return false;
-    }
-
-    if (Number.isFinite(x)) {
-      item.x = x;
-    }
-
-    if (Number.isFinite(y)) {
-      item.y = y;
-    }
-
-    if (Number.isFinite(rotation)) {
-      item.rotation = rotation;
-    }
-
-    queuePersist();
-    return true;
-  };
-
-  const removeInteriorItem = ({ plotId, itemId }) => {
-    const home = getHomePlot(plotId);
-
-    if (!home || !canEditHome(plotId)) {
-      return false;
-    }
-
-    home.interiorItems = (home.interiorItems || []).filter(
-      (item) => item.id !== itemId,
-    );
-    queuePersist();
-    return true;
+  const setKinInOwnYard = (value) => {
+    state.kinInOwnYard = Boolean(value);
   };
 
   const addHomeMessage = ({ plotId, content }) => {
@@ -739,6 +609,34 @@ export const createWorldStore = ({
       },
     ];
     notify('留言仅保存在当前页面内存', 'success');
+    return true;
+  };
+
+  const removeHomeMessage = ({ plotId, messageId }) => {
+    const home = getHomePlot(plotId);
+
+    if (!home || !state.user || !canEditHome(plotId)) {
+      return false;
+    }
+
+    const before = home.messages.length;
+    home.messages = home.messages.filter((item) => item.id !== messageId);
+    return home.messages.length < before;
+  };
+
+  const recordHomeVisit = ({ plotId }) => {
+    const home = getHomePlot(plotId);
+
+    if (!home || !state.user || home.ownerId === state.user.id) {
+      return false;
+    }
+
+    const visit = {
+      id: `visit-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      username: state.user.displayName || state.user.username || '访客',
+      visitedAt: new Date().toISOString(),
+    };
+    home.visits = [...(home.visits || []), visit];
     return true;
   };
 
@@ -777,6 +675,503 @@ export const createWorldStore = ({
     return home.hiddenClue;
   };
 
+  const applyFriendsPayload = (payload) => {
+    state.friends = Array.isArray(payload?.friends) ? payload.friends : [];
+    state.friendRequests = Array.isArray(payload?.requests)
+      ? payload.requests
+      : [];
+  };
+
+  const loadFriends = async () => {
+    if (!accessToken) return;
+    try {
+      const payload = await persistence.listFriends(accessToken);
+      applyFriendsPayload(payload);
+    } catch {
+      // 好友数据加载失败不阻塞
+    }
+  };
+
+  const sendFriendRequest = async ({ toUserId, toUsername, toDisplayName }) => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.sendFriendRequest(accessToken, {
+        toUserId,
+        toUsername,
+        toDisplayName,
+      });
+      applyFriendsPayload(payload);
+      notify('好友申请已发送', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '发送好友申请失败', 'error');
+      return null;
+    }
+  };
+
+  const respondFriendRequest = async ({ requestId, accept }) => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.respondFriendRequest(accessToken, {
+        requestId,
+        accept,
+      });
+      applyFriendsPayload(payload);
+      notify(accept ? '已同意好友申请' : '已拒绝好友申请', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '处理好友申请失败', 'error');
+      return null;
+    }
+  };
+
+  const removeFriend = async ({ friendId }) => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.removeFriend(accessToken, friendId);
+      applyFriendsPayload(payload);
+      notify('已删除好友', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '删除好友失败', 'error');
+      return null;
+    }
+  };
+
+  const applyVisitorQuotaOverview = (payload) => {
+    state.visitorQuota = {
+      loaded: true,
+      isResident: Boolean(payload?.isResident),
+      isAdmin: Boolean(payload?.isAdmin),
+      resident: payload?.resident || null,
+      invitations: Array.isArray(payload?.invitations)
+        ? payload.invitations
+        : [],
+      stats: payload?.stats || null,
+    };
+  };
+
+  const loadVisitorQuota = async () => {
+    if (!accessToken) return;
+    try {
+      const payload = await persistence.loadVisitorQuotaOverview(accessToken);
+      applyVisitorQuotaOverview(payload);
+    } catch {
+      // 访客名额数据加载失败不阻塞世界
+    }
+  };
+
+  const issueVisitorInvitation = async () => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.issueVisitorInvitation(accessToken);
+      applyVisitorQuotaOverview(payload.overview);
+      notify('访客邀请码已发放', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '发放访客名额失败', 'error');
+      return null;
+    }
+  };
+
+  const revokeVisitorInvitation = async ({ invitationId }) => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.revokeVisitorInvitation(
+        accessToken,
+        invitationId,
+      );
+      applyVisitorQuotaOverview(payload.overview);
+      notify('访客名额已回收', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '回收访客名额失败', 'error');
+      return null;
+    }
+  };
+
+  const registerVisitor = async ({ code }) => {
+    if (!accessToken) return null;
+    try {
+      const payload = await persistence.registerVisitor(accessToken, code);
+      await loadVisitorQuota();
+      notify('访客注册成功，欢迎来到乌托邦', 'success');
+      return payload;
+    } catch (error) {
+      notify(error.message || '访客注册失败', 'error');
+      return null;
+    }
+  };
+
+  const registerResidentApplication = async ({
+    username,
+    password,
+    displayName,
+    hobbies,
+    occupation,
+    selfIntro,
+    contact,
+    address,
+  }) => {
+    try {
+      const payload = await persistence.registerResidentApplication({
+        username,
+        password: await sha256Hex(password),
+        displayName,
+        hobbies,
+        occupation,
+        selfIntro,
+        contact,
+        address,
+      });
+      return { ok: true, payload };
+    } catch (error) {
+      return { ok: false, error: error.message || '提交申请失败' };
+    }
+  };
+
+  const queryResidentApplication = async (username) => {
+    try {
+      const payload = await persistence.queryResidentApplication(username);
+      return { ok: true, payload };
+    } catch (error) {
+      return { ok: false, error: error.message || '查询申请状态失败' };
+    }
+  };
+
+  const changePassword = async ({ currentPassword, newPassword }) => {
+    if (!accessToken) {
+      return { ok: false, error: '请先登录' };
+    }
+
+    try {
+      await persistence.changePassword(accessToken, {
+        currentPassword,
+        newPassword,
+      });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message || '修改密码失败' };
+    }
+  };
+
+  const loadResidentCards = async () => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.listResidentCards(accessToken);
+      state.residentCards = {
+        loaded: true,
+        mine: Array.isArray(payload?.mine) ? payload.mine : [],
+        community: Array.isArray(payload?.community) ? payload.community : [],
+      };
+      return { ok: true };
+    } catch (error) {
+      state.residentCards = { loaded: false, mine: [], community: [] };
+      return { ok: false, error: error.message || '加载卡片失败' };
+    }
+  };
+
+  const createResidentCard = async ({ cardType, content, permission }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.createResidentCard(accessToken, {
+        cardType,
+        content,
+        permission,
+      });
+      if (payload?.card) {
+        state.residentCards.mine = [
+          payload.card,
+          ...state.residentCards.mine,
+        ];
+      }
+      return { ok: true, card: payload?.card };
+    } catch (error) {
+      return { ok: false, error: error.message || '创建卡片失败' };
+    }
+  };
+
+  const updateResidentCard = async (cardId, { content, permission }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.updateResidentCard(
+        accessToken,
+        cardId,
+        { content, permission },
+      );
+      if (payload?.card) {
+        state.residentCards.mine = state.residentCards.mine.map((card) =>
+          card.id === cardId ? payload.card : card,
+        );
+      }
+      return { ok: true, card: payload?.card };
+    } catch (error) {
+      return { ok: false, error: error.message || '更新卡片失败' };
+    }
+  };
+
+  const deleteResidentCard = async (cardId) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      await persistence.deleteResidentCard(accessToken, cardId);
+      state.residentCards.mine = state.residentCards.mine.filter(
+        (card) => card.id !== cardId,
+      );
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message || '删除卡片失败' };
+    }
+  };
+
+  const loadResidentBoard = async (userId) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.listResidentBoard(accessToken, userId);
+      state.board = {
+        loaded: true,
+        items: Array.isArray(payload?.board) ? payload.board : [],
+      };
+      return { ok: true };
+    } catch (error) {
+      state.board = { loaded: false, items: [] };
+      return { ok: false, error: error.message || '加载展示板失败' };
+    }
+  };
+
+  const loadGuestbook = async () => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.listGuestbook(accessToken, 100);
+      state.guestbook = {
+        loaded: true,
+        messages: Array.isArray(payload?.messages) ? payload.messages : [],
+      };
+      return { ok: true };
+    } catch (error) {
+      state.guestbook = { loaded: false, messages: [] };
+      return { ok: false, error: error.message || '加载留言簿失败' };
+    }
+  };
+
+  const createGuestbookMessage = async (content) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.createGuestbookMessage(
+        accessToken,
+        content,
+      );
+      if (payload?.message) {
+        state.guestbook.messages = [
+          payload.message,
+          ...state.guestbook.messages,
+        ];
+      }
+      return { ok: true, message: payload?.message };
+    } catch (error) {
+      return { ok: false, error: error.message || '留言失败' };
+    }
+  };
+
+  const deleteGuestbookMessage = async (messageId) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      await persistence.deleteGuestbookMessage(accessToken, messageId);
+      state.guestbook.messages = state.guestbook.messages.filter(
+        (message) => message.id !== messageId,
+      );
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message || '删除留言失败' };
+    }
+  };
+
+  const listResidentDirectory = async () => {
+    if (!accessToken) return { ok: false, error: '请先登录', residents: [] };
+    try {
+      const payload = await persistence.listResidentDirectory(accessToken);
+      return { ok: true, residents: payload?.residents || [] };
+    } catch (error) {
+      return { ok: false, error: error.message || '加载名录失败', residents: [] };
+    }
+  };
+
+  const listDirectMessages = async (peerId) => {
+    if (!accessToken) return { ok: false, error: '请先登录', messages: [] };
+    try {
+      const payload = await persistence.listDirectMessages(accessToken, peerId);
+      return { ok: true, messages: payload?.messages || [] };
+    } catch (error) {
+      return { ok: false, error: error.message || '加载私聊失败', messages: [] };
+    }
+  };
+
+  const sendDirectMessage = async ({ toUserId, content }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.sendDirectMessage(accessToken, {
+        toUserId,
+        content,
+      });
+      return { ok: true, message: payload?.message };
+    } catch (error) {
+      return { ok: false, error: error.message || '发送失败' };
+    }
+  };
+
+  const listGroups = async () => {
+    if (!accessToken) return { ok: false, error: '请先登录', groups: [] };
+    try {
+      const payload = await persistence.listGroups(accessToken);
+      return { ok: true, groups: payload?.groups || [] };
+    } catch (error) {
+      return { ok: false, error: error.message || '加载群列表失败', groups: [] };
+    }
+  };
+
+  const createGroup = async ({ name, memberIds }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.createGroup(accessToken, {
+        name,
+        memberIds,
+      });
+      return { ok: true, group: payload?.group };
+    } catch (error) {
+      return { ok: false, error: error.message || '建群失败' };
+    }
+  };
+
+  const listGroupMessages = async (groupId) => {
+    if (!accessToken) return { ok: false, error: '请先登录', messages: [], members: [] };
+    try {
+      const payload = await persistence.listGroupMessages(accessToken, groupId);
+      return {
+        ok: true,
+        messages: payload?.messages || [],
+        members: payload?.members || [],
+        group: payload?.group || null,
+      };
+    } catch (error) {
+      return { ok: false, error: error.message || '加载群聊失败', messages: [], members: [] };
+    }
+  };
+
+  const sendGroupMessage = async (groupId, { content }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.sendGroupMessage(accessToken, groupId, {
+        content,
+      });
+      return { ok: true, message: payload?.message };
+    } catch (error) {
+      return { ok: false, error: error.message || '群发言失败' };
+    }
+  };
+
+  const loadWorldChat = async () => {
+    if (!accessToken) return;
+    try {
+      const payload = await persistence.loadWorldChat(accessToken, 50);
+      const list = Array.isArray(payload?.messages) ? payload.messages : [];
+
+      // 空结果不覆盖已有消息（避免轮询偶发空响应清空面板）
+      if (list.length > 0 || !state.worldChat.loaded) {
+        state.worldChat = {
+          loaded: true,
+          messages: list,
+        };
+      }
+    } catch (error) {
+      console.error('[world-chat] 加载失败:', error?.message || error);
+    }
+  };
+
+  const sendWorldChat = async ({ content }) => {
+    const normalized = String(content || '').trim().slice(0, 200);
+
+    if (!accessToken || !normalized) {
+      return null;
+    }
+
+    try {
+      const payload = await persistence.sendWorldChat(accessToken, normalized);
+
+      if (payload?.message) {
+        state.worldChat.messages = [
+          ...state.worldChat.messages,
+          payload.message,
+        ].slice(-50);
+      }
+      return payload;
+    } catch (error) {
+      notify(error.message || '发送消息失败', 'error');
+      return null;
+    }
+  };
+
+  const sendResidentChat = async ({ residentName, message }) => {
+    const normalizedName = String(residentName || '').trim();
+    const normalized = String(message || '').trim().slice(0, 200);
+
+    if (!accessToken || !normalizedName || !normalized) {
+      return null;
+    }
+
+    const existing = Array.isArray(state.residentChats[normalizedName])
+      ? state.residentChats[normalizedName]
+      : [];
+    const history = existing.slice(-10).map((item) => ({
+      role: item.role,
+      content: item.content,
+    }));
+
+    state.residentChats = {
+      ...state.residentChats,
+      [normalizedName]: [
+        ...existing,
+        {
+          id: `rc-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          role: 'user',
+          content: normalized,
+          at: new Date().toISOString(),
+        },
+      ],
+    };
+
+    try {
+      const payload = await persistence.sendResidentChat(accessToken, {
+        residentName: normalizedName,
+        message: normalized,
+        history,
+      });
+      const reply = payload?.reply;
+
+      if (reply) {
+        const current = state.residentChats[normalizedName] || [];
+        state.residentChats = {
+          ...state.residentChats,
+          [normalizedName]: [
+            ...current,
+            {
+              id: `rc-assistant-${Date.now()}-${Math.random()
+                .toString(16)
+                .slice(2)}`,
+              role: 'assistant',
+              content: reply,
+              at: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+
+      queuePersist();
+      return payload;
+    } catch (error) {
+      notify(error.message || '居民对话失败', 'error');
+      return null;
+    }
+  };
+
   return {
     state,
     login,
@@ -793,20 +1188,50 @@ export const createWorldStore = ({
     acceptTask,
     getHomePlot,
     getOwnedHome,
+    assignHome,
     canEditHome,
     canViewHome,
     setHomeVisibility,
-    isMaterialUnlocked,
-    unlockMaterial,
-    addHomeItem,
-    updateHomeItem,
-    removeHomeItem,
-    addInteriorItem,
-    updateInteriorItem,
-    removeInteriorItem,
+    setVisitPermission,
+    setAvatarInOwnYard,
+    setResidentStates,
+    getKinHome,
+    canEditKinHome,
+    setKinInOwnYard,
     addHomeMessage,
+    removeHomeMessage,
+    recordHomeVisit,
     buryClue,
     discoverClue,
+    loadFriends,
+    sendFriendRequest,
+    respondFriendRequest,
+    removeFriend,
+    loadVisitorQuota,
+    issueVisitorInvitation,
+    revokeVisitorInvitation,
+    registerVisitor,
+    registerResidentApplication,
+    queryResidentApplication,
+    changePassword,
+    loadResidentCards,
+    createResidentCard,
+    updateResidentCard,
+    deleteResidentCard,
+    loadResidentBoard,
+    loadGuestbook,
+    createGuestbookMessage,
+    deleteGuestbookMessage,
+    listResidentDirectory,
+    listDirectMessages,
+    sendDirectMessage,
+    listGroups,
+    createGroup,
+    listGroupMessages,
+    sendGroupMessage,
+    loadWorldChat,
+    sendWorldChat,
+    sendResidentChat,
   };
 };
 

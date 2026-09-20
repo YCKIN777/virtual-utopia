@@ -20,7 +20,12 @@ export const createGuardedApp = ({
   app,
   options = {},
 } = {}) => {
-  const logger = options.logger || createLogger({ service });
+  // 生产环境默认关闭请求级 info 日志（仅 warn/error），避免访问日志刷屏
+  const logLevel =
+    options.logLevel ||
+    process.env.LOG_LEVEL ||
+    (options.isProduction ? 'warn' : 'info');
+  const logger = options.logger || createLogger({ service, level: logLevel });
   const guarded = express();
 
   guarded.disable('x-powered-by');

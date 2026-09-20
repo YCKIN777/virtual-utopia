@@ -3,7 +3,7 @@ import { persistenceClient } from './gatewayClient.js';
 export const createPresenceClient = ({
   client = persistenceClient,
   token,
-  intervalMs = 250,
+  intervalMs = 1000,
   onUpdate = () => {},
   onError = () => {},
 } = {}) => {

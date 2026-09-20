@@ -1,15 +1,14 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { createWorldChatClient } from '../services/chatClient.js';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { worldStore } from '../stores/worldStore.js';
 
 const open = ref(false);
 const input = ref('');
 const sending = ref(false);
-const status = ref('connecting');
-const messages = ref([]);
 const listRef = ref(null);
-let client;
+let pollTimer = null;
+
+const messages = computed(() => worldStore.state.worldChat.messages);
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -27,50 +26,39 @@ const sendMessage = async () => {
   }
 
   sending.value = true;
+  input.value = '';
 
+  await worldStore.sendWorldChat({ content });
+  sending.value = false;
+  await scrollToBottom();
+};
+
+const formatTime = (value) => {
   try {
-    await client.send(content);
-    input.value = '';
-    status.value = 'online';
-    await scrollToBottom();
-  } catch (error) {
-    status.value = 'error';
-    worldStore.notify(error.message || '世界频道发送失败', 'error');
-  } finally {
-    sending.value = false;
+    return new Intl.DateTimeFormat('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
+  } catch {
+    return '';
   }
 };
 
-const formatTime = (value) =>
-  new Intl.DateTimeFormat('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+const poll = async () => {
+  await worldStore.loadWorldChat();
+  await scrollToBottom();
+};
 
-onMounted(() => {
-  const token = worldStore.getAuthToken();
-
-  if (!token) {
-    status.value = 'offline';
-    return;
-  }
-
-  client = createWorldChatClient({
-    token,
-    onMessages: (nextMessages) => {
-      messages.value = nextMessages;
-      status.value = 'online';
-      void scrollToBottom();
-    },
-    onError: () => {
-      status.value = 'error';
-    },
-  });
-  client.start();
+onMounted(async () => {
+  await poll();
+  pollTimer = setInterval(poll, 3000);
 });
 
 onBeforeUnmount(() => {
-  client?.stop();
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
 });
 </script>
 
@@ -100,9 +88,7 @@ onBeforeUnmount(() => {
       <div ref="listRef" class="vu-world-chat__messages">
         <article v-for="message in messages" :key="message.id">
           <div>
-            <strong>
-              {{ message.displayName || message.username }}
-            </strong>
+            <strong>{{ message.displayName || message.username }}</strong>
             <span>{{ formatTime(message.createdAt) }}</span>
           </div>
           <p>{{ message.content }}</p>
@@ -115,20 +101,12 @@ onBeforeUnmount(() => {
       <form @submit.prevent="sendMessage">
         <input
           v-model="input"
-          maxlength="300"
+          maxlength="200"
           placeholder="发送世界消息"
           :disabled="sending"
         />
-        <button
-          type="submit"
-          :disabled="sending || status === 'offline' || !input.trim()"
-        >
-          发送
-        </button>
+        <button type="submit" :disabled="sending || !input.trim()">发送</button>
       </form>
-
-      <small v-if="status === 'connecting'"> 正在连接世界频道… </small>
-      <small v-else-if="status === 'error'"> 世界频道连接异常 </small>
     </section>
   </div>
 </template>
@@ -175,7 +153,7 @@ onBeforeUnmount(() => {
   width: min(360px, calc(100vw - 28px));
   height: min(480px, 65vh);
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   overflow: hidden;
   border: 1px solid rgba(28, 62, 54, 0.22);
   border-radius: 8px;
@@ -275,12 +253,6 @@ onBeforeUnmount(() => {
 .vu-world-chat__panel form button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
-}
-
-.vu-world-chat__panel > small {
-  padding: 0 10px 8px;
-  color: #78867f;
-  font-size: 10px;
 }
 
 @media (max-width: 760px) {

@@ -7,12 +7,17 @@ import {
   ref,
   watch,
 } from 'vue';
-import HomeDecorator from '../components/HomeDecorator.vue';
+import HomePanel from '../components/HomePanel.vue';
+import ResidentChatPanel from '../components/ResidentChatPanel.vue';
 import WorldChatPanel from '../components/WorldChatPanel.vue';
 import { createPresenceClient } from '../services/presenceClient.js';
 import { worldStore } from '../stores/worldStore.js';
 import { ThreeWorld } from '../webgl/ThreeWorld.js';
-import { validateHomeLayout } from '../webgl/worldLayout.js';
+import { getHomeById, validateHomeLayout } from '../webgl/worldLayout.js';
+import {
+  RESIDENT_CHAT_DISTANCE,
+  seedResidents,
+} from '../data/residents.js';
 
 const containerRef = ref(null);
 const loading = reactive({
@@ -28,16 +33,126 @@ const stats = reactive({
   trees: 0,
 });
 const controlsState = reactive({
-  dayMode: true,
+  timePeriod: 'day',
+  weather: 0,
   fog: true,
   wind: true,
   interior: false,
   overview: false,
 });
+const BODY_COLORS = [
+  '#345c53',
+  '#7a4b3a',
+  '#3a5a8a',
+  '#7a6b3a',
+  '#5a3a6a',
+  '#b04a3a',
+];
+const HAIR_COLORS = ['#2b2620', '#4a3b2a', '#6b4a2a', '#8a6a3a', '#c9a24a'];
+const APPEARANCE_KEY = 'vu-avatar-appearance';
+
+const loadAppearance = () => {
+  try {
+    const raw = localStorage.getItem(APPEARANCE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return { bodyColor: BODY_COLORS[0], hairColor: HAIR_COLORS[0] };
+};
+
+const avatarAppearance = reactive(loadAppearance());
+const avatarPanelOpen = ref(false);
+
+const setAvatarAppearance = (patch) => {
+  Object.assign(avatarAppearance, patch);
+  try {
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(avatarAppearance));
+  } catch {
+    // ignore
+  }
+  world?.setAppearance(patch);
+};
 const onlineUsers = ref([]);
 const presenceStatus = ref('offline');
 let world;
 let presenceClient;
+
+const nearResidents = ref([]);
+const residentChatOpen = ref(false);
+const residentChatTarget = ref(null);
+let residentSyncTimer = null;
+let residentProximityTimer = null;
+
+const openResidentChat = (resident) => {
+  residentChatTarget.value = resident;
+  residentChatOpen.value = true;
+};
+
+const friendPanelOpen = ref(false);
+
+const visitorInviteOpen = ref(false);
+const visitorRegisterOpen = ref(false);
+const registerCode = ref('');
+
+const visitorQuota = computed(() => worldStore.state.visitorQuota);
+
+const issueInvitationAction = () => {
+  worldStore.issueVisitorInvitation();
+};
+
+const revokeInvitationAction = (invitation) => {
+  worldStore.revokeVisitorInvitation({ invitationId: invitation.id });
+};
+
+const registerVisitorAction = () => {
+  const code = registerCode.value.trim();
+
+  if (!code) {
+    worldStore.notify('请输入邀请码', 'error');
+    return;
+  }
+
+  worldStore.registerVisitor({ code });
+  registerCode.value = '';
+};
+
+const quotaStatusLabel = (status) => {
+  const labels = {
+    issued: '待兑换',
+    used: '已兑换',
+    revoked: '已回收',
+  };
+
+  return labels[status] || status;
+};
+
+const onlineUserIds = computed(
+  () => new Set(onlineUsers.value.map((user) => user.userId)),
+);
+
+const isFriendOnline = (friend) => onlineUserIds.value.has(friend.userId);
+
+const teleportToFriend = (friend) => {
+  const plotId = `plot-${((friend.userId % 50) + 1)}`;
+  world?.flyToHome(plotId);
+};
+
+const removeFriendAction = (friend) => {
+  worldStore.removeFriend({ friendId: friend.userId });
+};
+
+const respondFriendAction = (request, accept) => {
+  worldStore.respondFriendRequest({ requestId: request.id, accept });
+};
+
+const sendFriendAction = (user) => {
+  worldStore.sendFriendRequest({
+    toUserId: user.userId,
+    toUsername: user.username,
+    toDisplayName: user.displayName,
+  });
+};
 
 const currentUser = computed(() => worldStore.state.user);
 
@@ -78,6 +193,7 @@ const startPresence = () => {
     userId: user.phase5UserId,
     displayName: user.displayName,
     color: getAvatarColor(user.phase5UserId),
+    appearance: { ...avatarAppearance },
     x: 0,
     y: 0,
     z: 0,
@@ -102,17 +218,38 @@ const startPresence = () => {
     },
   });
   presenceClient.start(() => world?.getLocalAvatarState());
+  void worldStore.loadFriends();
+  void worldStore.loadVisitorQuota();
 };
 
 const layoutValidation = validateHomeLayout();
 
 const selectWorldObject = (info) => {
   selectedInfo.value = info;
+
+  if (info?.type === 'home') {
+    worldStore.recordHomeVisit({ plotId: info.id });
+  }
 };
 
-const toggleDayMode = () => {
-  controlsState.dayMode = !controlsState.dayMode;
-  world?.setDayMode(controlsState.dayMode);
+const TIME_PERIODS = ['day', 'dusk', 'night', 'dawn'];
+const TIME_PERIOD_LABELS = {
+  day: '白天',
+  dusk: '黄昏',
+  night: '夜晚',
+  dawn: '日出',
+};
+
+const cycleTimePeriod = () => {
+  const index = TIME_PERIODS.indexOf(controlsState.timePeriod);
+  controlsState.timePeriod = TIME_PERIODS[(index + 1) % TIME_PERIODS.length];
+  world?.setTimePeriod(controlsState.timePeriod);
+};
+
+const WEATHER_LABELS = ['晴天', '小雨', '阴雨薄雾'];
+const cycleWeather = () => {
+  controlsState.weather = (controlsState.weather + 1) % WEATHER_LABELS.length;
+  world?.setWeather(controlsState.weather);
 };
 
 const toggleFog = () => {
@@ -138,7 +275,7 @@ const resetView = () => {
 
 const goHome = () => {
   controlsState.overview = false;
-  world?.flyToHome('plot-1');
+  world?.flyToHome(worldStore.getOwnedHome()?.id || 'plot-1');
 };
 
 const goCenter = () => {
@@ -156,7 +293,36 @@ const toggleOverview = () => {
   world?.flyToOverview();
 };
 
+watch(selectedInfo, () => {
+  const home = worldStore.getOwnedHome();
+  worldStore.setAvatarInOwnYard(
+    Boolean(
+      home &&
+        selectedInfo.value?.type === 'home' &&
+        selectedInfo.value.id === home.id,
+    ),
+  );
+});
+
+let kinYardTimer = null;
+const KIN_YARD_DISTANCE = 14;
+
+const updateKinYardPresence = () => {
+  const kinPos = world?.getRoamingAgentPosition?.('kin-lord');
+  const layout = getHomeById('plot-39');
+
+  if (!kinPos || !layout) {
+    worldStore.setKinInOwnYard(false);
+    return;
+  }
+
+  const distance = Math.hypot(kinPos.x - layout.x, kinPos.z - layout.z);
+  worldStore.setKinInOwnYard(distance < KIN_YARD_DISTANCE);
+};
+
 onMounted(async () => {
+  void worldStore.loadVisitorQuota();
+
   if (!containerRef.value) {
     return;
   }
@@ -177,6 +343,23 @@ onMounted(async () => {
     });
     await world.init();
     startPresence();
+    world.addRoamingAgent({
+      id: 'kin-lord',
+      name: 'KIN',
+      appearance: { bodyColor: '#1f5a4a', hairColor: '#2b2620' },
+      isLord: true,
+      homeId: 'plot-39',
+    });
+    seedResidents.forEach((resident) => world.addResidentAvatar(resident));
+    world.restoreResidentAvatarStates(worldStore.state.residentStates || []);
+    residentSyncTimer = setInterval(() => {
+      worldStore.setResidentStates(world.getResidentAvatarStates());
+    }, 3000);
+    residentProximityTimer = setInterval(() => {
+      nearResidents.value = world.getResidentsNearLocal(RESIDENT_CHAT_DISTANCE);
+    }, 600);
+    kinYardTimer = setInterval(updateKinYardPresence, 500);
+    updateKinYardPresence();
     if (import.meta.env.DEV) {
       window.__utopiaWorld = world;
     }
@@ -188,6 +371,18 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPresence();
+  if (kinYardTimer) {
+    clearInterval(kinYardTimer);
+    kinYardTimer = null;
+  }
+  if (residentSyncTimer) {
+    clearInterval(residentSyncTimer);
+    residentSyncTimer = null;
+  }
+  if (residentProximityTimer) {
+    clearInterval(residentProximityTimer);
+    residentProximityTimer = null;
+  }
   if (import.meta.env.DEV) {
     delete window.__utopiaWorld;
   }
@@ -196,6 +391,7 @@ onBeforeUnmount(() => {
 
 watch(currentUser, () => {
   startPresence();
+  void worldStore.loadVisitorQuota();
 });
 </script>
 
@@ -225,8 +421,11 @@ watch(currentUser, () => {
       </button>
       <button type="button" @click="goCenter">前往生活广场</button>
       <button type="button" @click="resetView">重置视角</button>
-      <button type="button" @click="toggleDayMode">
-        {{ controlsState.dayMode ? '切换夜晚' : '切换日间' }}
+      <button type="button" @click="cycleTimePeriod">
+        时段：{{ TIME_PERIOD_LABELS[controlsState.timePeriod] }}
+      </button>
+      <button type="button" @click="cycleWeather">
+        天气：{{ WEATHER_LABELS[controlsState.weather] }}
       </button>
       <button type="button" @click="toggleFog">
         {{ controlsState.fog ? '关闭雾气' : '开启雾气' }}
@@ -237,6 +436,184 @@ watch(currentUser, () => {
       <button type="button" @click="toggleInterior">
         {{ controlsState.interior ? '恢复外壳' : '室内模式' }}
       </button>
+      <button type="button" @click="avatarPanelOpen = !avatarPanelOpen">
+        Avatar装扮
+      </button>
+
+      <div v-if="avatarPanelOpen" class="vu-avatar-panel">
+        <div class="vu-avatar-panel__row">
+          <span>服装</span>
+          <button
+            v-for="color in BODY_COLORS"
+            :key="color"
+            type="button"
+            class="vu-swatch"
+            :class="{ 'vu-swatch--active': avatarAppearance.bodyColor === color }"
+            :style="{ background: color }"
+            :aria-label="'服装颜色 ' + color"
+            @click="setAvatarAppearance({ bodyColor: color })"
+          />
+        </div>
+        <div class="vu-avatar-panel__row">
+          <span>头发</span>
+          <button
+            v-for="color in HAIR_COLORS"
+            :key="color"
+            type="button"
+            class="vu-swatch"
+            :class="{ 'vu-swatch--active': avatarAppearance.hairColor === color }"
+            :style="{ background: color }"
+            :aria-label="'头发颜色 ' + color"
+            @click="setAvatarAppearance({ hairColor: color })"
+          />
+        </div>
+      </div>
+
+      <button
+        v-if="currentUser"
+        type="button"
+        @click="friendPanelOpen = !friendPanelOpen"
+      >
+        好友
+      </button>
+
+      <div v-if="friendPanelOpen" class="vu-friend-panel">
+        <div class="vu-friend-panel__heading">好友列表</div>
+        <div class="vu-friend-panel__list">
+          <div
+            v-for="friend in worldStore.state.friends"
+            :key="friend.id"
+            class="vu-friend-item"
+          >
+            <span>
+              {{ friend.displayName || friend.username }}
+              <i :class="isFriendOnline(friend) ? 'is-online' : 'is-offline'">
+                {{ isFriendOnline(friend) ? '在线' : '离线' }}
+              </i>
+            </span>
+            <button type="button" @click="teleportToFriend(friend)">传送</button>
+            <button type="button" @click="removeFriendAction(friend)">删除</button>
+          </div>
+          <p v-if="!worldStore.state.friends.length" class="vu-friend-panel__empty">
+            还没有好友
+          </p>
+        </div>
+
+        <div class="vu-friend-panel__heading">待处理申请</div>
+        <div class="vu-friend-panel__list">
+          <div
+            v-for="request in worldStore.state.friendRequests"
+            :key="request.id"
+            class="vu-friend-item"
+          >
+            <span>{{ request.from.displayName }} 申请加你为好友</span>
+            <button type="button" @click="respondFriendAction(request, true)">同意</button>
+            <button type="button" @click="respondFriendAction(request, false)">拒绝</button>
+          </div>
+          <p v-if="!worldStore.state.friendRequests.length" class="vu-friend-panel__empty">
+            暂无申请
+          </p>
+        </div>
+
+        <div class="vu-friend-panel__heading">在线用户</div>
+        <div class="vu-friend-panel__list">
+          <div
+            v-for="user in onlineUsers"
+            :key="user.id"
+            class="vu-friend-item"
+          >
+            <span>{{ user.displayName || user.username }}</span>
+            <button type="button" @click="sendFriendAction(user)">加好友</button>
+          </div>
+          <p v-if="!onlineUsers.length" class="vu-friend-panel__empty">
+            暂无在线用户
+          </p>
+        </div>
+      </div>
+
+      <button
+        v-if="currentUser && (visitorQuota.isResident || visitorQuota.isAdmin)"
+        type="button"
+        @click="visitorInviteOpen = !visitorInviteOpen"
+      >
+        访客邀请
+      </button>
+
+      <div v-if="visitorInviteOpen" class="vu-friend-panel">
+        <div class="vu-friend-panel__heading">
+          {{ visitorQuota.isAdmin ? '城主 · ' : '' }}访客邀请名额
+        </div>
+        <div class="vu-quota-row">
+          <span>我的名额</span>
+          <strong v-if="visitorQuota.resident">
+            {{ visitorQuota.resident.quotaAvailable }} /
+            {{ visitorQuota.resident.quotaTotal }}
+          </strong>
+          <strong v-else>城主公共名额</strong>
+        </div>
+        <div class="vu-quota-row">
+          <span>访客总数</span>
+          <strong>
+            {{ visitorQuota.stats?.totalVisitors || 0 }} /
+            {{ visitorQuota.stats?.globalVisitorCap || 200 }}
+          </strong>
+        </div>
+        <p class="vu-quota-hint">
+          {{
+            visitorQuota.stats?.residentEntryOpen
+              ? '原住民邀请入口开放中'
+              : '原住民邀请入口已关闭（仅城主可发公共名额）'
+          }}
+        </p>
+
+        <button
+          type="button"
+          class="vu-quota-issue"
+          :disabled="
+            visitorQuota.isResident &&
+            !visitorQuota.stats?.residentEntryOpen
+          "
+          @click="issueInvitationAction"
+        >
+          发放邀请码
+        </button>
+
+        <div v-if="visitorQuota.invitations.length" class="vu-friend-panel__list">
+          <div
+            v-for="invitation in visitorQuota.invitations"
+            :key="invitation.id"
+            class="vu-friend-item"
+          >
+            <span class="vu-quota-code">{{ invitation.code }}</span>
+            <i :class="invitation.status">{{ quotaStatusLabel(invitation.status) }}</i>
+            <button
+              v-if="invitation.status === 'issued'"
+              type="button"
+              @click="revokeInvitationAction(invitation)"
+            >
+              回收
+            </button>
+          </div>
+        </div>
+        <p v-else class="vu-friend-panel__empty">还没有发放邀请码</p>
+      </div>
+
+      <button
+        v-if="currentUser && !visitorQuota.isResident && !visitorQuota.isAdmin"
+        type="button"
+        @click="visitorRegisterOpen = !visitorRegisterOpen"
+      >
+        访客注册
+      </button>
+
+      <div v-if="visitorRegisterOpen" class="vu-friend-panel">
+        <div class="vu-friend-panel__heading">访客注册</div>
+        <p class="vu-quota-hint">输入原住民或城主发放的邀请码，注册为访客。</p>
+        <form class="vu-inline-form" @submit.prevent="registerVisitorAction">
+          <input v-model="registerCode" maxlength="40" placeholder="邀请码" />
+          <button type="submit" class="vu-quota-issue">注册</button>
+        </form>
+      </div>
     </aside>
 
     <div class="vu-world-help">
@@ -280,6 +657,12 @@ watch(currentUser, () => {
       </div>
     </article>
 
+    <HomePanel
+      v-if="selectedInfo?.type === 'home'"
+      :plot-id="selectedInfo.id"
+      @close="selectedInfo = null"
+    />
+
     <div v-if="loading.visible" class="vu-world-loading">
       <span class="vu-spinner" aria-hidden="true" />
       <strong>{{ loading.message }}</strong>
@@ -297,7 +680,18 @@ watch(currentUser, () => {
       {{ layoutValidation.minimumDistance.toFixed(1) }}
     </div>
 
-    <HomeDecorator />
+    <div v-if="nearResidents.length" class="vu-resident-chat-entry">
+      <button type="button" @click="openResidentChat(nearResidents[0])">
+        与 {{ nearResidents[0].residentName }} 交谈
+      </button>
+    </div>
+
+    <ResidentChatPanel
+      v-if="residentChatOpen && residentChatTarget"
+      :resident="residentChatTarget"
+      @close="residentChatOpen = false"
+    />
+
     <WorldChatPanel v-if="currentUser" />
   </main>
 </template>
@@ -383,5 +777,203 @@ watch(currentUser, () => {
     bottom: 64px;
     width: 150px;
   }
+}
+
+.vu-avatar-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(24, 40, 36, 0.92);
+  margin-top: 4px;
+}
+
+.vu-avatar-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.vu-avatar-panel__row span {
+  width: 34px;
+  color: #d9e2dc;
+  font-size: 11px;
+}
+
+.vu-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vu-swatch--active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2d6c5c;
+}
+
+.vu-friend-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(24, 40, 36, 0.92);
+  margin-top: 4px;
+}
+
+.vu-friend-panel__heading {
+  color: #ffe6b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.vu-friend-panel__list {
+  display: grid;
+  gap: 6px;
+}
+
+.vu-friend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d9e2dc;
+  font-size: 12px;
+}
+
+.vu-friend-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vu-friend-item i {
+  font-style: normal;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.vu-friend-item i.is-online {
+  color: #7fe0a8;
+}
+
+.vu-friend-item i.is-offline {
+  color: #8b9791;
+}
+
+.vu-friend-item button {
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 10px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.vu-friend-panel__empty {
+  color: #8b9791;
+  font-size: 11px;
+}
+
+.vu-quota-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #d9e2dc;
+  font-size: 12px;
+}
+
+.vu-quota-row strong {
+  color: #ffe6b8;
+  font-weight: 700;
+}
+
+.vu-quota-hint {
+  margin: 2px 0 6px;
+  color: #8b9791;
+  font-size: 11px;
+}
+
+.vu-quota-issue {
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 230, 184, 0.2);
+  color: #ffe6b8;
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.vu-quota-issue:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vu-quota-code {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+
+.vu-friend-item i.issued {
+  color: #d8b25a;
+}
+
+.vu-friend-item i.used {
+  color: #7fe0a8;
+}
+
+.vu-friend-item i.revoked {
+  color: #8b9791;
+}
+
+.vu-inline-form {
+  display: flex;
+  gap: 6px;
+}
+
+.vu-inline-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3f7f4;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.vu-resident-chat-entry {
+  position: absolute;
+  left: 50%;
+  bottom: 148px;
+  transform: translateX(-50%);
+  z-index: 30;
+}
+
+.vu-resident-chat-entry button {
+  border: 1px solid rgba(255, 218, 125, 0.65);
+  border-radius: 999px;
+  background: rgba(28, 61, 54, 0.92);
+  color: #ffd77c;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(14, 31, 27, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.vu-resident-chat-entry button:hover {
+  background: rgba(36, 80, 70, 0.96);
+  color: #ffe4a3;
 }
 </style>

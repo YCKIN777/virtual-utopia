@@ -1,6 +1,9 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import HomepageS2Panel from '../components/HomepageS2Panel.vue';
+import ResidentCardsPanel from '../components/ResidentCardsPanel.vue';
+import ResidentDirectoryPanel from '../components/ResidentDirectoryPanel.vue';
 import { scenes } from '../data/scenes.js';
 import { worldStore } from '../stores/worldStore.js';
 
@@ -32,6 +35,69 @@ const formatDate = (value) => {
 
 const taskSceneName = (sceneId) =>
   scenes.find((scene) => scene.id === sceneId)?.name || '未知场景';
+
+const passwordForm = reactive({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+});
+const passwordErrors = reactive({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+  submit: '',
+});
+const passwordBusy = ref(false);
+const passwordDone = ref(false);
+
+const submitPasswordChange = async () => {
+  passwordErrors.currentPassword = '';
+  passwordErrors.newPassword = '';
+  passwordErrors.confirmPassword = '';
+  passwordErrors.submit = '';
+  passwordDone.value = false;
+
+  if (!passwordForm.currentPassword) {
+    passwordErrors.currentPassword = '请输入当前密码';
+  }
+
+  if (!passwordForm.newPassword) {
+    passwordErrors.newPassword = '请输入新密码';
+  } else if (passwordForm.newPassword.length < 6) {
+    passwordErrors.newPassword = '新密码至少需要 6 个字符';
+  }
+
+  if (passwordForm.confirmPassword !== passwordForm.newPassword) {
+    passwordErrors.confirmPassword = '两次输入的新密码不一致';
+  }
+
+  if (
+    passwordErrors.currentPassword ||
+    passwordErrors.newPassword ||
+    passwordErrors.confirmPassword
+  ) {
+    return;
+  }
+
+  passwordBusy.value = true;
+
+  const result = await worldStore.changePassword({
+    currentPassword: passwordForm.currentPassword,
+    newPassword: passwordForm.newPassword,
+  });
+
+  passwordBusy.value = false;
+
+  if (!result.ok) {
+    passwordErrors.submit = result.error || '修改密码失败';
+    return;
+  }
+
+  passwordForm.currentPassword = '';
+  passwordForm.newPassword = '';
+  passwordForm.confirmPassword = '';
+  passwordDone.value = true;
+};
 </script>
 
 <template>
@@ -138,6 +204,122 @@ const taskSceneName = (sceneId) =>
         </div>
       </div>
     </section>
+
+    <section class="vu-section vu-section--light">
+      <div class="vu-container">
+        <header class="vu-section-header">
+          <div>
+            <span class="vu-kicker">ACCOUNT SECURITY</span>
+            <h2>修改密码</h2>
+          </div>
+          <p>仅能修改本人密码，用户名不可修改。</p>
+        </header>
+
+        <form
+          class="vu-password-form"
+          novalidate
+          @submit.prevent="submitPasswordChange"
+        >
+          <label class="vu-field">
+            <span>当前密码</span>
+            <input
+              v-model="passwordForm.currentPassword"
+              type="password"
+              autocomplete="current-password"
+              :disabled="passwordBusy"
+            />
+            <small v-if="passwordErrors.currentPassword" class="vu-field__error">
+              {{ passwordErrors.currentPassword }}
+            </small>
+          </label>
+
+          <label class="vu-field">
+            <span>新密码</span>
+            <input
+              v-model="passwordForm.newPassword"
+              type="password"
+              autocomplete="new-password"
+              :disabled="passwordBusy"
+            />
+            <small v-if="passwordErrors.newPassword" class="vu-field__error">
+              {{ passwordErrors.newPassword }}
+            </small>
+          </label>
+
+          <label class="vu-field">
+            <span>确认新密码</span>
+            <input
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              autocomplete="new-password"
+              :disabled="passwordBusy"
+            />
+            <small v-if="passwordErrors.confirmPassword" class="vu-field__error">
+              {{ passwordErrors.confirmPassword }}
+            </small>
+          </label>
+
+          <p v-if="passwordErrors.submit" class="vu-form__error" role="alert">
+            {{ passwordErrors.submit }}
+          </p>
+
+          <p v-if="passwordDone" class="vu-password-done" role="status">
+            密码修改成功
+          </p>
+
+          <button
+            type="submit"
+            class="vu-button vu-button--accent"
+            :disabled="passwordBusy"
+          >
+            <span v-if="passwordBusy" class="vu-spinner" aria-hidden="true" />
+            {{ passwordBusy ? '正在保存' : '保存新密码' }}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <section class="vu-section vu-section--muted">
+      <div class="vu-container">
+        <header class="vu-section-header">
+          <div>
+            <span class="vu-kicker">LIFE CARDS</span>
+            <h2>我的主页卡片</h2>
+          </div>
+          <p>自愿记录，无点赞与排行；单条内容可设置「仅自己」或「原住民可见」。</p>
+        </header>
+
+        <ResidentCardsPanel />
+      </div>
+    </section>
+
+    <section class="vu-section vu-section--light">
+      <div class="vu-container">
+        <header class="vu-section-header">
+          <div>
+            <span class="vu-kicker">SHOWCASE & GUESTBOOK</span>
+            <h2>展示板与留言簿</h2>
+          </div>
+          <p>展示板聚合你的公开内容；留言簿仅原住民可见，无点赞与排行。</p>
+        </header>
+
+        <HomepageS2Panel />
+      </div>
+    </section>
+
+    <section class="vu-section vu-section--muted">
+      <div class="vu-container">
+        <header class="vu-section-header">
+          <div>
+            <span class="vu-kicker">RESIDENT DIRECTORY</span>
+            <h2>原住民名录</h2>
+          </div>
+          <p>查看全部原住民，点击发起一对一私聊，也可创建临时小群；仅原住民可见。</p>
+        </header>
+
+        <ResidentDirectoryPanel />
+      </div>
+    </section>
   </main>
 
   <main v-else class="vu-profile-guest">
@@ -157,3 +339,17 @@ const taskSceneName = (sceneId) =>
     </div>
   </main>
 </template>
+
+<style scoped>
+.vu-password-form {
+  display: grid;
+  gap: 16px;
+  max-width: 420px;
+}
+
+.vu-password-done {
+  margin: 0;
+  color: #bfe8d2;
+  font-size: 14px;
+}
+</style>

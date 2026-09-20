@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { homeMaterialCategories } from '../data/homeMaterials.js';
 import { worldStore } from '../stores/worldStore.js';
 
 const props = defineProps({
@@ -9,45 +8,16 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  editMode: {
-    type: Boolean,
-    default: false,
-  },
-  selectedMaterialId: {
-    type: String,
-    default: '',
-  },
-  selectedItemId: {
-    type: String,
-    default: '',
-  },
 });
 
-const emit = defineEmits([
-  'close',
-  'toggle-edit',
-  'select-material',
-  'place-center',
-  'rotate-item',
-  'delete-item',
-]);
+const emit = defineEmits(['close']);
 
-const activeCategory = ref(homeMaterialCategories[0].id);
 const message = ref('');
 const clue = ref('');
 const selectedHome = computed(() => worldStore.getHomePlot(props.plotId));
 const isOwner = computed(() => worldStore.canEditHome(props.plotId));
 const canView = computed(() => worldStore.canViewHome(props.plotId));
 const isPrivate = computed(() => selectedHome.value?.visibility === 'private');
-const selectedItem = computed(() =>
-  selectedHome.value?.items.find((item) => item.id === props.selectedItemId),
-);
-const activeMaterials = computed(
-  () =>
-    homeMaterialCategories.find(
-      (category) => category.id === activeCategory.value,
-    )?.items || [],
-);
 const occupiedCount = computed(
   () => worldStore.state.homes.filter((home) => home.ownerId).length,
 );
@@ -71,6 +41,13 @@ const submitMessage = () => {
   }
 };
 
+const deleteMessage = (messageId) => {
+  worldStore.removeHomeMessage({
+    plotId: props.plotId,
+    messageId,
+  });
+};
+
 const buryClue = () => {
   const accepted = worldStore.buryClue({
     plotId: props.plotId,
@@ -84,11 +61,6 @@ const buryClue = () => {
 
 const discoverClue = () => {
   worldStore.discoverClue(props.plotId);
-};
-
-const handleDragStart = (event, material) => {
-  event.dataTransfer.setData('application/x-utopia-material', material.id);
-  event.dataTransfer.effectAllowed = 'copy';
 };
 </script>
 
@@ -132,135 +104,28 @@ const handleDragStart = (event, material) => {
 
       <template v-else>
         <div class="vu-home-panel__actions">
-          <button
-            v-if="isOwner"
-            type="button"
-            class="vu-button vu-button--dark vu-button--small"
-            @click="$emit('toggle-edit')"
-          >
-            {{ editMode ? '退出编辑' : '编辑家园' }}
-          </button>
           <div v-if="isOwner" class="vu-segmented">
+            <span class="vu-segmented__label">参观权限</span>
             <button
               type="button"
               :class="{
                 'is-active': selectedHome.visibility === 'public',
               }"
-              @click="worldStore.setHomeVisibility(plotId, 'public')"
+              @click="worldStore.setVisitPermission(plotId, true)"
             >
-              公开
+              开放参观
             </button>
             <button
               type="button"
               :class="{
                 'is-active': selectedHome.visibility === 'private',
               }"
-              @click="worldStore.setHomeVisibility(plotId, 'private')"
+              @click="worldStore.setVisitPermission(plotId, false)"
             >
-              私密
+              关闭参观
             </button>
           </div>
         </div>
-
-        <section v-if="editMode && isOwner" class="vu-home-editor">
-          <div class="vu-home-editor__balance">
-            <span>世界碎片</span>
-            <strong>
-              {{ worldStore.state.user?.worldShards || 0 }}
-            </strong>
-          </div>
-
-          <div class="vu-material-tabs">
-            <button
-              v-for="category in homeMaterialCategories"
-              :key="category.id"
-              type="button"
-              :class="{
-                'is-active': activeCategory === category.id,
-              }"
-              @click="activeCategory = category.id"
-            >
-              {{ category.label }}
-            </button>
-          </div>
-
-          <div class="vu-material-grid">
-            <article
-              v-for="material in activeMaterials"
-              :key="material.id"
-              class="vu-material-card"
-              :class="{
-                'is-selected': selectedMaterialId === material.id,
-                'is-locked': !worldStore.isMaterialUnlocked(material.id),
-              }"
-              draggable="true"
-              @dragstart="handleDragStart($event, material)"
-            >
-              <button
-                type="button"
-                class="vu-material-card__main"
-                @click="
-                  worldStore.isMaterialUnlocked(material.id)
-                    ? $emit('select-material', material.id)
-                    : worldStore.unlockMaterial(material.id)
-                "
-              >
-                <span
-                  class="vu-material-swatch"
-                  :style="{
-                    '--material-color': material.color,
-                    '--material-roof': material.roofColor || material.color,
-                  }"
-                  aria-hidden="true"
-                />
-                <strong>{{ material.name }}</strong>
-                <small>
-                  {{
-                    worldStore.isMaterialUnlocked(material.id)
-                      ? selectedMaterialId === material.id
-                        ? '已选，点击地图放置'
-                        : '拖拽或点击选择'
-                      : `世界碎片 ×${material.cost}`
-                  }}
-                </small>
-              </button>
-            </article>
-          </div>
-
-          <button
-            v-if="selectedMaterialId"
-            type="button"
-            class="vu-button vu-button--accent vu-button--wide"
-            @click="$emit('place-center')"
-          >
-            放到地块中心
-          </button>
-
-          <div v-if="selectedItem" class="vu-item-tools">
-            <span>已选中素材</span>
-            <button
-              type="button"
-              class="vu-button vu-button--light vu-button--small"
-              @click="$emit('rotate-item', -15)"
-            >
-              左转
-            </button>
-            <button
-              type="button"
-              class="vu-button vu-button--light vu-button--small"
-              @click="$emit('rotate-item', 15)"
-            >
-              右转
-            </button>
-            <button
-              type="button"
-              class="vu-button vu-button--danger-outline vu-button--small"
-              @click="$emit('delete-item')"
-            >
-              删除
-            </button>
-          </div>
-        </section>
 
         <section class="vu-home-social">
           <div class="vu-home-social__heading">
@@ -299,12 +164,21 @@ const handleDragStart = (event, material) => {
 
           <div class="vu-home-messages">
             <article
-              v-for="item in selectedHome.messages.slice(-3).reverse()"
+              v-for="item in [...selectedHome.messages].reverse()"
               :key="item.id"
             >
               <div>
                 <strong>{{ item.author }}</strong>
                 <span>{{ formatDate(item.createdAt) }}</span>
+                <button
+                  v-if="isOwner"
+                  type="button"
+                  class="vu-home-messages__delete"
+                  aria-label="删除留言"
+                  @click="deleteMessage(item.id)"
+                >
+                  删除
+                </button>
               </div>
               <p>{{ item.content }}</p>
             </article>
@@ -313,6 +187,30 @@ const handleDragStart = (event, material) => {
               class="vu-home-messages__empty"
             >
               还没有参观留言。
+            </p>
+          </div>
+        </section>
+
+        <section v-if="isOwner" class="vu-home-visits">
+          <div class="vu-home-visits__heading">
+            <span class="vu-kicker">VISITOR LOG</span>
+            <strong>{{ (selectedHome.visits || []).length }} 条来访记录</strong>
+          </div>
+          <div class="vu-home-visits__list">
+            <article
+              v-for="item in [...(selectedHome.visits || [])].reverse()"
+              :key="item.id"
+            >
+              <div>
+                <strong>{{ item.username }}</strong>
+                <span>{{ formatDate(item.visitedAt) }}</span>
+              </div>
+            </article>
+            <p
+              v-if="!(selectedHome.visits || []).length"
+              class="vu-home-visits__empty"
+            >
+              还没有访客到访记录。
             </p>
           </div>
         </section>
@@ -380,3 +278,22 @@ const handleDragStart = (event, material) => {
     </template>
   </aside>
 </template>
+
+<style scoped>
+.vu-segmented__label {
+  margin-right: 4px;
+  color: #66766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vu-home-messages__delete {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: #c05a4a;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 0 0 6px;
+}
+</style>

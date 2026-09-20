@@ -54,7 +54,7 @@ const createPersistence = () => {
   };
 };
 
-test('logs in through Phase5 and restores the world snapshot', async () => {
+test('logs in through Phase5 and restores the world snapshot (含宅院归属与参观权限)', async () => {
   const storage = createStorage();
   const persistence = createPersistence();
   const store = createWorldStore({
@@ -71,24 +71,9 @@ test('logs in through Phase5 and restores the world snapshot', async () => {
     snapshot: {
       version: 1,
       plotId: 'plot-28',
-      courtyardItems: [
-        {
-          id: 'persisted-item',
-          materialId: 'house-cabin',
-          x: 0.1,
-          y: 0.2,
-          rotation: 0,
-        },
-      ],
-      interiorFurniture: [
-        {
-          id: 'persisted-furniture',
-          materialId: 'lamp-path',
-          x: 0.3,
-          y: 0.2,
-          rotation: 0,
-        },
-      ],
+      visitEnabled: {
+        'plot-28': true,
+      },
       permissions: {
         role: 'editor',
         canManageHome: true,
@@ -104,15 +89,12 @@ test('logs in through Phase5 and restores the world snapshot', async () => {
   assert.equal(store.state.user.id, 'phase5-7');
   assert.equal(store.canEditHome('plot-28'), true);
   assert.equal(store.canEditHome('plot-1'), false);
-  assert.equal(store.getHomePlot('plot-28').items[0].id, 'persisted-item');
-  assert.equal(
-    store.getHomePlot('plot-28').interiorItems[0].id,
-    'persisted-furniture',
-  );
+  assert.equal(store.getHomePlot('plot-28').ownerId, 'phase5-7');
+  assert.equal(store.getHomePlot('plot-28').visibility, 'public');
   assert.equal(store.state.persistence.status, 'saved');
 });
 
-test('writes world changes back to the reserved Phase5 session', async () => {
+test('writes world changes back to the reserved Phase5 session (含参观权限)', async () => {
   const storage = createStorage();
   const persistence = createPersistence();
   const store = createWorldStore({
@@ -127,32 +109,14 @@ test('writes world changes back to the reserved Phase5 session', async () => {
     username: 'traveler',
     password: 'utopia2026',
   });
-  store.addHomeItem({
-    plotId: 'plot-28',
-    materialId: 'house-cabin',
-    x: 0.25,
-    y: 0.4,
-  });
-  store.addInteriorItem({
-    plotId: 'plot-28',
-    materialId: 'pot-ceramic',
-    x: 0.6,
-    y: 0.3,
-  });
+  store.setVisitPermission('plot-28', true);
   await store.persistNow();
 
   const latest =
     persistence.savedSnapshots[persistence.savedSnapshots.length - 1];
 
   assert.equal(latest.plotId, 'plot-28');
-  assert.equal(
-    latest.courtyardItems.some((item) => item.materialId === 'house-cabin'),
-    true,
-  );
-  assert.equal(
-    latest.interiorFurniture.some((item) => item.materialId === 'pot-ceramic'),
-    true,
-  );
+  assert.equal(latest.visitEnabled['plot-28'], true);
   assert.equal(latest.permissions.canManageHome, true);
 });
 
@@ -166,8 +130,6 @@ test('restores a stored Phase5 token after page reload', async () => {
     snapshot: {
       version: 1,
       plotId: 'plot-28',
-      courtyardItems: [],
-      interiorFurniture: [],
       permissions: {
         role: 'editor',
         canManageHome: true,
@@ -217,7 +179,7 @@ test('falls back to temporary memory mode when Phase5 is unavailable', async () 
   assert.equal(store.state.persistence.status, 'offline');
 });
 
-test('keeps viewer role read-only', async () => {
+test('keeps viewer role read-only（访客不可改参观权限）', async () => {
   const persistence = createPersistence();
   persistence.setUser({
     id: 8,
@@ -231,8 +193,6 @@ test('keeps viewer role read-only', async () => {
     snapshot: {
       version: 1,
       plotId: 'plot-28',
-      courtyardItems: [],
-      interiorFurniture: [],
       permissions: {
         role: 'viewer',
         canManageHome: false,
@@ -253,14 +213,6 @@ test('keeps viewer role read-only', async () => {
   });
 
   assert.equal(store.canEditHome('plot-28'), false);
-  assert.equal(
-    store.addHomeItem({
-      plotId: 'plot-28',
-      materialId: 'house-cabin',
-      x: 0,
-      y: 0,
-    }),
-    null,
-  );
+  assert.equal(store.setVisitPermission('plot-28', true), false);
   assert.equal(persistence.savedSnapshots.length, 0);
 });

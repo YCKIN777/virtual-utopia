@@ -6,6 +6,7 @@ export { createHttpClient } from './httpClient.js';
 export { parseMultipart } from './multipart.js';
 export { startPhase6Server } from './server.js';
 export { createUploadService } from './uploadService.js';
+export { createVisitorQuotaStore, VISITOR_QUOTA_RULES } from './visitorQuotaStore.js';
 export {
   createDocumentIdentity,
   readCollectionName,

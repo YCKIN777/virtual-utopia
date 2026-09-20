@@ -577,8 +577,6 @@ try {
   const worldSnapshot = {
     version: 1,
     plotId: 'plot-28',
-    courtyardItems: [],
-    interiorFurniture: [],
     permissions: {
       role: 'editor',
       canManageHome: true,

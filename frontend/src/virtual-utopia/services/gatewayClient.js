@@ -165,6 +165,277 @@ export const createPersistenceClient = ({
       fetchImpl,
       timeoutMs,
     }),
+  sendResidentChat: (token, { residentName, message, history }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/chat/resident',
+      method: 'POST',
+      token,
+      body: {
+        residentName,
+        message,
+        history,
+      },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listFriends: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/friends',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  sendFriendRequest: (token, { toUserId, toUsername, toDisplayName }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/friends/request',
+      method: 'POST',
+      token,
+      body: { toUserId, toUsername, toDisplayName },
+      fetchImpl,
+      timeoutMs,
+    }),
+  respondFriendRequest: (token, { requestId, accept }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/friends/respond',
+      method: 'POST',
+      token,
+      body: { requestId, accept },
+      fetchImpl,
+      timeoutMs,
+    }),
+  removeFriend: (token, friendId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/friends/${encodeURIComponent(friendId)}`,
+      method: 'DELETE',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  loadVisitorQuotaOverview: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/visitor-quotas/overview',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  issueVisitorInvitation: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/visitor-quotas/issue',
+      method: 'POST',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  revokeVisitorInvitation: (token, invitationId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/visitor-quotas/${encodeURIComponent(
+        invitationId,
+      )}/revoke`,
+      method: 'POST',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  registerVisitor: (token, code) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/visitor-quotas/register',
+      method: 'POST',
+      token,
+      body: { code },
+      fetchImpl,
+      timeoutMs,
+    }),
+  registerResidentApplication: ({
+    username,
+    password,
+    displayName,
+    hobbies,
+    occupation,
+    selfIntro,
+    contact,
+    address,
+  }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/residents/apply',
+      method: 'POST',
+      body: {
+        username,
+        password,
+        displayName,
+        hobbies,
+        occupation,
+        selfIntro,
+        contact,
+        address,
+      },
+      fetchImpl,
+      timeoutMs,
+    }),
+  queryResidentApplication: (username) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-applications/query?username=${encodeURIComponent(
+        username,
+      )}`,
+      fetchImpl,
+      timeoutMs,
+    }),
+  changePassword: (token, { currentPassword, newPassword }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/auth/password',
+      method: 'PUT',
+      token,
+      body: { currentPassword, newPassword },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listResidentCards: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/resident-cards',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createResidentCard: (token, { cardType, content, permission }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/resident-cards',
+      method: 'POST',
+      token,
+      body: { cardType, content, permission },
+      fetchImpl,
+      timeoutMs,
+    }),
+  updateResidentCard: (token, cardId, { content, permission }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-cards/${encodeURIComponent(cardId)}`,
+      method: 'PUT',
+      token,
+      body: { content, permission },
+      fetchImpl,
+      timeoutMs,
+    }),
+  deleteResidentCard: (token, cardId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-cards/${encodeURIComponent(cardId)}`,
+      method: 'DELETE',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listResidentBoard: (token, userId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-board${
+        userId ? `?userId=${encodeURIComponent(userId)}` : ''
+      }`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listGuestbook: (token, limit = 100) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/guestbook?limit=${encodeURIComponent(limit)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createGuestbookMessage: (token, content) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/guestbook',
+      method: 'POST',
+      token,
+      body: { content },
+      fetchImpl,
+      timeoutMs,
+    }),
+  deleteGuestbookMessage: (token, messageId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/guestbook/${encodeURIComponent(messageId)}`,
+      method: 'DELETE',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listResidentDirectory: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/resident-directory',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listDirectMessages: (token, peerId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/direct-messages?peerId=${encodeURIComponent(peerId)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  sendDirectMessage: (token, { toUserId, content }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/direct-messages',
+      method: 'POST',
+      token,
+      body: { toUserId, content },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listGroups: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/groups',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createGroup: (token, { name, memberIds }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase6/groups',
+      method: 'POST',
+      token,
+      body: { name, memberIds },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listGroupMessages: (token, groupId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/groups/${encodeURIComponent(groupId)}/messages`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  sendGroupMessage: (token, groupId, { content }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/groups/${encodeURIComponent(groupId)}/messages`,
+      method: 'POST',
+      token,
+      body: { content },
+      fetchImpl,
+      timeoutMs,
+    }),
 });
 
 export const persistenceClient = createPersistenceClient();

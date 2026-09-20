@@ -37,6 +37,15 @@ const logout = async () => {
           <RouterLink :to="{ name: 'sessions' }" class="phase6-nav__link">
             历史会话
           </RouterLink>
+          <RouterLink :to="{ name: 'visitor-quota' }" class="phase6-nav__link">
+            访客名额
+          </RouterLink>
+          <RouterLink :to="{ name: 'applications' }" class="phase6-nav__link">
+            入驻申请
+          </RouterLink>
+          <RouterLink :to="{ name: 'plots' }" class="phase6-nav__link">
+            宅院分配
+          </RouterLink>
         </nav>
 
         <div class="phase6-account">

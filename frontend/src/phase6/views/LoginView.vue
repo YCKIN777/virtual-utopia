@@ -12,6 +12,22 @@ const form = reactive({
 const loading = ref(false);
 const errorMessage = ref('');
 
+const sha256Hex = async (value) => {
+  const text = String(value ?? '');
+  try {
+    if (globalThis.crypto?.subtle) {
+      const data = new TextEncoder().encode(text);
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+    }
+  } catch {
+    // 降级
+  }
+  return text;
+};
+
 const submit = async () => {
   errorMessage.value = '';
 
@@ -23,7 +39,10 @@ const submit = async () => {
   loading.value = true;
 
   try {
-    await authStore.login(form);
+    await authStore.login({
+      username: form.username.trim(),
+      password: await sha256Hex(form.password),
+    });
     const redirect =
       typeof route.query.redirect === 'string'
         ? route.query.redirect

@@ -74,14 +74,16 @@ test('accepts a task, unlocks its scene, and records the task', async () => {
   );
 });
 
-test('enforces home ownership, material unlocks, and visitor actions', async () => {
+test('enforces home ownership and visitor actions', async () => {
   const store = createStore();
   const travelerHome = store.getHomePlot('plot-28');
-  const publicHome = store.getHomePlot('plot-1');
 
-  assert.equal(travelerHome.ownerId, 'traveler-001');
+  // 批量初始化后，除 KIN 39 号宅院外，其余地块均为待分配（ownerName 空）
+  assert.equal(travelerHome.ownerId, null);
+  assert.equal(travelerHome.ownerName, '');
   assert.equal(store.canEditHome('plot-28'), false);
-  assert.equal(store.canViewHome('plot-1'), true);
+  // 默认关闭参观权限：未开放宅院外人不可浏览
+  assert.equal(store.canViewHome('plot-1'), false);
 
   await store.login({
     username: 'traveler',
@@ -90,39 +92,19 @@ test('enforces home ownership, material unlocks, and visitor actions', async () 
 
   assert.equal(store.canEditHome('plot-28'), true);
   assert.equal(store.canEditHome('plot-1'), false);
-  assert.equal(
-    store.addHomeItem({
-      plotId: 'plot-28',
-      materialId: 'house-cabin',
-      x: 0.1,
-      y: 0.1,
-    }).materialId,
-    'house-cabin',
-  );
-  assert.equal(
-    store.addHomeItem({
-      plotId: 'plot-1',
-      materialId: 'house-cabin',
-      x: 0.1,
-      y: 0.1,
-    }),
-    null,
-  );
 
-  assert.equal(store.isMaterialUnlocked('house-stone'), false);
-  const shardsBefore = store.state.user.worldShards;
-  assert.equal(store.unlockMaterial('house-stone'), true);
-  assert.equal(store.state.user.worldShards, shardsBefore - 3);
+  // 参观权限：主人可开放/关闭；他人宅院不可改
+  assert.equal(store.setVisitPermission('plot-28', true), true);
+  assert.equal(store.getHomePlot('plot-28').visibility, 'public');
+  assert.equal(store.setVisitPermission('plot-1', true), false);
 
+  // 默认关闭参观权限：外人在未开放宅院不能留言/寻宝
   assert.equal(
     store.addHomeMessage({
       plotId: 'plot-1',
       content: '这里很安静。',
     }),
-    true,
+    false,
   );
-  const clue = store.discoverClue('plot-1');
-  assert.equal(clue, '月光下的旧地图');
-  assert.equal(store.state.user.worldShards, shardsBefore - 3 + 2);
   assert.equal(store.discoverClue('plot-1'), null);
 });
