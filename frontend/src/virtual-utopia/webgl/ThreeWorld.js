@@ -6,6 +6,7 @@ import {
   resolveManorRole,
 } from './materials/manorMaterials.js';
 import { buildCourtyardDecor } from './decorations/courtyardDecor.js';
+import { buildMountainEnv, updateMountainEnvMist } from './decorations/mountainEnv.js';
 import { seedResidents } from '../data/residents.js';
 import {
   bridgeNetwork,
@@ -501,6 +502,9 @@ export class ThreeWorld {
     this.buildRoadDetailPass();
     this.buildHomeDetailPass();
     this.buildFoothillBuffer();
+    // 山林公共环境细化（视觉层）：山坡植被 + 溪流乱石 + 林间薄雾。
+    // 只读 homes/hubs/地形/河道，不改动任何几何、坐标、碰撞、AI、相机、后端、聊天、人设。
+    this.buildMountainEnv();
     this.buildClouds();
     this.buildAtmospherePass();
     this.buildNightSky();
@@ -3616,6 +3620,46 @@ export class ThreeWorld {
     return result;
   }
 
+  /**
+   * 山林公共环境细化（视觉层）—— 山坡植被 / 溪流乱石 / 林间薄雾。
+   *
+   * 设计前提与硬性约束（与庭院装饰小品一致，但范围限定在「宅院外部公共山林」）：
+   *  - 只读 `homes` / `bridgeNetwork`（组团枢纽）/ 地形 / 河道，用于确定落点；不写任何既有对象。
+   *  - 不注册碰撞体、不加入 clickableMeshes、不改动 home.* / 地形高程 / 河道位置 / 居民 AI / 相机。
+   *  - 山坡植被落在「距宅院 ≥ 8m、距枢纽 ≥ 7m、距河道中线 ≥ 河宽×1.9」的公共山林带，避开广场与远山脚带。
+   *  - 溪流乱石仅作视觉装饰，落在河岸环带，不改动水位与河道几何。
+   *  - 林间薄雾为贴地半透明低带，不干扰中近景物件渲染清晰度。
+   *  - 实例化复用：每个角色一个 InstancedMesh；植被纯色绿调（0 新增贴图），溪流石复用 manorMaterials 毛石贴图。
+   */
+  buildMountainEnv() {
+    const hubs = bridgeNetwork.map((bridge) => ({
+      x: bridge.hub.x,
+      z: bridge.hub.z,
+    }));
+
+    const result = buildMountainEnv({
+      homes,
+      hubs,
+      library: this.manorMaterials,
+      scene: this.scene,
+      windEnabledRef: { value: this.windEnabled !== false },
+    });
+
+    this.mountainEnv = {
+      group: result.group,
+      mistGroup: result.mistGroup,
+      mistMeshes: result.mistMeshes,
+      slopeItems: result.slopeItems,
+      streamItems: result.streamItems,
+      trianglesByRole: result.trianglesByRole,
+      stats: result.stats,
+      hubs,
+      windEnabledRef: result.windEnabledRef,
+    };
+
+    return result;
+  }
+
   buildStreamDetailPass() {
     const group = new THREE.Group();
     group.name = 'stream-detail-pass';
@@ -5632,6 +5676,11 @@ export class ThreeWorld {
         cloud.position.x = -170;
       }
     });
+
+    // 林间薄雾：极慢水平漂移（仅旋转 mistGroup，不触碰相机/居民/几何；可被 windEnabled 关闭）
+    if (this.mountainEnv?.mistGroup) {
+      updateMountainEnvMist(this.mountainEnv, elapsed);
+    }
 
     // 落叶飘落
     if (this.leafPoints) {

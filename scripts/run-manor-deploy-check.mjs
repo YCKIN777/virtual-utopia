@@ -80,6 +80,17 @@ const STEPS = [
     exec: ['scripts/verify-courtyard-decor.mjs'],
   },
   {
+    id: 'env',
+    title: '山林公共环境细化（山坡植被 / 溪流乱石 / 林间薄雾）',
+    coverage: [
+      '山林环境只做视觉、不新增碰撞体、不阻挡居民行走',
+      '单物件三角面 300–800、实例化复用控制面数',
+      '林间薄雾柔和不糊化物件',
+    ],
+    slow: false,
+    exec: ['scripts/verify-mountain-env.mjs'],
+  },
+  {
     id: 'materials',
     title: '建筑材质：共享材质/贴图/复用（材质替换生效）',
     coverage: ['加载新 ThreeJS 材质，替换旧建筑材质'],
@@ -145,7 +156,7 @@ const runNode = (args) => {
 const ALLOWED = [
   { re: /^frontend\/src\/virtual-utopia\/webgl\/models\/.*\.glb$/, label: '房屋模型 / 庭院小品（GLB）' },
   { re: /^frontend\/src\/virtual-utopia\/webgl\/materials\//, label: '建筑材质模块' },
-  { re: /^frontend\/src\/virtual-utopia\/webgl\/decorations\//, label: '庭院小品模块' },
+  { re: /^frontend\/src\/virtual-utopia\/webgl\/decorations\//, label: '庭院小品 / 山林环境模块' },
 ];
 /** 装配层：属于「把新模型/新材质接上」的必要改动，但文件里也含业务代码 → 只提示、不判失败。 */
 const REVIEW = [
@@ -328,6 +339,7 @@ const CHECKLIST = [
   ['模型成功挂载到对应地块', ['glb', 'scene']],
   ['建筑不悬浮、无穿模，占地范围和原始建筑一致', ['glb', 'scene', 'beacons']],
   ['庭院小品成套差异化、单件 300–800 面、不阻挡居民', ['decor']],
+  ['山林环境细化：山坡植被/溪流乱石/林间薄雾，单件 300–800 面、实例化、不阻挡居民', ['env']],
   ['页面加载速度无明显下降，帧率稳定', ['scene']],
   ['居民 Avatar 可正常在院内闲逛，无穿墙、路径异常', ['roaming']],
   ['相机漫游正常', ['scene']],
