@@ -9,25 +9,39 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// 加载 backend/.env。注意：只有 .env 里提供了「非空」值时才采用它，
-// 否则不要把外部注入（进程环境/启动脚本）的真实 key 覆盖成空串。
-// 旧代码用 override:true —— 会在 .env 为空时抹掉已注入进程的 key，重启后悄悄降级 mock。
-const backendRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../..',
-);
-const parsedEnv = dotenv.config({ path: path.join(backendRoot, '.env') }).parsed || {};
-
-for (const key of [
+// 需要从 .env 读取的大模型相关变量
+export const LLM_ENV_KEYS = [
   'DEEPSEEK_API_KEY',
   'DEEPSEEK_BASE_URL',
   'DEEPSEEK_MODEL',
   'SILICONFLOW_API_KEY',
   'SILICONFLOW_BASE_URL',
   'SILICONFLOW_MODEL',
-]) {
-  if (parsedEnv[key]) {
-    process.env[key] = parsedEnv[key];
+];
+
+const backendRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
+const rootDirectory = path.resolve(backendRoot, '..');
+
+// 1) backend/.env：只在提供了「非空」值时才采用它，
+//    否则不要把外部注入（进程环境/启动脚本）的真实 key 覆盖成空串。
+const backendEnv =
+  dotenv.config({ path: path.join(backendRoot, '.env') }).parsed || {};
+for (const key of LLM_ENV_KEYS) {
+  if (backendEnv[key]) {
+    process.env[key] = backendEnv[key];
+  }
+}
+
+// 2) 仓库根 .env：仅当进程环境里还没有该键时补充
+//    （本项目习惯把 DeepSeek key 放在根 .env；也让 phase6 单独启动时能读到）。
+const rootEnv =
+  dotenv.config({ path: path.join(rootDirectory, '.env') }).parsed || {};
+for (const key of LLM_ENV_KEYS) {
+  if (!process.env[key] && rootEnv[key]) {
+    process.env[key] = rootEnv[key];
   }
 }
 
