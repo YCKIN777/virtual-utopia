@@ -5,6 +5,7 @@ import {
   createManorMaterialLibrary,
   resolveManorRole,
 } from './materials/manorMaterials.js';
+import { buildCourtyardDecor } from './decorations/courtyardDecor.js';
 import { seedResidents } from '../data/residents.js';
 import {
   bridgeNetwork,
@@ -494,6 +495,8 @@ export class ThreeWorld {
     await waitFrame();
     this.buildHomes();
     this.buildCourtyardDetails();
+    // 庭院装饰小品（视觉层）：在既有庭院细节之后装配，只读场景实测数据，不改任何原有几何
+    this.buildCourtyardDecor();
     this.buildStreamDetailPass();
     this.buildRoadDetailPass();
     this.buildHomeDetailPass();
@@ -3450,6 +3453,167 @@ export class ThreeWorld {
     );
 
     this.scene.add(group);
+  }
+
+  /**
+   * 庭院装饰小品（纯视觉层）。
+   *
+   * 关键设计：所有落位参数都**实测自当前场景**，不复制 buildHomes 里的缩放/边界公式
+   * （那样会和"宅院边界"耦合，属于本次迭代禁止改动的部分）：
+   *  - clear：该户底盘（石台基 / 地面光圈）的水平半径 → 决定摆放环带
+   *  - top  ：底盘顶面高度 → 决定小品落地 y（不会陷进台基、不会浮空）
+   *  - bodyRadius：房屋主体的水平半径 → 用于"不贴墙"退让
+   *  - avoidPoints：既有庭院小品（courtyard-details 实例）坐标 → 避免与之挤在一起
+   *
+   * 安全性：不注册碰撞体（本工程 webgl 层无碰撞系统）、不加入 clickableMeshes、
+   * 不参与任何 update 循环、不改动 home.* 与任何既有对象。
+   */
+  buildCourtyardDecor() {
+    const box = new THREE.Box3();
+
+    /**
+     * 手工量一个网格的世界包围盒（顶点 × matrixWorld）。
+     * 刻意不用 `Box3.setFromObject` —— 它在本场景量出的结果与真实值不符
+     * （实测把台基量成 8.59m 而实际 8.45m、把房屋量成 2 倍），手工量法在自检脚本里已被验证准确。
+     */
+    const measureBox = (mesh) => {
+      mesh.updateWorldMatrix(true, false);
+      const position = mesh.geometry.attributes.position;
+      const m = mesh.matrixWorld.elements;
+      box.min.set(Infinity, Infinity, Infinity);
+      box.max.set(-Infinity, -Infinity, -Infinity);
+      for (let i = 0; i < position.count; i += 1) {
+        const x = position.getX(i);
+        const y = position.getY(i);
+        const z = position.getZ(i);
+        const wx = m[0] * x + m[4] * y + m[8] * z + m[12];
+        const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
+        const wz = m[2] * x + m[6] * y + m[10] * z + m[14];
+        if (wx < box.min.x) box.min.x = wx;
+        if (wy < box.min.y) box.min.y = wy;
+        if (wz < box.min.z) box.min.z = wz;
+        if (wx > box.max.x) box.max.x = wx;
+        if (wy > box.max.y) box.max.y = wy;
+        if (wz > box.max.z) box.max.z = wz;
+      }
+      return box;
+    };
+
+    const bounds = new Map();
+
+    // 关键：本方法在 init 里紧跟 buildHomes 之后执行，此时场景还没渲染过，
+    // 新建 group 的 matrixWorld 仍是单位矩阵（只在 set position/scale，未 updateMatrixWorld）。
+    // 不先刷新的话 Box3.setFromObject 会按"局部空间"量出错误的包围盒（曾把台基算成 40+ 米宽）。
+    this.scene.updateMatrixWorld(true);
+
+    this.homeObjects.forEach((entry, homeId) => {
+      const home = entry.home;
+      let clear = 0;
+      let top = home.y;
+      // 房屋主体的水平半径：用"离宅院中心最远的模型网格"度量。
+      // 刻意不用包围盒 —— 宅院 group 带 -90° 旋转，世界轴对齐包围盒会虚胖一倍（实测 5.3m vs 真实 2.66m）。
+      let bodyRadius = 0;
+      let modelMeshes = 0;
+
+      // LOD 的非当前层级是简化代理，不代表真实外观 → 测量时跳过
+      const skipSet = new Set();
+      if (entry.group?.isLOD && entry.group.levels) {
+        entry.group.levels.slice(1).forEach((level) => {
+          if (level.object) skipSet.add(level.object);
+        });
+      }
+      const isSkipped = (node) => {
+        let current = node;
+        while (current) {
+          if (skipSet.has(current)) return true;
+          current = current.parent;
+        }
+        return false;
+      };
+
+      entry.group.traverse((child) => {
+        if (!child.isMesh || !child.geometry?.attributes?.position) return;
+        if (isSkipped(child)) return;
+        measureBox(child);
+
+        if (child.userData?.homeId !== undefined) {
+          modelMeshes += 1;
+          bodyRadius = Math.max(
+            bodyRadius,
+            box.max.x - home.x,
+            home.x - box.min.x,
+            box.max.z - home.z,
+            home.z - box.min.z,
+          );
+          return;
+        }
+
+        // 贴地的底盘类（石台基 / 地面光圈 / 门前平台）：底面不高于宅基面 0.9m
+        if (box.min.y > home.y + 0.9) return;
+        const radius = Math.max(
+          box.max.x - home.x,
+          home.x - box.min.x,
+          box.max.z - home.z,
+          home.z - box.min.z,
+        );
+        // 底盘是"薄板 + 有限半径"：厚度超过 1.2m 或半径超过 6m 的都不算底盘
+        // （这类多半是室内地面、地形片或其它大件，不能拿来当摆放基准）
+        const thickness = box.max.y - box.min.y;
+        if (thickness > 1.2 || radius > 6) return;
+        if (radius > clear) {
+          clear = radius;
+          top = Math.max(top, box.max.y);
+        }
+      });
+
+      bounds.set(homeId, {
+        clear: clear || 4.2,
+        top: top || home.y + 0.3,
+        bodyRadius: modelMeshes ? bodyRadius : 0,
+      });
+    });
+
+    // 既有庭院小品的世界坐标 + 各自水平半径：新小品按"半径之和 + 间隙"避让，
+    // 而不是拍一个固定间距（既有小品体量差异很大：矮篱 1.45m、石粒 0.2m）
+    const details = this.scene.getObjectByName('courtyard-details');
+    const avoidPoints = [];
+    if (details) {
+      const matrix = new THREE.Matrix4();
+      const point = new THREE.Vector3();
+      details.children.forEach((mesh) => {
+        if (!mesh.isInstancedMesh) return;
+        if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+        const base = mesh.geometry.boundingSphere?.radius || 0.2;
+        for (let i = 0; i < mesh.count; i += 1) {
+          mesh.getMatrixAt(i, matrix);
+          point.setFromMatrixPosition(matrix);
+          const elements = matrix.elements;
+          const instanceScale = Math.hypot(elements[0], elements[1], elements[2]) || 1;
+          avoidPoints.push({ x: point.x, z: point.z, radius: base * instanceScale });
+        }
+      });
+    }
+
+    const result = buildCourtyardDecor({
+      homes,
+      homeBounds: (home) => bounds.get(home.id) || null,
+      avoidPoints,
+      library: this.manorMaterials,
+      scene: this.scene,
+    });
+
+    this.courtyardDecor = {
+      group: result.group,
+      placements: result.placements,
+      skipped: result.skipped,
+      trianglesByRole: result.trianglesByRole,
+      footprints: result.footprints,
+      stats: result.stats,
+      boundsByHome: bounds,
+      avoidPointCount: avoidPoints.length,
+    };
+
+    return result;
   }
 
   buildStreamDetailPass() {

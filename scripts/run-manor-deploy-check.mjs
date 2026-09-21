@@ -70,6 +70,16 @@ const STEPS = [
     exec: ['scripts/verify-manor-deploy.mjs'],
   },
   {
+    id: 'decor',
+    title: '庭院装饰小品（成套差异 / 三角面预算 / 不阻挡）',
+    coverage: [
+      '庭院小品只做视觉、不新增碰撞体、不阻挡居民行走',
+      '单物件三角面 300–800',
+    ],
+    slow: false,
+    exec: ['scripts/verify-courtyard-decor.mjs'],
+  },
+  {
     id: 'materials',
     title: '建筑材质：共享材质/贴图/复用（材质替换生效）',
     coverage: ['加载新 ThreeJS 材质，替换旧建筑材质'],
@@ -133,8 +143,9 @@ const runNode = (args) => {
 
 // ---------------------------------------------------------------- 0. 范围守卫
 const ALLOWED = [
-  { re: /^frontend\/src\/virtual-utopia\/webgl\/models\/.*\.glb$/, label: '房屋模型（GLB）' },
+  { re: /^frontend\/src\/virtual-utopia\/webgl\/models\/.*\.glb$/, label: '房屋模型 / 庭院小品（GLB）' },
   { re: /^frontend\/src\/virtual-utopia\/webgl\/materials\//, label: '建筑材质模块' },
+  { re: /^frontend\/src\/virtual-utopia\/webgl\/decorations\//, label: '庭院小品模块' },
 ];
 /** 装配层：属于「把新模型/新材质接上」的必要改动，但文件里也含业务代码 → 只提示、不判失败。 */
 const REVIEW = [
@@ -316,6 +327,7 @@ console.log('\n---------------- 自检清单对照 ----------------');
 const CHECKLIST = [
   ['模型成功挂载到对应地块', ['glb', 'scene']],
   ['建筑不悬浮、无穿模，占地范围和原始建筑一致', ['glb', 'scene', 'beacons']],
+  ['庭院小品成套差异化、单件 300–800 面、不阻挡居民', ['decor']],
   ['页面加载速度无明显下降，帧率稳定', ['scene']],
   ['居民 Avatar 可正常在院内闲逛，无穿墙、路径异常', ['roaming']],
   ['相机漫游正常', ['scene']],

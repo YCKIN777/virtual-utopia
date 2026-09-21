@@ -3,21 +3,21 @@
  * 宅院模型部署「备份 / 回滚」工具。
  *
  *   node scripts/rollback-manor-deploy.mjs --backup            # 部署前：把当前 GLB 快照到备份目录
- *   node scripts/rollback-manor-deploy.mjs                     # 部署失败：从备份还原三个 GLB
+ *   node scripts/rollback-manor-deploy.mjs                     # 部署失败：从备份还原 GLB
  *   node scripts/rollback-manor-deploy.mjs --dry-run           # 只看会还原什么，不动文件
- *   node scripts/rollback-manor-deploy.mjs --from <dir>        # 指定备份目录（默认 .workbuddy/tmp/manor-backup）
+ *   node scripts/rollback-manor-deploy.mjs --from <dir>        # 指定备份目录
  *   node scripts/rollback-manor-deploy.mjs --list              # 列出备份目录里的快照
  *
- * 只动 `frontend/src/virtual-utopia/webgl/models/*-manor.glb` 三个模型文件，
- * 不碰代码、材质、坐标、碰撞与任何业务逻辑。
+ * 目标可选：
+ *   --target manor（默认）→ 宅院主体 `webgl/models/*-manor.glb`（备份目录 .workbuddy/tmp/manor-backup）
+ *   --target decor        → 庭院小品 `webgl/models/decor/*.glb`（备份目录 .workbuddy/tmp/decor-backup）
+ *
+ * 只动模型文件，不碰代码、材质、坐标、碰撞与任何业务逻辑。
  */
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { inspectGlb } from './inspect-manor-glb.mjs';
-
-const MODELS_DIR = path.resolve('frontend/src/virtual-utopia/webgl/models');
-const TARGETS = ['terrace-manor.glb', 'forest-manor.glb', 'cliff-manor.glb'];
 
 const argOf = (flag, fallback = null) => {
   const withEq = process.argv.find((a) => a.startsWith(`${flag}=`));
@@ -28,8 +28,35 @@ const argOf = (flag, fallback = null) => {
     : fallback;
 };
 
+/** 两套目标：宅院主体 / 庭院小品。 */
+const TARGET_SETS = {
+  manor: {
+    label: '宅院主体',
+    dir: 'frontend/src/virtual-utopia/webgl/models',
+    defaultBackup: '.workbuddy/tmp/manor-backup',
+    files: ['terrace-manor.glb', 'forest-manor.glb', 'cliff-manor.glb'],
+  },
+  decor: {
+    label: '庭院小品',
+    dir: 'frontend/src/virtual-utopia/webgl/models/decor',
+    defaultBackup: '.workbuddy/tmp/decor-backup',
+    files: null, // null = 收录该目录下全部 *.glb
+  },
+};
+
+const TARGET_KEY = argOf('--target', process.argv.includes('--decor') ? 'decor' : 'manor');
+const targetSet = TARGET_SETS[TARGET_KEY] || TARGET_SETS.manor;
+const MODELS_DIR = path.resolve(targetSet.dir);
+const TARGETS = targetSet.files
+  ? targetSet.files
+  : (existsSync(MODELS_DIR)
+      ? readdirSync(MODELS_DIR)
+          .filter((f) => f.endsWith('.glb'))
+          .sort()
+      : []);
+
 const BACKUP_DIR = path.resolve(
-  argOf('--from', argOf('--to', '.workbuddy/tmp/manor-backup')),
+  argOf('--from', argOf('--to', targetSet.defaultBackup)),
 );
 const MODE_BACKUP = process.argv.includes('--backup');
 const MODE_LIST = process.argv.includes('--list');
@@ -61,6 +88,7 @@ const describe = (dir, name) => {
 
 const pad = (s, n) => String(s).padEnd(n);
 
+console.log(`目标: ${targetSet.label}（--target ${TARGET_KEY}）`);
 console.log(`备份目录: ${BACKUP_DIR}`);
 console.log(`模型目录: ${MODELS_DIR}\n`);
 
@@ -88,6 +116,10 @@ if (MODE_LIST) {
 
 // ------------------------------------------------------------------ --backup
 if (MODE_BACKUP) {
+  if (!TARGETS.length) {
+    console.log(`（${MODELS_DIR} 下没有 *.glb —— 当前实现是程序化几何，本项无需备份）`);
+    process.exit(0);
+  }
   mkdirSync(BACKUP_DIR, { recursive: true });
   let copied = 0;
   let missing = 0;
