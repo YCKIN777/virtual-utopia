@@ -4272,10 +4272,13 @@ export class ThreeWorld {
       return null;
     }
 
+    // 统一使用「实际渲染坐标」group.position：它才是玩家真正站的位置。
+    // targetPosition 只是本帧相机中心（目标坐标），在平移/追帧时会与实际渲染点拉开数米，
+    // 与居民使用的 group.position 混算会导致贴着居民也判定 >4m。
     return {
-      x: record.targetPosition.x,
-      y: record.targetPosition.y,
-      z: record.targetPosition.z,
+      x: record.group.position.x,
+      y: record.group.position.y,
+      z: record.group.position.z,
       rotation: record.targetRotation,
       animationState: record.animationState,
       appearance: this.localAppearance,

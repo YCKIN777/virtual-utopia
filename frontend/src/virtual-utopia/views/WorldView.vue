@@ -230,6 +230,21 @@ const selectWorldObject = (info) => {
   if (info?.type === 'home') {
     worldStore.recordHomeVisit({ plotId: info.id });
   }
+
+  // 点击某户居民宅的暖灯/木牌：直接打开与该户主居民的一对一聊天（免凑距离）。
+  if (info?.type === 'residentHome') {
+    const resident = seedResidents.find(
+      (item) => item.homePlotId === info.homeId,
+    );
+
+    if (resident) {
+      openResidentChat({
+        avatarId: resident.avatarId,
+        residentName: resident.residentName,
+        homePlotId: resident.homePlotId,
+      });
+    }
+  }
 };
 
 const TIME_PERIODS = ['day', 'dusk', 'night', 'dawn'];
@@ -367,6 +382,8 @@ onMounted(async () => {
     updateKinYardPresence();
     if (import.meta.env.DEV) {
       window.__utopiaWorld = world;
+      // 开发期调试钩子：便于自测脚本查看 worldStore 状态（生产不注入）。
+      window.__utopiaStore = worldStore;
     }
   } catch (error) {
     loading.visible = false;
@@ -718,7 +735,7 @@ watch(currentUser, () => {
       @close="residentChatOpen = false"
     />
 
-    <WorldChatPanel v-if="currentUser" />
+    <WorldChatPanel v-if="currentUser" @select-resident="openResidentChat" />
   </main>
 </template>
 

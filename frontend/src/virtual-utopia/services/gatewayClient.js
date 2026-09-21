@@ -1,6 +1,11 @@
 const viteEnv = import.meta.env || {};
 const defaultBaseUrl = viteEnv.VITE_PHASE6_GATEWAY_URL || '/phase6-api';
 
+// 居民私聊答复由 LLM 生成，耗时可能远超普通持久化请求（默认 5s）。
+// 若沿用 5s，请求会在响应体读取中途被 abort，response.json() 抛错并被
+// `.catch(() => null)` 静默吞掉 → 回复丢失且无任何提示。这里给足 LLM 预算。
+const RESIDENT_CHAT_TIMEOUT_MS = 60000;
+
 export class PersistenceClientError extends Error {
   constructor(message, { code = 'PERSISTENCE_ERROR', status = 0, cause } = {}) {
     super(message, { cause });
@@ -177,7 +182,7 @@ export const createPersistenceClient = ({
         history,
       },
       fetchImpl,
-      timeoutMs,
+      timeoutMs: Math.max(timeoutMs, RESIDENT_CHAT_TIMEOUT_MS),
     }),
   listFriends: (token) =>
     requestJson({

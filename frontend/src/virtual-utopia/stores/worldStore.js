@@ -1113,7 +1113,13 @@ export const createWorldStore = ({
     const normalizedName = String(residentName || '').trim();
     const normalized = String(message || '').trim().slice(0, 200);
 
-    if (!accessToken || !normalizedName || !normalized) {
+    if (!accessToken) {
+      // 未登录不再静默失败：给出友好提示，引导用户先登录再与居民交谈。
+      notify('请先登录再与居民交谈', 'info');
+      return null;
+    }
+
+    if (!normalizedName || !normalized) {
       return null;
     }
 
