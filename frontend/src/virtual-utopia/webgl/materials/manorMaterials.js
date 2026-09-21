@@ -3,9 +3,11 @@
  *
  * 设计要点
  *  - 只负责「建筑与庭院小品」的材质，不改任何几何、坐标、碰撞、逻辑。
- *  - 全部使用内建 MeshStandardMaterial（无自定义 shader），只用 map + bumpMap + 少量参数。
+ *  - 全部使用内建 MeshStandardMaterial（无自定义 shader），只用 map + bumpMap + roughnessMap + 少量参数。
  *  - 贴图**程序化生成**（CanvasTexture，默认 1024²），零二进制资源、可复现、无网络依赖。
  *  - 颜色贴图同时用作凹凸图（成本 0 显存），需要更精细时可换成手作 normalMap。
+ *  - 额外一张 **roughnessMap**：把"斑驳/风化/瓦缝/石面"翻成粗糙度差异，
+ *    让哑光表面在高光上有层次（仍属标准 PBR 通道，非自定义 shader）。
  *  - 材质按 `role:group` **缓存复用**：30+ 栋宅院共享同一批材质（原来每网格 clone ⇒ 数百份）。
  *
  * 角色（role）
@@ -27,6 +29,27 @@ export const MANOR_TEXTURE_SIZE = 1024;
 
 /** 复用颜色贴图当凹凸图（省一半显存）。设为 false 则额外生成灰度凹凸图。 */
 export const MANOR_SHARE_COLOR_AS_BUMP = true;
+
+/**
+ * 是否生成 roughnessMap（1024²，每角色一张）。
+ * 作用：把「斑驳 / 风化 / 瓦缝 / 石面孔隙」翻成粗糙度差异 —— 哑光表面因此有了高光层次，
+ * 是"提升材质真实感"最省钱的一步（标准 PBR 通道，无 shader、无动画）。
+ * 移动端显存紧张可置 false：材质会退回「整块恒定粗糙度」，观感略平但功能不变。
+ */
+export const MANOR_ROUGHNESS_MAP = true;
+
+/**
+ * 各角色粗糙度调制带（**乘在 MANOR_ROLE_PRESETS.roughness 上**，1.0 = 不变）。
+ * 贴图越暗（越风化 / 越是缝隙）→ 越接近 band 上界（更粗糙、更哑）。
+ * 映射公式：roughnessMap = 1 - (1 - lum)^gamma，再线性压到 [band[0], band[1]]。
+ */
+export const ROLE_ROUGHNESS_BAND = {
+  earth: [0.78, 1.0, 1.0], // 夯土：斑驳处颗粒外露 → 更粗糙
+  timber: [0.8, 1.0, 1.1], // 原木：深木纹处吸光、浅木纹处略有木脂微光
+  tile: [0.72, 1.0, 0.9], // 青灰瓦：瓦面残留釉光 vs 风化缺角，对比最明显
+  stone: [0.84, 1.0, 1.0], // 毛石：灰缝极粗糙、石面略平
+  bamboo: [0.8, 1.0, 1.0], // 竹篱：竹节处最粗糙
+};
 
 /** 角色识别阈值（sRGB 感知亮度）。改这两个数即可整体调整"哪块算瓦 / 哪块算夯土"。 */
 export const ROLE_LUMINANCE = { tile: 88, earth: 125 };
@@ -351,6 +374,33 @@ const toGrayscale = (sourceCanvas, size) => {
 };
 
 /**
+ * 由颜色贴图派生粗糙度图（灰度）。
+ *  - 暗部（斑驳/缝隙/风化）→ 高粗糙度；亮部（受光面/木脂/釉面残留）→ 低一档。
+ *  - 每角色用 ROLE_ROUGHNESS_BAND 压到各自区间，保证始终落在"哑光"范围内。
+ *  - 只用 canvas 2D 像素运算，确定性、无外部依赖、无 shader。
+ */
+const buildRoughnessCanvas = (sourceCanvas, size, [low, high, gamma]) => {
+  const { canvas, ctx } = createCanvas(size);
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  const image = ctx.getImageData(0, 0, size, size);
+  const { data } = image;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    const t = Math.pow(1 - Math.min(1, Math.max(0, lum)), gamma);
+    const value = Math.round(255 * (low + (high - low) * t));
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+    data[i + 3] = 255;
+  }
+
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+};
+
+/**
  * 生成共享贴图集：{ earth: { map, bump }, ... }。
  * 同一 size 只生成一次（模块级缓存），多栋宅院共享同一批 GPU 纹理。
  */
@@ -381,6 +431,7 @@ export const createManorTextureSet = ({ size = MANOR_TEXTURE_SIZE, force = false
 
     if (!MANOR_SHARE_COLOR_AS_BUMP) {
       bump = new THREE.CanvasTexture(toGrayscale(canvas, Math.max(256, size >> 1)));
+      bump.colorSpace = THREE.NoColorSpace; // 数据图，必须线性
       bump.wrapS = THREE.RepeatWrapping;
       bump.wrapT = THREE.RepeatWrapping;
       bump.repeat.copy(map.repeat);
@@ -388,7 +439,22 @@ export const createManorTextureSet = ({ size = MANOR_TEXTURE_SIZE, force = false
       bump.name = `manor-${role}-bump`;
     }
 
-    set[role] = { map, bump };
+    // roughnessMap：同分辨率派生，与颜色图共用 repeat；线性数据图。
+    let roughness = null;
+
+    if (MANOR_ROUGHNESS_MAP && ROLE_ROUGHNESS_BAND[role]) {
+      roughness = new THREE.CanvasTexture(
+        buildRoughnessCanvas(canvas, size, ROLE_ROUGHNESS_BAND[role]),
+      );
+      roughness.colorSpace = THREE.NoColorSpace;
+      roughness.wrapS = THREE.RepeatWrapping;
+      roughness.wrapT = THREE.RepeatWrapping;
+      roughness.repeat.copy(map.repeat);
+      roughness.anisotropy = 2;
+      roughness.name = `manor-${role}-roughness`;
+    }
+
+    set[role] = { map, bump, roughness };
   });
 
   textureSetCache = { size, set };
@@ -425,6 +491,9 @@ export const createManorMaterialLibrary = ({ size = MANOR_TEXTURE_SIZE } = {}) =
       map: textures ? textures.map : null,
       bumpMap: textures ? textures.bump : null,
       bumpScale: textures ? preset.bumpScale : 0,
+      // 实际粗糙度 = roughness × roughnessMap（three 的乘法语义），
+      // 于是"斑驳处更哑、受光面略平"的层次来自贴图，而不是把整块调到死平。
+      roughnessMap: textures ? textures.roughness : null,
       dithering: true,
     });
     material.name = `manor-${key}`;
@@ -437,10 +506,13 @@ export const createManorMaterialLibrary = ({ size = MANOR_TEXTURE_SIZE } = {}) =
     materials.clear();
 
     if (textureSetCache) {
-      Object.values(textureSetCache.set).forEach(({ map, bump }) => {
+      Object.values(textureSetCache.set).forEach(({ map, bump, roughness }) => {
         map.dispose();
-        if (bump !== map) {
+        if (bump && bump !== map) {
           bump.dispose();
+        }
+        if (roughness && roughness !== map) {
+          roughness.dispose();
         }
       });
       textureSetCache = null;

@@ -67,6 +67,8 @@ try {
       size: t.map?.image?.width || 0,
       repeat: t.map ? [t.map.repeat.x, t.map.repeat.y] : null,
       sharedBump: t.map === t.bump,
+      roughnessSize: t.roughness?.image?.width || 0,
+      roughnessIsLinear: t.roughness ? t.roughness.colorSpace === '' : false,
     }));
     return {
       size: library.size,
@@ -92,6 +94,16 @@ try {
     '凹凸图复用颜色贴图（0 额外显存）',
     Boolean(lib) && lib.textures.every((t) => t.sharedBump === true),
   );
+  record(
+    '粗糙度贴图已生成（1024² 逐角色 · 线性数据图）',
+    Boolean(lib) &&
+      lib.textures.length === 5 &&
+      lib.textures.every((t) => t.roughnessSize === 1024) &&
+      lib.textures.every((t) => t.roughnessIsLinear === true),
+    lib
+      ? lib.textures.map((t) => `${t.role}:${t.roughnessSize}${t.roughnessIsLinear ? '' : '!sRGB'}`).join(',')
+      : 'no-library',
+  );
 
   // ---- 2) 复用率 + 3) 角色命中 ----
   const usage = await page.evaluate(() => {
@@ -101,6 +113,8 @@ try {
     let unnamed = 0;
     let withMap = 0;
     let withBump = 0;
+    let withRoughness = 0;
+    const roughnessTextures = new Set();
     let glassMeshes = 0;
     const rolesHit = new Set();
     const matsByRole = {};
@@ -126,6 +140,10 @@ try {
         record.homes.add(homeId);
         if (material.map) withMap += 1;
         if (material.bumpMap) withBump += 1;
+        if (material.roughnessMap) {
+          withRoughness += 1;
+          roughnessTextures.add(material.roughnessMap.uuid);
+        }
         const role = name.split(':')[0].replace('manor-', '');
         rolesHit.add(role);
         matsByRole[role] = (matsByRole[role] || 0) + 1;
@@ -140,6 +158,8 @@ try {
       unnamed,
       withMap,
       withBump,
+      withRoughness,
+      uniqueRoughness: roughnessTextures.size,
       glassMeshes,
       rolesHit: [...rolesHit],
       matsByRole,
@@ -164,6 +184,11 @@ try {
     '贴图已挂上材质（map + bumpMap 生效）',
     usage.withMap > 0 && usage.withBump > 0,
     `withMap=${usage.withMap} withBump=${usage.withBump}`,
+  );
+  record(
+    '粗糙度贴图同样被复用（≤5 张服务全部材质）',
+    usage.withRoughness > 0 && usage.uniqueRoughness <= 5,
+    `withRoughnessMap=${usage.withRoughness} uniqueRoughnessTextures=${usage.uniqueRoughness}`,
   );
 
   // ---- 4) 既有系统未受影响 ----
