@@ -28,6 +28,19 @@ const LANTERN_HALO = '#ffcf8f'; // 柔光晕色
 const LANTERN_DAY_COLOR = new THREE.Color(LANTERN_DAY);
 const LANTERN_WARM_COLOR = new THREE.Color(LANTERN_WARM);
 
+// 居民漫游自然化：慢速散步 + 长停留，去掉"弹球式窜动"。
+// 说明：THREE.MathUtils.damp 是"越远冲得越快"的指数逼近，单靠调低 damping 仍会在
+// 起步瞬间窜出去，因此叠加一个速度上限，保证匀速慢走；damping 只负责到点前的缓入。
+const RESIDENT_WALK_SPEED = 1.7; // 居民散步速度 m/s（玩家 9m/s，很容易追上）
+const RESIDENT_ROAM_RADIUS = 5.5; // 宅院周边漫游半径（米）
+const RESIDENT_IDLE_MIN = 8; // 到点后停留最短秒数
+const RESIDENT_IDLE_MAX = 15; // 到点后停留最长秒数
+const RESIDENT_ARRIVE_EPS = 0.5; // 判定"到达路点"的距离（米）
+const RESIDENT_PAUSE_DISTANCE = 3.5; // 玩家靠近到此距离时，居民保持停留（方便走近聊天）
+
+const pickRoamingIdle = () =>
+  RESIDENT_IDLE_MIN + Math.random() * (RESIDENT_IDLE_MAX - RESIDENT_IDLE_MIN);
+
 const clamp = (value, minimum, maximum) =>
   Math.min(Math.max(value, minimum), maximum);
 
@@ -4314,10 +4327,40 @@ export class ThreeWorld {
     for (const record of this.avatarObjects.values()) {
       const position = record.group.position;
       const target = record.targetPosition;
-      const damping = record.isLocal ? 18 : 9;
+      // 本地玩家保持跟手（18）；漫游居民走慢而稳（2.5）；远程真人沿用原平滑度（9）。
+      const damping = record.isLocal ? 18 : record.isRoamingAgent ? 2.5 : 9;
 
-      position.x = THREE.MathUtils.damp(position.x, target.x, damping, delta);
-      position.z = THREE.MathUtils.damp(position.z, target.z, damping, delta);
+      // 关键：只有"正在行走"时才允许位移。静止的漫游居民绝不被 damping 拖向
+      // 目标点滑行——这正是过去"静立中突然窜位/弹球"的根因。
+      const canMove =
+        record.isLocal ||
+        !record.isRoamingAgent ||
+        record.animationState === 'walk';
+
+      let nextX = position.x;
+      let nextZ = position.z;
+
+      if (canMove) {
+        nextX = THREE.MathUtils.damp(position.x, target.x, damping, delta);
+        nextZ = THREE.MathUtils.damp(position.z, target.z, damping, delta);
+
+        // 漫游居民限速：指数逼近在起步时速度过大（越远越快）会显得"窜点"，
+        // 这里再按固定速度上限收敛，保证匀速慢走；到点附近由 damping 负责缓入。
+        if (!record.isLocal && record.isRoamingAgent) {
+          const stepX = nextX - position.x;
+          const stepZ = nextZ - position.z;
+          const step = Math.hypot(stepX, stepZ);
+          const maxStep = RESIDENT_WALK_SPEED * delta;
+
+          if (step > maxStep && step > 1e-6) {
+            nextX = position.x + (stepX / step) * maxStep;
+            nextZ = position.z + (stepZ / step) * maxStep;
+          }
+        }
+      }
+
+      position.x = nextX;
+      position.z = nextZ;
 
       const angleDelta = Math.atan2(
         Math.sin(record.targetRotation - record.group.rotation.y),
@@ -4437,31 +4480,53 @@ export class ThreeWorld {
   }
 
   pickRoamingWaypoint(record) {
-    const { minX, maxX, minZ, maxZ } = record.roaming.bounds;
-    const homeId = record.roaming.homeId;
+    const roaming = record.roaming;
+    const home = roaming.homeId ? getHomeById(roaming.homeId) : null;
 
-    if (homeId && Math.random() < 0.45) {
-      const home = getHomeById(homeId);
-
-      if (home) {
-        record.targetPosition.set(home.x, home.y, home.z);
-        record.targetRotation = Math.atan2(
-          home.x - record.group.position.x,
-          home.z - record.group.position.z,
-        );
-        record.roaming.atHome = true;
-        return;
-      }
+    // 目的感：有宅院的居民约半数概率往宅院门口一带去（留在自家附近，不走远）。
+    if (home && roaming.home && Math.random() < 0.5) {
+      const angle = Math.random() * Math.PI * 2;
+      const gate = 1.8 + Math.random() * 1.8;
+      this.setRoamingTarget(
+        record,
+        home.x + Math.cos(angle) * gate,
+        home.z + Math.sin(angle) * gate,
+        { atHome: true },
+      );
+      return;
     }
 
-    const x = THREE.MathUtils.lerp(minX, maxX, Math.random());
-    const z = THREE.MathUtils.lerp(minZ, maxZ, Math.random());
+    // 有宅院：以宅院为圆心、半径内取一个漫步点（圆形分布，距离感均匀，约 5~6 米内）。
+    if (roaming.home) {
+      const radius = roaming.radius || RESIDENT_ROAM_RADIUS;
+      const angle = Math.random() * Math.PI * 2;
+      const distance = THREE.MathUtils.lerp(1.6, radius, Math.sqrt(Math.random()));
+      this.setRoamingTarget(
+        record,
+        roaming.home.x + Math.cos(angle) * distance,
+        roaming.home.z + Math.sin(angle) * distance,
+        { atHome: false },
+      );
+      return;
+    }
+
+    // 无宅院（如领主）：沿用矩形范围，让他在镇上自由走动。
+    const { minX, maxX, minZ, maxZ } = roaming.bounds;
+    this.setRoamingTarget(
+      record,
+      THREE.MathUtils.lerp(minX, maxX, Math.random()),
+      THREE.MathUtils.lerp(minZ, maxZ, Math.random()),
+      { atHome: false },
+    );
+  }
+
+  setRoamingTarget(record, x, z, { atHome = false } = {}) {
     record.targetPosition.set(x, getTerrainHeight(x, z), z);
     record.targetRotation = Math.atan2(
       x - record.group.position.x,
       z - record.group.position.z,
     );
-    record.roaming.atHome = false;
+    record.roaming.atHome = atHome;
   }
 
   getRoamingAgentPosition(id) {
@@ -4479,6 +4544,11 @@ export class ThreeWorld {
   }
 
   updateRoamingAgents(delta) {
+    const localRecord = this.localAvatarId
+      ? this.avatarObjects.get(this.localAvatarId)
+      : null;
+    const localPosition = localRecord ? localRecord.group.position : null;
+
     for (const record of this.avatarObjects.values()) {
       if (!record.isRoamingAgent) {
         continue;
@@ -4489,19 +4559,47 @@ export class ThreeWorld {
       if (roaming.idleTimer > 0) {
         roaming.idleTimer -= delta;
         record.animationState = 'idle';
+        // 停留期间把目标锁在脚下，配合 animateAvatars 的不位移，彻底杜绝"静立滑行"。
+        record.targetPosition.set(
+          record.group.position.x,
+          getTerrainHeight(record.group.position.x, record.group.position.z),
+          record.group.position.z,
+        );
+
+        if (roaming.idleTimer <= 0) {
+          // 停留结束，才挑下一个漫步点，随后才开始走（不再"刚停下就窜走"）。
+          this.pickRoamingWaypoint(record);
+        }
         continue;
+      }
+
+      // 玩家贴近时保持停留：不会一靠近就窜走，方便自然走过去聊天。
+      if (localPosition) {
+        const toPlayer = Math.hypot(
+          record.group.position.x - localPosition.x,
+          record.group.position.z - localPosition.z,
+        );
+
+        if (toPlayer <= RESIDENT_PAUSE_DISTANCE) {
+          record.animationState = 'idle';
+          roaming.idleTimer = 1.2 + Math.random() * 1.5;
+          record.targetPosition.set(
+            record.group.position.x,
+            getTerrainHeight(record.group.position.x, record.group.position.z),
+            record.group.position.z,
+          );
+          continue;
+        }
       }
 
       const dx = record.targetPosition.x - record.group.position.x;
       const dz = record.targetPosition.z - record.group.position.z;
       const distance = Math.hypot(dx, dz);
 
-      if (distance < 1.6) {
+      if (distance < RESIDENT_ARRIVE_EPS) {
+        // 到达路点 → 进入较长停留；下个路点留到停留结束时再挑。
         record.animationState = 'idle';
-        roaming.idleTimer = roaming.atHome
-          ? 5 + Math.random() * 3
-          : 0.8 + Math.random() * 1.5;
-        this.pickRoamingWaypoint(record);
+        roaming.idleTimer = pickRoamingIdle();
         continue;
       }
 
@@ -4530,7 +4628,7 @@ export class ThreeWorld {
     const home = getHomeById(resident.homePlotId);
 
     if (home) {
-      const radius = 2.3;
+      const radius = RESIDENT_ROAM_RADIUS;
       record.roaming.bounds = {
         minX: home.x - radius,
         maxX: home.x + radius,
@@ -4538,10 +4636,12 @@ export class ThreeWorld {
         maxZ: home.z + radius,
       };
       record.roaming.homeId = resident.homePlotId;
+      record.roaming.home = { x: home.x, z: home.z };
+      record.roaming.radius = radius;
       record.group.position.set(home.x, home.y, home.z);
       record.targetPosition.set(home.x, home.y, home.z);
       record.roaming.atHome = true;
-      record.roaming.idleTimer = 1 + Math.random();
+      record.roaming.idleTimer = 2 + Math.random() * 3;
     }
 
     return record;

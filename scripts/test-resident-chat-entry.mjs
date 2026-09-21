@@ -140,9 +140,11 @@ const purgeTestMessages = async (page) => {
       const chats = s.state.residentChats || {};
       const filtered = {};
       Object.entries(chats).forEach(([key, list]) => {
-        const kept = (list || []).filter(
-          (m) => !testStrings.includes(m.content),
-        );
+        let kept = (list || []).filter((m) => !testStrings.includes(m.content));
+        // 只剩 assistant 的会话视为自测残留（真实会话必有 user 消息）
+        if (kept.length && !kept.some((m) => m.role === 'user')) {
+          kept = [];
+        }
         if (kept.length) filtered[key] = kept;
       });
       s.state.residentChats = filtered;
@@ -378,6 +380,8 @@ try {
   );
   await safeShot(page, 'phase2_resident_reply.png');
   await purgeTestMessages(page);
+  // 等保存真正落到服务端（persistNow 为 5s 超时，偶发客户端先超时但服务端仍在写）
+  await page.waitForTimeout(2500);
 
   const meaningful = errors.filter((e) => !/favicon/i.test(e));
   record(
