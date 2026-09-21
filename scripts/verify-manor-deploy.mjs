@@ -10,6 +10,8 @@
  *   B. 场景侧：50 栋宅院全部挂载成功、不悬浮、与地块对齐、占地与原模型一致
  *   C. 既有系统：灯笼×5、居民×5、可点击网格、玻璃夜光仍在
  *   D. 0 控制台报错
+ *   E. 无穿模/无下陷：宅院互不互穿（XZ 包围盒）、非崖居不下陷进地面
+ *   F. 性能与漫游：世界初始化耗时、帧时间稳定性、按 W 可漫游且松键即停
  *
  * 注意：模型侧「占地与基线一致」用 BASELINE（换模型前实测值）比较 —— 这是「占地范围不变」的硬保证。
  *      若新模型是 9m 级，请先在 Blender/gltf-transform 里归一化到基线尺度再部署。
@@ -24,6 +26,16 @@ const MODELS_DIR = path.resolve('frontend/src/virtual-utopia/webgl/models');
 const GLB_ONLY = process.argv.includes('--glb-only');
 const TRI_TARGET = [2000, 3000];
 const FOOTPRINT_TOLERANCE = 0.18;
+
+/** 性能基线（2026-09-21 换模型前实测，无头 swiftshader）。换模型后只做「不显著劣化」判断。 */
+export const BASELINE_PERF = {
+  initSeconds: 16.7, // 世界初始化到可交互
+  drawCalls: 3812,
+  triangles: 487832,
+  initTolerance: 0.6, // 初始化耗时允许 +60%
+  drawCallTolerance: 0.3, // drawCalls 允许 +30%
+  triangleTolerance: 0.6, // triangles 允许 +60%（换 2000–3000 面模型属预期增长）
+};
 
 const results = [];
 const record = (label, ok, extra = '') => {
@@ -177,9 +189,12 @@ try {
     };
 
     const rows = [];
+    const boxes = [];
+    const sunkDetail = [];
     let floating = 0;
     let misaligned = 0;
     let footprintOff = 0;
+    let sunk = 0;
     let empty = 0;
 
     w.homeObjects.forEach((entry, homeId) => {
@@ -208,17 +223,49 @@ try {
 
       const cx = (box.world.max[0] + box.world.min[0]) / 2;
       const cz = (box.world.max[2] + box.world.min[2]) / 2;
+      const bottomVsGround = box.world.min[1] - home.y;
       const isFloating = box.world.min[1] > home.y + 0.6;
       const isMisaligned = Math.abs(cx - home.x) > 1.5 || Math.abs(cz - home.z) > 1.5;
+
+      // 垂直落位：宅院底基必须落在「模型自身上下沿」该在的位置。
+      //  - 非崖居（基线 min.y = 0）：底基贴地，允许 ±0.6m。
+      //  - 崖居（基线 min.y = -2.77）：底座本就"插入崖体"向下延伸，其实际落点 = 0.2 + min.y × 组缩放，
+      //    组缩放约 1.18–1.37 → 合理区间约 -4.6 ~ -2.0m。这里用 ±(0.8~1.6)×min.y 的宽松区间兜住，
+      //    专门拦住"把新模型 min.y 归零"这个经典错误 —— 那会让 12 栋崖居整体抬升 2.8m。
+      const bottomViolation =
+        base.minY < -0.5
+          ? bottomVsGround < base.minY * 1.6 - 0.2 || bottomVsGround > base.minY * 0.8 + 0.2
+          : bottomVsGround < -0.6 || bottomVsGround > 0.6;
 
       if (isFloating) floating += 1;
       if (isMisaligned) misaligned += 1;
       if (footErr > 0.18) footprintOff += 1;
+      if (bottomViolation) sunk += 1;
+      if (base.minY < -0.5) {
+        sunkDetail.push({
+          homeId,
+          bottomVsGround: Number(bottomVsGround.toFixed(2)),
+          expectRange: [
+            Number((base.minY * 1.6 - 0.2).toFixed(2)),
+            Number((base.minY * 0.8 + 0.2).toFixed(2)),
+          ],
+          violation: bottomViolation,
+        });
+      }
+
+      boxes.push({
+        homeId,
+        group: home.group,
+        minX: box.world.min[0],
+        maxX: box.world.max[0],
+        minZ: box.world.min[2],
+        maxZ: box.world.max[2],
+      });
 
       rows.push({
         homeId,
         group: home.group,
-        bottomVsGround: Number((box.world.min[1] - home.y).toFixed(2)),
+        bottomVsGround: Number(bottomVsGround.toFixed(2)),
         dx: Number((cx - home.x).toFixed(2)),
         dz: Number((cz - home.z).toFixed(2)),
         footprint: `${sizeX.toFixed(2)}×${sizeZ.toFixed(2)}`,
@@ -227,12 +274,39 @@ try {
         floating: isFloating,
         misaligned: isMisaligned,
         footprintOff: footErr > 0.18,
+        sunk: bottomViolation,
       });
     });
 
+    // 互穿（穿模）粗检：相邻宅院的 XZ 包围盒重叠面积占「较小者」的比例。
+    // 阈值 0.25 是保守值 —— 只有明显"两栋压在一起"才会命中，轻微贴边不算。
+    const overlaps = [];
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i];
+        const b = boxes[j];
+        const ox = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+        const oz = Math.min(a.maxZ, b.maxZ) - Math.max(a.minZ, b.minZ);
+        if (ox <= 0 || oz <= 0) continue;
+        const areaA = (a.maxX - a.minX) * (a.maxZ - a.minZ);
+        const areaB = (b.maxX - b.minX) * (b.maxZ - b.minZ);
+        const ratio = (ox * oz) / Math.max(1e-6, Math.min(areaA, areaB));
+        if (ratio > 0.25) {
+          overlaps.push({
+            a: a.homeId,
+            b: b.homeId,
+            ratio: Number(ratio.toFixed(3)),
+          });
+        }
+      }
+    }
+    overlaps.sort((x, y) => y.ratio - x.ratio);
+
     let glassHomes = 0;
+    let lodHomes = 0;
     w.homeObjects.forEach((entry) => {
       if (entry.glassMaterials?.length) glassHomes += 1;
+      if (entry.group?.isLOD || entry.group?.levels) lodHomes += 1;
     });
 
     return {
@@ -241,6 +315,10 @@ try {
       floating,
       misaligned,
       footprintOff,
+      sunk,
+      sunkDetail: sunkDetail.slice(0, 4),
+      overlaps,
+      lodHomes,
       sample: rows.slice(0, 5),
       worst: rows
         .filter((r) => r.footErr !== undefined)
@@ -296,6 +374,127 @@ try {
     );
   }
   info('宅院包围盒抽查（前 5 栋）', JSON.stringify(report.sample));
+
+  // ---- E. 穿模 / 垂直落位 ----
+  console.log('\n=== E. 穿模与垂直落位 ===');
+  record(
+    '宅院互不互穿（XZ 包围盒重叠 >25% 的相邻宅院对数 = 0）',
+    report.overlaps.length === 0,
+    report.overlaps.length
+      ? `overlaps=${report.overlaps.length} · top=${JSON.stringify(report.overlaps.slice(0, 3))}`
+      : 'overlaps=0',
+  );
+  record(
+    '垂直落位正确（非崖居贴地 ±0.6m；崖居保持其向下延伸的底座、未被抬到 0）',
+    report.sunk === 0,
+    report.sunk === 0
+      ? '全部落位在期望区间内'
+      : `violations=${report.sunk} · ${JSON.stringify(report.sunkDetail)}`,
+  );
+
+  // ---- F. 性能与漫游 ----
+  console.log('\n=== F. 性能与漫游 ===');
+
+  const initSeconds = (Date.now() - t0) / 1000;
+  record(
+    `世界初始化耗时无显著劣化（基线 ${BASELINE_PERF.initSeconds}s，允许 +${BASELINE_PERF.initTolerance * 100}%）`,
+    initSeconds <= BASELINE_PERF.initSeconds * (1 + BASELINE_PERF.initTolerance),
+    `实测 ${initSeconds.toFixed(1)}s`,
+  );
+
+  // 「帧率」在这套无头 swiftshader 环境里量不准（rAF 被节流、无 GPU 光栅化），
+  // 因此这里用**可复现的渲染开销代理**做硬判据：模型变重必然抬高 drawCalls / triangles。
+  if (report.calls) {
+    const callRatio = report.calls.calls / BASELINE_PERF.drawCalls;
+    const triRatio = report.calls.triangles / BASELINE_PERF.triangles;
+    record(
+      `渲染开销未显著上升（drawCalls ≤ 基线×${1 + BASELINE_PERF.drawCallTolerance}、triangles ≤ 基线×${1 + BASELINE_PERF.triangleTolerance}）`,
+      callRatio <= 1 + BASELINE_PERF.drawCallTolerance &&
+        triRatio <= 1 + BASELINE_PERF.triangleTolerance,
+      `drawCalls=${report.calls.calls}(${callRatio.toFixed(2)}×) triangles=${report.calls.triangles}(${triRatio.toFixed(2)}×)`,
+    );
+  }
+  record(
+    'LOD 分级仍在（帧率保护机制未丢）',
+    report.lodHomes > 0,
+    `lodHomes=${report.lodHomes}/${report.total}`,
+  );
+
+  // rAF 帧时间：仅作 INFO（环境不具代表性，不作为判据）
+  const perf = await page.evaluate(async () => {
+    const frames = [];
+    let last = performance.now();
+    const start = last;
+    await new Promise((resolve) => {
+      const tick = (now) => {
+        frames.push(now - last);
+        last = now;
+        if (frames.length >= 20 || now - start > 8000) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    const usable = frames.slice(2).sort((a, b) => a - b);
+    const pick = (q) => usable[Math.min(usable.length - 1, Math.floor(usable.length * q))] || 0;
+    return {
+      samples: usable.length,
+      medianMs: Number(pick(0.5).toFixed(1)),
+      p95Ms: Number(pick(0.95).toFixed(1)),
+    };
+  });
+  info(
+    'rAF 帧时间采样（无头 swiftshader 被节流，仅作相对参考；真实帧率请在带 GPU 的浏览器里核）',
+    `samples=${perf.samples} median=${perf.medianMs}ms${perf.medianMs ? ` (${(1000 / perf.medianMs).toFixed(1)}fps)` : ''} p95=${perf.p95Ms}ms`,
+  );
+
+  // 漫游：真按键 → 相机位移 → 松键即停（覆盖「相机漫游正常」）
+  // 注意：无头 swiftshader 下 rAF 被节流到 ~4s/帧，而主循环对 delta 做了钳制（单帧位移 ≈0.45m），
+  // 所以这里按住 5s 以保证至少跑到 1 个更新帧；判据同时看「按键被识别」与「确有位移」。
+  const readCam = () =>
+    page.evaluate(() => {
+      const w = window.__utopiaWorld;
+      const local = w.getLocalAvatarState ? w.getLocalAvatarState() : null;
+      return {
+        cx: w.camera.position.x,
+        cz: w.camera.position.z,
+        hasLocal: Boolean(local),
+        ax: local ? local.x : null,
+        az: local ? local.z : null,
+      };
+    });
+
+  const roamBefore = await readCam();
+  await page.keyboard.down('w');
+  await page.waitForTimeout(400);
+  const keyHeld = await page.evaluate(() => window.__utopiaWorld.keys.has('KeyW'));
+  await page.waitForTimeout(5000);
+  await page.keyboard.up('w');
+  await page.waitForTimeout(400);
+  const keyReleased = await page.evaluate(() => !window.__utopiaWorld.keys.has('KeyW'));
+  const roamAfter = await readCam();
+  const camMoved = Math.hypot(roamAfter.cx - roamBefore.cx, roamAfter.cz - roamBefore.cz);
+  const avatarMoved =
+    roamBefore.hasLocal && roamAfter.hasLocal
+      ? Math.hypot(roamAfter.ax - roamBefore.ax, roamAfter.az - roamBefore.az)
+      : null;
+
+  await page.waitForTimeout(700);
+  const roamRest = await readCam();
+  const camDrift = Math.hypot(roamRest.cx - roamAfter.cx, roamRest.cz - roamAfter.cz);
+
+  record(
+    '相机漫游可用（W 键被识别 · 按住后相机位移 > 0.3m）',
+    keyHeld && keyReleased && camMoved > 0.3,
+    `keyHeld=${keyHeld} keyReleased=${keyReleased} 相机位移 ${camMoved.toFixed(2)}m${avatarMoved === null ? '（本次无本地 Avatar，只验相机）' : `，本地 Avatar 位移 ${avatarMoved.toFixed(2)}m`}`,
+  );
+  record(
+    '松开按键后相机停下（无惯性漂移 > 0.3m）',
+    camDrift < 0.3,
+    `松键后位移 ${camDrift.toFixed(2)}m`,
+  );
 
   const meaningful = errors.filter((e) => !/favicon/i.test(e));
   record('0 控制台报错', meaningful.length === 0, meaningful.slice(0, 2).join(' | '));

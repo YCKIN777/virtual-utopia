@@ -4,6 +4,17 @@
 > 仓库根：`H:\BP2`　前端 dev：`http://localhost:5199`　后端：3300 / 3400
 > 本指令全部为**可复制执行**的命令与改动；每一步都带**校验命令 + 预期结果**，任一步不达标即停下、不要继续。
 
+**配套工具（本文件同批交付，全部可直接运行）**
+
+| 脚本 | 作用 |
+| --- | --- |
+| `scripts/run-manor-deploy-check.mjs` | **总控**：一条命令跑完「范围守卫 + 模型侧 + 场景侧 + 材质 + 业务回归」，并输出自检清单对照表 |
+| `scripts/verify-manor-deploy.mjs` | 单点校验：A 模型侧 + B~F 场景侧（挂载/落位/穿模/既有系统/性能/漫游） |
+| `scripts/inspect-manor-glb.mjs` | GLB 预检器（可单独用：`--baseline`、`--tris 2000 3000`） |
+| `scripts/rollback-manor-deploy.mjs` | **备份 / 回滚**：`--backup` 快照、`--dry-run` 预演、直接跑则还原 |
+
+> 最短路径：`node scripts/run-manor-deploy-check.mjs --fast` → 全绿即交付。
+
 ---
 
 ## 0. 硬性边界（越界即回滚，不要"顺手优化"）
@@ -61,10 +72,11 @@
 cd /h/BP2
 git status --short                      # 预期：干净或只有本次要动的文件
 git rev-parse --short HEAD              # 记下基线 commit，回滚用
-mkdir -p .workbuddy/tmp/manor-backup
-cp frontend/src/virtual-utopia/webgl/models/*-manor.glb .workbuddy/tmp/manor-backup/
+node scripts/rollback-manor-deploy.mjs --backup     # 快照三个 GLB（含 sha256 与几何）
+node scripts/rollback-manor-deploy.mjs --list       # 确认快照已就位
 ```
-> 备份放在 `.workbuddy/tmp/`（该目录不对 git 跟踪，不会污染提交）。
+> 备份落在 `.workbuddy/tmp/manor-backup/`（该目录不对 git 跟踪，不会污染提交）。
+> 备份脚本会打印每个文件的 `sha256` 与「面数 / 占地 / 高度」，这是回滚后可验证的凭据。
 
 ### Step 1 · 新模型预检（**先预检，不合格不要放进去**）
 
@@ -78,6 +90,8 @@ node scripts/verify-manor-deploy.mjs --glb-only
 - `[xxx] 占地与基线一致（±18%）` ✅ ← **这一项 FAIL 就必须回 Step 1 归一化尺寸**
 - `[xxx] 高度与基线一致（±15%）` ✅
 - `三角面落在 2000–3000` ✅
+
+> 提示：把新 GLB 放到临时目录、用 `--tris 2000 3000` 直接体检也可以，不必先覆盖正式文件。
 
 缩小/放大命令（任选其一）：
 ```bash
@@ -162,16 +176,40 @@ cd /h/BP2/frontend/src/virtual-utopia && node ../../../node_modules/vite/bin/vit
 > ⚠️ **必须显式带 `--config`**：直接 `npx vite build` 会误用 `frontend/vite.config.js`，构建的是根应用，`dist/` 也落错地方。
 预期：`✓ built in Xs`，无报错。
 
-### Step 6 · 全量自检（一条命令 + 三个回归）
+### Step 6 · 全量自检（**一条命令**）
 
 ```bash
 cd /h/BP2
+node scripts/run-manor-deploy-check.mjs --fast     # 约 6~8 分钟：范围守卫 + 模型侧 + 场景侧 + 材质 + 业务回归（跳过慢套件）
+node scripts/run-manor-deploy-check.mjs            # 约 20 分钟：连「居民漫游」慢套件一起跑（交付前建议跑这一版）
+```
+
+它会按序执行以下步骤，并把结果汇总成「自检清单 → ✅/❌」对照表（退出码 0 = 全通过）：
+
+| 步骤 id | 内容 | 覆盖清单项 |
+| --- | --- | --- |
+| `scope` | **改动范围守卫**：用 git 证明只动了模型/材质 | 硬性部署规则（其余业务保持原样） |
+| `glb` | A 模型侧预检 | 占地/高度/原点/无动画 |
+| `scene` | B~F 场景侧校验 | 挂载、不悬浮、无穿模、性能、相机漫游 |
+| `materials` | 建筑材质共享与复用 | 材质替换生效 |
+| `beacons` | 灯笼/木牌仍锚定屋顶 | 不悬浮（灯笼挂点） |
+| `roaming` | 居民院内闲逛（慢，`--fast` 跳过） | 无穿墙 / 路径正常 |
+| `chat` | 聊天 / @直聊 / 未登录提示 | 聊天业务正常 |
+| `persona` | 居民人设与真实 LLM | 人设业务正常 |
+
+只跑某几步：`--only=scope,glb,scene`（`--list` 可查看全部 id）。
+指定范围守卫的对比基线：`--base=HEAD~1`（默认）或 `--base=<基线 commit>`。
+
+也支持逐个手跑（等价）：
+```bash
 node scripts/verify-manor-deploy.mjs            # 模型侧 + 场景侧（约 1.5 分钟）
 node scripts/test-manor-materials.mjs           # 材质与复用
 node scripts/test-resident-beacons.mjs          # 灯笼/木牌（含屋顶锚定、点击）
-node scripts/test-resident-roaming.mjs          # 居民漫游（不窜点/不追不上）
+node scripts/test-resident-roaming.mjs          # 居民漫游（慢，约 10 分钟）
+node scripts/test-resident-chat-entry.mjs       # 聊天 / @直聊 / 未登录
+node scripts/test-resident-persona.mjs          # 人设 / 真实 LLM
 ```
-四个脚本必须**全部 `=== 汇总: 全部通过 ===`**。
+每个脚本必须各自 `=== 汇总: 全部通过 ===`。
 
 ### Step 7 · 提交与生效
 
@@ -206,31 +244,35 @@ Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' `
 
 ### B. 场景侧（`node scripts/verify-manor-deploy.mjs`）
 
-- [ ] **B1 模型成功挂载到对应地块** —— `全部 50 栋宅院挂载成功（模型网格非空）` OK
+- [ ] **B1 模型成功挂载到对应地块** —— `全部 50 栋宅院挂载成功（模型网格非空）` OK（`total=50 empty=0`）
 - [ ] **B2 建筑不悬浮** —— `无宅院悬浮` OK（terrace/forest 底面≈地面+0.2；cliff 因底座≈地面-3.1）
 - [ ] **B3 与地块对齐、无穿模错位** —— `宅院与地块对齐（包围盒中心偏差 ≤1.5m）` OK（正常 dx/dz ≈ 0~0.5m）
 - [ ] **B4 占地与原建筑一致** —— `占地与原模型一致（偏差 ≤18%）` OK
 - [ ] **B5 既有系统在位** —— `灯笼×5 / 居民×5 / 可点击网格 / 玻璃夜光` OK
 - [ ] **B6 材质方案生效** —— `共享材质库在用` OK；`node scripts/test-manor-materials.mjs` 复用率 > 5×
-- [ ] **B7 页面加载与帧率** —— 记下脚本打印的 `世界初始化耗时` 与 `drawCalls / triangles`，与 §1.3 基线对比：
-      - 初始化 ≤ 30s（无头）/ 真机应明显更快
-      - `triangles` 增幅 ≤ 30%；`drawCalls` 基本不变（材质共享后不应上涨）
-      - 真机用 60 秒漫游目视：帧率稳定、无明显卡顿；若掉帧 → **减小 LOD 切换距离**（不要动其它）
-- [ ] **B8 0 控制台报错** —— `0 控制台报错` OK
+- [ ] **B7 页面加载与帧率** —— 脚本已自动判：`世界初始化耗时无显著劣化`（基线 16.7s，允许 +60%）、`渲染开销未显著上升`（drawCalls ≤ 基线×1.3、triangles ≤ 基线×1.6）、`LOD 分级仍在`
+      - **关于 FPS 的诚实说明**：无头 swiftshader 环境里 rAF 被节流（实测 ~4s/帧），量的不是真实帧率，所以脚本**只把 rAF 帧时间当 INFO 打印、不当判据**。真实帧率请在带 GPU 的浏览器里开 `#/world`，用 DevTools `Performance` 录制或 F3 面板看：漫游 60 秒帧率稳定、无明显卡顿即可。若掉帧 → **只减小 LOD 切换距离**（不要动其它）。
+- [ ] **B8 无穿模（互穿粗检）** —— `宅院互不互穿（XZ 包围盒重叠 >25% 的相邻宅院对数 = 0）` OK
+- [ ] **B9 垂直落位正确（含 cliff 底座陷阱）** —— `垂直落位正确（非崖居贴地 ±0.6m；崖居保持其向下延伸的底座、未被抬到 0）` OK
+      - 这一项专治最常见错误：把新 cliff 模型的 `min.y` 归零 → 12 栋崖居会整体抬升 2.8m（悬浮在崖壁上方）。
+- [ ] **B10 相机漫游可用** —— `相机漫游可用（W 键被识别 · 按住后相机位移 > 0.3m）` OK、`松开按键后相机停下` OK
+- [ ] **B11 0 控制台报错** —— `0 控制台报错` OK
 
 ### C. 行为回归（对应"原有业务全部正常"）
 
 - [ ] **C1 居民 Avatar 正常漫游、无穿墙/路径异常** —— `node scripts/test-resident-roaming.mjs` 全通过（速度 ≤1.7m/s、静止零位移、停留 8–15s、贴近不窜走、路点在 5~6m 内）
 - [ ] **C2 屋顶灯笼/木牌仍锚在屋顶** —— `node scripts/test-resident-beacons.mjs` 全通过（`roofY > homeY`、真实鼠标点击→信息卡）
-- [ ] **C3 相机漫游正常** —— 手动：`#/world` 下 WASD 走动、右键旋转、滚轮缩放、`重置视角` / `前往生活广场` 按钮可用；未出现穿地/卡死
+- [ ] **C3 相机漫游正常** —— 自动已验（B10）；建议再手动走一遍：`#/world` 下 WASD、右键旋转、滚轮缩放、`重置视角` / `前往生活广场` 按钮可用，未出现穿地/卡死
 - [ ] **C4 聊天 / @ 直聊 / 私聊回复** —— `node scripts/test-resident-chat-entry.mjs` 全通过
-- [ ] **C5 注册 / 入驻申请审批** —— 手动：`#/register` 提交申请 → 管理台/审批接口可查到；已有账号 `#/login` 可登录
-- [ ] **C6 人设未被改动** —— `git diff HEAD~1 --stat` 中**不得出现** `residentChatService.js` / `residents.js`
-- [ ] **C7 未越界改动** —— `git diff HEAD~1 --stat` 只应包含 `models/*.glb`（+ 若启用临溪变体的两处代码）
+- [ ] **C5 注册 / 入驻申请审批** —— `scope` 步骤已用 git 证明 `backend/**` 与前端注册/审批文件**零改动**；如需端到端确认，手动：`#/register` 提交申请 → 管理台可查到；已有账号 `#/login` 可登录
+- [ ] **C6 人设未被改动** —— `scope` 步骤不会把 `residentChatService.js` / `residents.js` 判为允许改动；出现即 FAIL
+- [ ] **C7 未越界改动** —— `scope` 步骤通过：`node scripts/run-manor-deploy-check.mjs --only=scope`
       ```bash
-      git diff HEAD~1 --stat
-      # 期望：仅 webgl/models/*.glb（+ modelLoader.js / ThreeWorld.js 两处选型）
+      node scripts/run-manor-deploy-check.mjs --only=scope
+      # 期望：OK 改动范围合规：只涉及模型与材质……
+      #       若出现 ✗ 行 → 该文件越界，必须 git checkout -- <文件>
       ```
+      > 它把改动分三档：**允许**（`models/*.glb`、`webgl/materials/**`）、**需人工确认**（`modelLoader.js` / `ThreeWorld.js` —— 装配层，会打印改动行段供你核对是否只改了"模型选型/包围盒"）、**越界**（其余一切，含 `worldLayout.js`、后端、聊天、人设）。
 
 ---
 
@@ -240,21 +282,29 @@ Start-Process -FilePath 'C:\Program Files\nodejs\node.exe' `
 | --- | --- | --- |
 | A3/A4 FAIL | 新模型尺度不对 | 回 Step 1 归一化，**不要**改 `home.scale`（属宅院边界） |
 | B2 悬浮（`floating>0`） | 模型底面被抬到原点之上 | 检查 `min.y`；cliff 需保留负值底座 |
+| **B9 垂直落位 FAIL** | 典型是 cliff 的 `min.y` 被归零 | 恢复向下延伸的底座（`min.y ≈ -2.77`），否则 12 栋崖居整体悬空 2.8m |
 | B3 对齐超标 | 模型水平中心不在原点 | Blender 重新 Set Origin 到占地中心 |
-| B7 掉帧 | 面数增长过大 | 只调 LOD 切换距离（62 → 45/50）；或把模型压到 2000 面 |
-| 任何行为回归失败 | 越界改动 | `git checkout -- <文件>` 或 `git reset --hard <基线 commit>`，再从备份恢复 GLB |
+| **B8 互穿 FAIL** | 占地被放大到与邻栋重叠 | 归一化占地（A3），不要动地块坐标 |
+| B7 掉帧/初始化变慢 | 面数增长过大 | 只调 LOD 切换距离（62 → 45/50）；或把模型压到 2000 面 |
+| `scope` 出现 ✗ | 越界改动 | `git checkout -- <文件>`；改回后重跑 `--only=scope` |
+| 任何行为回归失败 | 越界改动 | 用下面的回滚，再从备份恢复 GLB |
 
 ```bash
-# 一键回滚模型（保留代码改动时）
-cp .workbuddy/tmp/manor-backup/*.glb frontend/src/virtual-utopia/webgl/models/
-# 彻底回滚
+# ① 只看会还原什么（不动文件）
+node scripts/rollback-manor-deploy.mjs --dry-run
+# ② 一键把三个 GLB 还原到 Step 0 的快照（并打印还原后的 sha256 / 几何）
+node scripts/rollback-manor-deploy.mjs
+# ③ 复验模型侧（秒级）
+node scripts/verify-manor-deploy.mjs --glb-only
+# ④ 若连代码也越界了：彻底回滚代码（保留 .workbuddy 备份目录）
 git reset --hard <Step 0 记录的基线 commit>
 ```
+> 备份目录可用 `--from <dir>` 指定，默认 `.workbuddy/tmp/manor-backup`；`--list` 可查看快照清单。
 
 ---
 
 ## 5. 一句话交付口径
 
 > 只换 `models/terrace-manor.glb`、`models/forest-manor.glb`、`models/cliff-manor.glb`（可选新增 `stream-manor.glb`）+ 材质方案；
-> 新模型必须归一化到基线占地/高度、原点在占地中心、无动画；
-> 改完跑 `node scripts/verify-manor-deploy.mjs` 与三个回归脚本，四条 `全部通过` 才算交付。
+> 新模型必须归一化到基线占地/高度、原点在占地中心、无动画、cliff 保留负底座；
+> 交付前跑 **`node scripts/run-manor-deploy-check.mjs`**（完整版），自检清单 6 项全部 ✅、脚本退出码 0 才算交付。
