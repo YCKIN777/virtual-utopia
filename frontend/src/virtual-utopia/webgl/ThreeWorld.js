@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadWorldModels } from './modelLoader.js';
+import {
+  createManorMaterialLibrary,
+  resolveManorRole,
+} from './materials/manorMaterials.js';
 import { seedResidents } from '../data/residents.js';
 import {
   bridgeNetwork,
@@ -466,6 +470,8 @@ export class ThreeWorld {
     this.updateProgress(0.05, '加载轻量模型');
     await waitFrame();
     this.models = await loadWorldModels();
+    // 宅院共享材质库（宋式诧寂哑光方案，程序化 1024² 贴图，按 role:group 复用）
+    this.manorMaterials = createManorMaterialLibrary();
     this.updateProgress(0.16, '生成山体峡谷');
     await waitFrame();
     this.buildTerrain();
@@ -3089,28 +3095,17 @@ export class ThreeWorld {
           child.material.emissiveIntensity = 0.1;
           glassMaterials.push(child.material);
         } else if (material) {
-          child.material = material.clone();
-          const colorHex = material.color?.getHexString();
-          const isGreen =
-            colorHex === '4b8a5e' ||
-            colorHex === '3f774d' ||
-            colorHex === '416f45';
-          if (!isGreen) {
-            const groupWood = {
-              cliff: '#b4763d',
-              forest: '#8d5930',
-              terrace: '#c18444',
-              stream: '#a86a38',
-            };
-            const roofColors = new Set(['62452f', '5e422d', '50382a']);
-            child.material.color.set(
-              roofColors.has(colorHex)
-                ? '#4b2f20'
-                : groupWood[home.group] || '#a86a38',
-            );
-            child.material.roughness = 0.86;
-            child.material.metalness = 0;
-          }
+          // 宋式诧寂哑光方案：按角色分配「共享」材质（夯土/原木/青灰瓦/毛石…）。
+          // 非内部宅院直接共用库中实例；内部宅院克隆一份，避免内部模式改动波及其他宅院。
+          const role = resolveManorRole({ material });
+          const shared = this.manorMaterials.getMaterial(role, home.group);
+
+          child.material = shared
+            ? hasInterior
+              ? shared.clone()
+              : shared
+            : material.clone();
+
           if (hasInterior) {
             shellMaterials.push({
               material: child.material,
@@ -3124,7 +3119,8 @@ export class ThreeWorld {
 
       const platform = new THREE.Mesh(
         new THREE.CylinderGeometry(2.8, 3.2, 0.35, 20),
-        createWoodMaterial('#ad7f4f'),
+        this.manorMaterials.getMaterial('slab', home.group) ||
+          createWoodMaterial('#ad7f4f'),
       );
       platform.position.set(0, -0.12, 0);
       platform.receiveShadow = true;
@@ -3189,7 +3185,8 @@ export class ThreeWorld {
 
         const deck = new THREE.Mesh(
           new THREE.BoxGeometry(3.6, 0.2, 1.7),
-          createWoodMaterial('#a97945'),
+          this.manorMaterials.getMaterial('slab', home.group) ||
+            createWoodMaterial('#a97945'),
         );
         deck.position.set(0, 1.25, 2.15);
         deck.castShadow = true;
@@ -3198,7 +3195,8 @@ export class ThreeWorld {
         for (const x of [-1.5, 0, 1.5]) {
           const rail = new THREE.Mesh(
             new THREE.CylinderGeometry(0.05, 0.05, 1.2, 5),
-            createWoodMaterial('#765235'),
+            this.manorMaterials.getMaterial('timber', home.group) ||
+              createWoodMaterial('#765235'),
           );
           rail.position.set(x, 1.85, 2.9);
           group.add(rail);
