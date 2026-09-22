@@ -480,4 +480,4 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/profile-works-20260922/`（ProfileView.vue + ResidentCardsPanel.vue 回滚点）。
-- 提交：本次 `git commit`（`ProfileView.vue` + `ResidentWorksPanel.vue` + `memory-log.md`）。
+- 提交：`git commit f525f7c`（3 文件：`ProfileView.vue` + `ResidentWorksPanel.vue` + `memory-log.md`；未带入 DESIGN.md / prototypes / .workbuddy 等无关改动）。
