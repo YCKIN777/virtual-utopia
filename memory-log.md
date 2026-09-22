@@ -839,3 +839,44 @@
 - 七大场景中 ④⑤⑥ 共用同一套 `direct` 双人会话（以 `channel` 区分 direct/encounter/interior/local），场景位置写入 `scene.zone`。
 - 广场公屏在 UI 上同时保留既有 `WorldChatPanel`（兼容）与新的 `SpaceChatPanel`（内容层、可检索、带场景位置）。
 - 管理员按规格**不读取私密内容**：`canReadDocument` 不给予 admin 任何额外权限。
+
+---
+
+## 2026-09-22 修复：后端根路径 404（浏览器「打不开」）+ 账号口令口径澄清
+
+### 问题
+用户反馈「只有前端 5199 能打开，其他地址都打不开」。排查确认：
+- `http://localhost:3400/` 与 `http://localhost:3300/` 命中各自 app 里的 **catch-all 404 JSON**（`{"error":"NotFound",...}`）→ 浏览器里像"服务挂了"，实际服务是活的。
+- 另外 `http://localhost:3000`（场景/Agent 服务）本身未启动（不影响主页与社交）。
+
+### 修复（仅新增只读路由）
+- `backend/src/phase6/app.js`：新增 `GET /` 返回简洁 HTML 导航页（服务说明 / 前端入口 `5199` 与 `#/documents` / 健康检查链接 / 接口前缀 `/api/phase6/*` 与 `/api/phase7/*` / 前端代理调用方式）。
+- `backend/src/phase5/httpServer.js`：新增 `GET /` 同类导航页（登录入口 + 主要鉴权接口）。
+- 未改动任何既有接口、数据与业务逻辑。
+
+### 账号口令口径（重要澄清：仓库内文档已过时）
+登录链路：**前端先 `sha256Hex(password)` → phase6 → phase5 `verifyPassword`（scrypt）**；因此**HTTP 直连调 API 必须发 sha256 十六进制**，而**网页登录框直接填明文即可**（前端自动哈希）。
+经实测（对当前 `data/virtual_utopia_phase5.sqlite`，共 39 个用户）：
+
+| 角色 | 账号 | 口令（网页填明文） | 说明 |
+|---|---|---|---|
+| **管理员** | `admin` | `utopia2026` | 唯一 `role=admin`；displayName「Phase5 Administrator」 |
+| 原住民（KIN 城主） | `KIN777` | `123456` | `role=editor`，displayName「憨憨」，`homePlotId=plot-2`；**不是管理员** |
+| 原住民（测试） | `traveler` | `utopia2026` | `role=editor`，displayName「漫游者」；旧式哈希（接受明文） |
+
+- `001A访问界面.txt` 中记载的 `admin/admin-pass-2026`、`kin/utopia2026`、`resident_a/resident-a-2026` **均已失效**（`kin`、`resident_a` 在库中不存在；`admin` 口令以库为准）。
+- 两套哈希并存：`admin`/`KIN777` 为 `scrypt(sha256(pw))`（新方案），`traveler` 为 `scrypt(pw)`（旧方案）。
+- `PHASE5_BOOTSTRAP_ADMIN_PASSWORD` 只用于**明文→哈希的一次性迁移**（`migrateAdminPassword`，仅在明文可校验通过时才改写），**不会强制重置**已有口令。
+
+### 服务启动（关键运维知识）
+- **phase5 必须带环境变量启动**，否则进程直接退出（`PHASE5_AUTH_SECRET is required`）：
+  `PHASE5_ENABLED=true PHASE5_AUTH_SECRET=changeme PHASE5_SERVICE_TOKEN=<backend/.env 中的值> PHASE5_BOOTSTRAP_ADMIN_PASSWORD=utopia2026 PHASE5_DB_PATH=H:/BP2/data/virtual_utopia_phase5.sqlite node backend/src/phase5/server.js`
+  （`PHASE5_SERVICE_TOKEN` 必须与 `backend/.env` 一致，否则 phase6↔phase5 服务调用失败；phase5 为内存会话，重启后需重新登录。）
+- phase6：`node backend/src/phase6/server.js`（读 `backend/.env`，含 `PHASE5_SERVICE_TOKEN`）。
+- 重启服务**必须用 PowerShell 按端口精确杀进程**（`Get-NetTCPConnection -LocalPort <port> -State Listen` → `Stop-Process`）；绝不可 `taskkill IMAGENAME eq node.exe`（会连带杀掉 5199/3300/3400）。
+
+### 自检
+- 9 个地址全部 200：`5199/`、`5199/#/world`、`5199/#/documents`、`3300/`、`3300/api/phase5/health`、`3400/`、`3400/api/phase6/health`、`3400/api/phase7/health`、`5199/phase6-api/api/phase7/health`。
+- 登录：`admin`(admin) / `KIN777`(editor) / `traveler`(editor) 均 200。
+- 权限：`phase7 /profile/me`、`/search`、`/stats` 200；`POST /backup`（admin）201（快照 24 个文件）；`phase6 /residents`（admin）200；`home-access PUT` 200。
+- 提交：`git commit f78ea94`。
