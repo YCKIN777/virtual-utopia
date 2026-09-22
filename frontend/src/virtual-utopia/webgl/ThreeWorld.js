@@ -496,7 +496,7 @@ export class ThreeWorld {
     this.buildCentralPlaza();
     this.updateProgress(0.7, '连接木构连廊');
     await waitFrame();
-    this.buildFlatBridges();
+    // 阶段六：已移除河道内小桥及其桥墩（恢复连续自然河面）
     this.updateProgress(0.84, '放置 50 户生态庄园');
     await waitFrame();
     this.buildHomes();
@@ -886,7 +886,7 @@ export class ThreeWorld {
 
     this.buildRiverBanks();
     this.buildWaterRipples();
-    this.buildWaterfalls();
+    // 阶段六：已移除溪流瀑布竖面（平地地形下为悬空断墙残件）
   }
 
   buildRiverBanks() {
@@ -2299,105 +2299,186 @@ export class ThreeWorld {
   }
 
   // 3-5：集会区中心中式木构地标（9 根原木圆柱 + 中式攒尖木顶 + 内部发光球）
+  // 3-5：集会区中心中式木构地标（9 根原木立柱 + 外圈环形主梁 + 放射斜梁/交叉斜撑 + 透明攒尖顶 + 悬挂发光球）
   buildPlazaLandmark(group) {
     const columnMaterial = createWoodMaterial('#8a5f38');
-    const roofMaterial = createWoodMaterial('#7a5330');
+    const beamMaterial = createWoodMaterial('#7a5330');
+    const braceMaterial = createWoodMaterial('#96693f');
     const stoneMaterial = new THREE.MeshStandardMaterial({
       color: '#9f978a',
       roughness: 0.95,
     });
-    const deckY = PLAZA_DECK_HEIGHT;
-    const columnRadius = 0.3; // 直径 60cm
-    const columnHeight = 20;
-    const ringRadius = 6.2;
-    const columnCount = 9;
-    const topY = deckY + columnHeight;
+    const glassMaterial = new THREE.MeshStandardMaterial({
+      color: '#eaf7ff',
+      transparent: true,
+      opacity: 0.22,
+      roughness: 0.08,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
 
-    for (let index = 0; index < columnCount; index += 1) {
-      const angle = (index / columnCount) * Math.PI * 2;
-      const x = Math.cos(angle) * ringRadius;
-      const z = Math.sin(angle) * ringRadius;
+    const deckY = PLAZA_DECK_HEIGHT;
+    const RING_RADIUS = 10.9;
+    const ANGLE_OFFSET = (21 * Math.PI) / 180;
+    const COLUMN_HEIGHT = 30; // 立柱总高 30 米（底座固定于平台板面，不穿透）
+    const COLUMN_COUNT = 9;
+    const MAIN_INDICES = new Set([0, 3, 6]); // 3 根主柱（Φ80）均匀分布，其余 6 根辅柱（Φ60）
+    const topY = deckY + COLUMN_HEIGHT;
+    const apexY = topY + 5.6;
+    const sphereY = deckY + 25.5; // 离地 24~28m
+
+    const tops = [];
+
+    // 9 根原木立柱（环形布置在集会区外围，中心保持开阔）
+    for (let index = 0; index < COLUMN_COUNT; index += 1) {
+      const angle = ANGLE_OFFSET + (index / COLUMN_COUNT) * Math.PI * 2;
+      const x = Math.cos(angle) * RING_RADIUS;
+      const z = Math.sin(angle) * RING_RADIUS;
+      const isMain = MAIN_INDICES.has(index);
+      const radius = isMain ? 0.4 : 0.3; // 主柱 Φ80 / 辅柱 Φ60
 
       const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.52, 0.6, 0.22, 12),
+        new THREE.CylinderGeometry(radius + 0.2, radius + 0.3, 0.24, 12),
         stoneMaterial,
       );
-      base.position.set(x, deckY + 0.11, z);
+      base.position.set(x, deckY + 0.12, z);
       base.receiveShadow = true;
       group.add(base);
 
       const column = new THREE.Mesh(
-        new THREE.CylinderGeometry(columnRadius, columnRadius, columnHeight, 12),
+        new THREE.CylinderGeometry(radius, radius, COLUMN_HEIGHT, 14),
         columnMaterial,
       );
-      column.position.set(x, deckY + columnHeight / 2, z);
+      column.position.set(x, deckY + COLUMN_HEIGHT / 2, z);
       column.castShadow = true;
       column.userData.plazaSelectable = true;
       group.add(column);
+
+      // 柱顶榫卯节点（斗形垫块）
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(radius * 2.5, 0.5, radius * 2.5),
+        beamMaterial,
+      );
+      cap.position.set(x, topY - 0.25, z);
+      cap.castShadow = true;
+      group.add(cap);
+
+      tops.push({ x, z, isMain });
     }
 
-    // 榫卯环梁
+    // 外圈环形主梁：把 9 根立柱连成整体
     const ringBeam = new THREE.Mesh(
-      new THREE.TorusGeometry(ringRadius, 0.26, 6, 40),
-      roofMaterial,
+      new THREE.TorusGeometry(RING_RADIUS, 0.34, 8, 54),
+      beamMaterial,
     );
     ringBeam.rotation.x = Math.PI / 2;
-    ringBeam.position.y = topY - 0.45;
+    ringBeam.position.y = topY + 0.35;
     ringBeam.castShadow = true;
+    ringBeam.userData.plazaSelectable = true;
     group.add(ringBeam);
 
-    // 中式攒尖木顶（9 面，指向天空；开口朝下便于仰视见球）
-    const roof = new THREE.Mesh(
-      new THREE.ConeGeometry(ringRadius + 1.5, 3.8, 9, 1, true),
-      new THREE.MeshStandardMaterial({
-        color: '#6d4a2b',
-        roughness: 0.88,
-        side: THREE.DoubleSide,
-      }),
+    // 放射状斜梁：由外圈主梁向中心上方汇聚（主柱杆件更粗，主次分明）
+    const apex = new THREE.Vector3(0, apexY, 0);
+    tops.forEach((top) => {
+      const start = new THREE.Vector3(top.x, topY + 0.35, top.z);
+      group.add(
+        createBeamBetween(
+          start,
+          apex,
+          top.isMain ? 0.24 : 0.15,
+          top.isMain ? beamMaterial : braceMaterial,
+        ),
+      );
+    });
+
+    // 内圈环梁（汇聚处）
+    const innerRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.5, 0.2, 6, 36),
+      beamMaterial,
     );
-    roof.position.y = topY + 1.7;
-    roof.castShadow = true;
+    innerRing.rotation.x = Math.PI / 2;
+    innerRing.position.y = topY + 3.2;
+    innerRing.castShadow = true;
+    group.add(innerRing);
+
+    // 交叉斜撑：相邻放射梁之间，避免过度堆叠
+    for (let index = 0; index < COLUMN_COUNT; index += 1) {
+      const a = tops[index];
+      const b = tops[(index + 1) % COLUMN_COUNT];
+      const midY = topY + 1.5;
+      const p1 = new THREE.Vector3(
+        a.x * 0.7 + b.x * 0.3,
+        midY,
+        a.z * 0.7 + b.z * 0.3,
+      );
+      const p2 = new THREE.Vector3(
+        a.x * 0.3 + b.x * 0.7,
+        midY + 0.95,
+        a.z * 0.3 + b.z * 0.7,
+      );
+      group.add(createBeamBetween(p1, p2, 0.09, braceMaterial));
+    }
+
+    // 透明攒尖顶（9 面三角形，透明可挡雨，木梁骨架外露）
+    const roofBaseRadius = RING_RADIUS + 1.6;
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(roofBaseRadius, 5.6, 9, 1, true),
+      glassMaterial,
+    );
+    roof.position.y = topY + 2.8;
     roof.userData.plazaSelectable = true;
     group.add(roof);
 
     const eave = new THREE.Mesh(
-      new THREE.TorusGeometry(ringRadius + 1.42, 0.12, 6, 40),
-      roofMaterial,
+      new THREE.TorusGeometry(roofBaseRadius, 0.16, 6, 54),
+      beamMaterial,
     );
     eave.rotation.x = Math.PI / 2;
-    eave.position.y = topY + 1.7 - 1.9;
+    eave.position.y = topY + 0.06;
+    eave.castShadow = true;
     group.add(eave);
 
-    const cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22, 0.34, 0.6, 8),
-      roofMaterial,
+    // 顶盖封心 + 宝顶
+    const finial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.34, 0.9, 8),
+      beamMaterial,
     );
-    cap.position.y = topY + 3.75;
-    group.add(cap);
+    finial.position.y = apexY + 0.5;
+    finial.castShadow = true;
+    group.add(finial);
 
-    // 内部发光球体（地面上仰可见）
+    // 吊杆 + 内部发光球体（离地 24~28m，广场仰视可见、被木梁框住）
+    const hanger = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, apexY - sphereY, 6),
+      beamMaterial,
+    );
+    hanger.position.y = (apexY + sphereY) / 2;
+    group.add(hanger);
+
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(1.5, 24, 18),
       new THREE.MeshStandardMaterial({
         color: '#eafaf1',
         emissive: '#8fe6c0',
-        emissiveIntensity: 0.85,
-        roughness: 0.25,
+        emissiveIntensity: 0.9,
+        roughness: 0.22,
       }),
     );
-    core.position.y = topY - 0.6;
+    core.position.y = sphereY;
     group.add(core);
     this.centralCore = core;
 
-    const hanger = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6),
-      roofMaterial,
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(1.95, 0.05, 6, 28),
+      beamMaterial,
     );
-    hanger.position.y = topY + 0.4;
-    group.add(hanger);
+    halo.rotation.x = Math.PI / 2;
+    halo.position.y = sphereY + 0.95;
+    group.add(halo);
 
-    this.centralPointLight = new THREE.PointLight('#ffe6cc', 2.2, 64, 1.7);
-    this.centralPointLight.position.set(0, topY - 0.6, 0);
+    this.centralPointLight = new THREE.PointLight('#ffe6cc', 2.4, 72, 1.7);
+    this.centralPointLight.position.set(0, sphereY, 0);
     group.add(this.centralPointLight);
   }
 
