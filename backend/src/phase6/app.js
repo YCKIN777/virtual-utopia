@@ -164,6 +164,45 @@ export const createPhase6App = ({
   app.use(cors(createCorsOptions(config.allowedOrigins)));
   app.use(express.json({ limit: '2mb' }));
 
+  // 根路径友好入口：浏览器直接访问 http://localhost:3400 时不再只看到 404 JSON。
+  // 仅新增只读页面，不改变任何既有接口行为。
+  app.get('/', (_request, response) => {
+    response.type('text/html').send(
+      [
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+        '<title>虚拟乌托邦 · 后端服务</title>',
+        '<style>body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;',
+        'max-width:760px;margin:48px auto;padding:0 20px;color:#1d1d1f;line-height:1.7}',
+        'h1{font-size:20px;margin:0 0 4px}small{color:#6e6e73}',
+        'h2{font-size:14px;margin:26px 0 8px;color:#258a41}',
+        'a{color:#258a41;text-decoration:none;border-bottom:1px solid rgba(47,168,79,.35)}',
+        'code{background:#f5f5f7;padding:2px 6px;border-radius:6px;font-size:12.5px}',
+        'li{margin:6px 0;font-size:13.5px}</style></head><body>',
+        '<h1>虚拟乌托邦 · 后端服务（phase6 + phase7）</h1>',
+        '<small>本服务只提供 JSON API，没有网页界面。请访问前端界面使用完整功能。</small>',
+        '<h2>前端界面（推荐入口）</h2>',
+        '<ul>',
+        '<li><a href="http://localhost:5199/">http://localhost:5199/</a> — 主世界（漫游 / 个人主页 / 社交）</li>',
+        '<li><a href="http://localhost:5199/#/documents">http://localhost:5199/#/documents</a> — 管理台后台</li>',
+        '</ul>',
+        '<h2>健康检查</h2>',
+        '<ul>',
+        '<li><a href="/health">/health</a></li>',
+        '<li><a href="/api/phase6/health">/api/phase6/health</a></li>',
+        '<li><a href="/api/phase7/health">/api/phase7/health</a></li>',
+        '</ul>',
+        '<h2>接口前缀</h2>',
+        '<ul>',
+        '<li><code>/api/phase6/*</code> — 鉴权 / 社交 / 名录 / 留言簿 / 卡片 / 审批 / 访客配额</li>',
+        '<li><code>/api/phase7/*</code> — 空间社交内容层（JSON 分片存储 + 关键词检索 + 宅院权限 + 导出/备份）</li>',
+        '</ul>',
+        '<h2>前端调用方式</h2>',
+        '<p><code>http://localhost:5199/phase6-api/&lt;path&gt;</code> 会由 Vite 代理到本服务（3400）。</p>',
+        '</body></html>',
+      ].join(''),
+    );
+  });
+
   app.get('/health', (_request, response) => {
     response.json({
       service: 'virtual-utopia-phase6',

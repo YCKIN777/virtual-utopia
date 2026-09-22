@@ -126,6 +126,37 @@ export const createPhase5App = ({ repositories, config, database }) => {
   );
   app.use(express.json({ limit: '2mb' }));
 
+  // 根路径友好入口（仅新增只读页面，不改变任何既有接口行为）
+  app.get('/', (_request, response) => {
+    response.type('text/html').send(
+      [
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+        '<title>虚拟乌托邦 · 鉴权服务</title>',
+        '<style>body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;',
+        'max-width:720px;margin:48px auto;padding:0 20px;color:#1d1d1f;line-height:1.7}',
+        'h1{font-size:20px;margin:0 0 4px}small{color:#6e6e73}',
+        'h2{font-size:14px;margin:24px 0 8px;color:#258a41}',
+        'a{color:#258a41;text-decoration:none;border-bottom:1px solid rgba(47,168,79,.35)}',
+        'code{background:#f5f5f7;padding:2px 6px;border-radius:6px;font-size:12.5px}',
+        'li{margin:6px 0;font-size:13.5px}</style></head><body>',
+        '<h1>虚拟乌托邦 · 鉴权服务（phase5）</h1>',
+        '<small>本服务只提供 JSON API，没有网页界面。</small>',
+        '<h2>入口</h2>',
+        '<ul>',
+        '<li><a href="http://localhost:5199/">http://localhost:5199/</a> — 前端主世界（登录入口）</li>',
+        '<li><a href="/health">/health</a> · <a href="/api/phase5/health">/api/phase5/health</a> — 健康检查</li>',
+        '</ul>',
+        '<h2>主要接口</h2>',
+        '<ul>',
+        '<li><code>POST /api/phase5/auth/login</code> — 登录（密码需为 sha256 十六进制；网页登录框会自动处理）</li>',
+        '<li><code>GET /api/phase5/auth/me</code> · <code>POST /api/phase5/auth/logout</code></li>',
+        '<li><code>PUT /api/phase5/auth/password</code> — 修改密码</li>',
+        '</ul>',
+        '</body></html>',
+      ].join(''),
+    );
+  });
+
   app.get('/health', (_request, response) => {
     const databaseCheck = database.prepare('SELECT 1 AS ok').get();
 
