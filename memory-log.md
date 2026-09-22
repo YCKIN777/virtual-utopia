@@ -880,3 +880,59 @@
 - 登录：`admin`(admin) / `KIN777`(editor) / `traveler`(editor) 均 200。
 - 权限：`phase7 /profile/me`、`/search`、`/stats` 200；`POST /backup`（admin）201（快照 24 个文件）；`phase6 /residents`（admin）200；`home-access PUT` 200。
 - 提交：`git commit f78ea94`。
+
+---
+
+## 2026-09-22 预置 KIN 管理员账号 + 登录口径兼容修复
+
+### 背景
+用户反馈「管理员账号未预置，admin / KIN 登录均提示用户名或密码错误，只有 traveler 能登录」。排查结论：
+- 库内**确实存在** `admin`（id 1, role=admin），口令为 `utopia2026`；但仓库文档 `001A访问界面.txt` 记载的 `admin-pass-2026` / `kin` / `resident_a` 全部失效（`kin`、`resident_a` 用户不存在），照文档输入必然 401。
+- 真实根因是**两套口令哈希口径并存**：
+  - 新方案 `scrypt(sha256(明文))`（admin / KIN777）→ **网页登录框可用**（前端发送 sha256），但直连 API 发明文会 401。
+  - 旧方案 `scrypt(明文)`（traveler）→ 直连 API 发明文可用，但**网页登录框不可用**。
+  两套互相排斥，导致"看起来谁都不能登录"。
+
+### 变更 1：预置 KIN 管理员账号（持久化）
+- 新增可重复执行的幂等脚本 **`scripts/seed-admin-kin.mjs`**（通用账号 provision/修复工具）：
+  - 参数：`--username`（默认 `KIN`）、`--password`（缺省自动生成强密码并打印）、`--role`（默认 `admin`，可选 admin/editor/viewer）、`--display-name`；库路径取 `PHASE5_DB_PATH` 或 `data/virtual_utopia_phase5.sqlite`。
+  - 按 `hashPassword(sha256Hex(password))` 写入（与前端登录链路完全对齐）；已存在则更新口令/角色/状态（幂等）。
+- 执行结果：`username=KIN`、`role=admin`、`status=active`、`id=40`、`display_name=KIN（城主 · 管理员）`，写入 `H:\BP2\data\virtual_utopia_phase5.sqlite` 的 `users` 表。
+- **已重启 phase5 验证：重启后 KIN 仍可登录（role=admin, id=40）→ 持久化确认。**
+
+### 变更 2：登录口径兼容（一次修复两套哈希）
+- `backend/src/phase5/httpServer.js` 登录：先按收到值校验；**若失败且收到值不是 64 位 sha256 十六进制**，再按 `sha256Hex(收到值)` 校验一次（新增 `sha256Hex` import）。
+- 效果：**明文与 sha256 两种提交方式对所有账号都可用**，彻底消除口径分歧。
+- 同时用 `scripts/seed-admin-kin.mjs --username=traveler --password=utopia2026 --role=editor --display-name=漫游者` 把 traveler 的旧式哈希**重哈希为新方案（明文不变）**，使其在网页登录框也能登录。
+
+### 自检（16/16 通过）
+| 项 | 结果 |
+|---|---|
+| KIN 网页口径登录（sha256） | ✅ 200，`role=admin` |
+| KIN 直连口径登录（明文） | ✅ 200 |
+| admin 网页口径登录 | ✅ 200，role=admin |
+| traveler 网页口径登录 / 直连 | ✅ 200 / ✅ 200 |
+| KIN777 城主账号登录 | ✅ 200 |
+| 管理员可查看全部账号 `/api/phase6/residents` | ✅ 200（25 条） |
+| 管理员可管理访客配额/社群数据 | ✅ 200 |
+| 管理员可查看审计事件（维护秩序） | ✅ 200 |
+| 管理员可查询入驻申请 | ✅ 200 |
+| 管理员可生成 data 快照备份 | ✅ 201 |
+| **管理员不可读取他人私密主页内容** | ✅ traveler 私密条目对 admin 不可见（`entries` 不含私密项） |
+| **管理员检索不到他人私密内容** | ✅ 检索命中 0；本人检索命中 1 |
+| 重启后 KIN 仍可登录（持久化） | ✅ |
+| 回归单测 | ✅ 虚拟乌托邦 13/13、外层前端 9/9、**backend 42/42**、BP3 7/7 |
+| 验证过程产生的探针数据 | ✅ 已清理（剩余 0） |
+
+### 备份与提交
+- 备份快照：`H:/BP2/.workbuddy/backups/admin-kin-20260922/`（**改动前** `virtual_utopia_phase5.sqlite.bak` + **改动后** `.after`）；另经 `POST /api/phase7/backup` 生成整个 `data` 目录快照（`backups/<时间戳>/data` + manifest）。
+- 说明：`data/` 在 `.gitignore` 中，账号数据本身不入库；**可用 `node scripts/seed-admin-kin.mjs` 随时重建**（脚本已入库）。
+- 提交：`git commit <HASH_KIN>`。
+
+### 账号总表（当前有效，网页登录框填明文）
+| 角色 | 账号 | 口令 |
+|---|---|---|
+| **管理员（新增）** | `KIN` | `KIN-jyikSnKw-YhjQ` |
+| 管理员（原有） | `admin` | `utopia2026` |
+| 原住民 · KIN 城主 | `KIN777` | `123456` |
+| 原住民 · 演示 | `traveler` | `utopia2026` |

@@ -10,6 +10,7 @@ import {
 import {
   createAccessToken,
   hashPassword,
+  sha256Hex,
   verifyAccessToken,
   verifyPassword,
 } from './security.js';
@@ -181,8 +182,23 @@ export const createPhase5App = ({ repositories, config, database }) => {
       const username = requireString(request.body?.username, 'username');
       const password = requireString(request.body?.password, 'password');
       const user = repositories.users.getByUsername(username);
-      const passwordMatches =
+      // 兼容两套口令口径：
+      //   新方案：网页登录框发送 sha256(明文)，库内为 scrypt(sha256(明文))
+      //   旧方案：直连 API 发送明文，库内为 scrypt(明文)
+      // 先按收到的原值校验；失败且原值不是 sha256 十六进制时，再按 sha256 校验一次。
+      let passwordMatches =
         user && (await verifyPassword(password, user.passwordHash));
+
+      if (
+        !passwordMatches &&
+        user &&
+        !/^[a-f0-9]{64}$/i.test(password)
+      ) {
+        passwordMatches = await verifyPassword(
+          sha256Hex(password),
+          user.passwordHash,
+        );
+      }
 
       if (!passwordMatches || user.status !== 'active') {
         throw new Phase5UnauthorizedError('invalid username or password');
