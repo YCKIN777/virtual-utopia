@@ -3,6 +3,7 @@ import { computed, reactive, ref, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import HomepageS2Panel from '../components/HomepageS2Panel.vue';
 import ResidentCardsPanel from '../components/ResidentCardsPanel.vue';
+import ResidentWorksPanel from '../components/ResidentWorksPanel.vue';
 import ResidentDirectoryPanel from '../components/ResidentDirectoryPanel.vue';
 import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
@@ -200,9 +201,9 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 作品：全部原创卡片，含新增/编辑/删除 -->
+          <!-- 作品：独立上传模块，与备忘子项完全隔离 -->
           <div v-else-if="mainTab === 'works'">
-            <ResidentCardsPanel />
+            <ResidentWorksPanel />
           </div>
 
           <!-- 备忘：仅内部展示 4 个子项，外层不重复 -->

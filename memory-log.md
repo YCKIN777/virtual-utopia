@@ -405,3 +405,79 @@
 ### 备份与提交
 - 备份：`H:/BP2/.workbuddy/backups/profile-ui-20260922/ProfileView.vue.bak`、`styles.css.bak`（回滚点）。
 - 提交：`git commit 85a3879`（仅以上两文件，未带入 memory-core.md / DESIGN.md / prototypes 等无关改动）。
+
+---
+
+## 2026-09-22 居民个人主页最终原型重构（苹果绿轻量 UI）
+
+> 仅改前端 UI 渲染层（ProfileView.vue 全面重写 + 3 子面板浅色重主题 + ResidentCardsPanel filterTypes 属性），未动 3D 场景/地形/碰撞/居民漫游/注册审批/聊天后端内核/已验收 3D 资产。严格执行 scope 守卫→前置备份→资源预检→全量自检→FAIL 回滚→git 提交 + memory-log。
+
+### 改动文件
+- `frontend/src/virtual-utopia/views/ProfileView.vue`：全面重写。顶部头像+昵称+身份标签(无功能按钮)；主视觉大卡片动态标题 `{昵称}的简介与作品` + 三动态标签(简介/作品/备忘)；中部 3 个折叠模块(消息与协作/邻里往来/个人收藏)默认全收起、行式轻量入口；底部 2 个纯图标按钮(👥原住民名录 / 🔒修改密码)唤起居中弹窗；统一弹窗系统(Teleport + 遮罩 + 关闭按钮)；群聊子弹窗复用 worldStore 群接口。
+- `frontend/src/virtual-utopia/components/ResidentCardsPanel.vue`：新增 `filterTypes` prop + `visibleTypes` computed，备忘/收藏复用同一卡片 CRUD 逻辑；深色→浅色主题重做。
+- `frontend/src/virtual-utopia/components/HomepageS2Panel.vue`：仅浅色重主题（展示板+留言簿），逻辑未改。
+- `frontend/src/virtual-utopia/components/ResidentDirectoryPanel.vue`：仅浅色重主题（名录+私聊+建群），逻辑未改。
+- 全局主题(已在 v4 落地，本次未再改 `styles.css`)：苹果绿 `#2fa84f` / 白底 `#fbfbfd` / 浅灰线 `#e3e3e8` / 深灰字 `#1d1d1f`。
+
+### 关键实现（对照用户最终规范）
+- **顶部**：头像(首字)+昵称+身份标签。身份以 `seedResidents`(阿岚/苏禾/林涧/白石/墨竹) 匹配 `user.displayName` 区分 `AI 居民 / 真人`；无任何功能按钮。
+- **主卡片**：标题 `{{nickname}}的简介与作品` 动态渲染；标签① `{{nickname}}·简介`(selfIntro，含可见权限占位选单，后端就绪生效)；标签② `{{nickname}}·作品`(ResidentCardsPanel 全部 5 类卡片 CRUD)；标签③ `{{nickname}}·备忘`(filterTypes 仅 4 子项 work_plan/travel_log/life_note/wish_list，外层不重复备忘子项)。
+- **中部折叠**：3 大模块默认收起(`middle` reactive 全 false)，行式入口；① 消息与协作(广场消息通知+我的临时群聊空间) ② 邻里往来(邻里心愿看板+邻里往来记录+宅院访客记录) ③ 个人收藏(个人风物收藏+邻里留言簿)。
+- **底部图标按钮**：2 个纯图标按钮，点击开弹窗，主页面静止不预载详情。
+- **无后端模块**(广场消息通知/邻里往来记录/宅院访客记录)：按用户选择「UI 外壳+空状态」仅渲染文案(`EMPTY_TEXT`)，不写后端/不造数据。
+- **业务规则**：舍弃点赞/浏览/热度/排行/亲密度/成就徽章；v1.0 不开发宅院独立留言板与邻里邀约日历；无内卷数字(已移除 level/points 展示)。
+
+### 测试结果
+- 前端生产构建通过（vite build，52 modules transformed）。
+- 前端单测 **9/9 ✅**；后端单测 **33/33 ✅**；BP3 单测 **7/7 ✅**。
+- 场景流 E2E **通过**（exit 0，`consoleErrors: []`）——本次直跑 E2E 实际全绿，纠正了此前 v4 误判为「缺 DEEPSEEK_API_KEY」的结论；此前失败系 `scripts/test-all.mjs` 在 Windows 下 `execFileSync('npm',…)` 无法解析 npm 脚本导致的假阴性，与代码改动无关。
+- **结论：全量自检全绿，无需回滚。**
+
+### 自检清单（对照用户清单）
+- [x] 主卡片标题与三标签动态读取居民昵称渲染（`nickname` computed 驱动）
+- [x] 顶部头像+昵称+身份标签，无功能按钮
+- [x] 中部 3 折叠模块默认收起，行式轻量入口
+- [x] 底部 2 纯图标按钮唤起弹窗，主页静止不预载
+- [x] 备忘标签仅内部展示 4 子项，外层不重复
+- [x] 无后端模块仅 UI 外壳+空状态
+- [x] 舍弃点赞/浏览/热度/排行等内卷数字
+- [x] 苹果绿+白+浅灰+深灰统一视觉，圆角卡片+轻投影
+- [x] 3D 场景/地形/碰撞/居民漫游/注册审批/聊天后端内核/已验收资产 零改动
+- [x] 前端构建+单测+后端+BP3+E2E 全绿，无回归
+- [x] 变更记录写入 memory-log（本条）
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/profile-ui-20260922b/`(ProfileView/ResidentCardsPanel/HomepageS2Panel/ResidentDirectoryPanel/styles.css 五文件回滚点)。
+- 提交：`git commit 7b87ce4`（6 文件：4 前端 UI + memory-core.md + memory-log.md；未带入 DESIGN.md / prototypes / .workbuddy 等无关改动）。
+
+---
+
+## 2026-09-22 个人主页标签路由修复 + 作品上传模块（作品/备忘完全隔离）
+
+> 仅改前端 `ProfileView.vue` + 新增 `ResidentWorksPanel.vue`；未动 3D 场景/漫游/注册审批/聊天内核/已验收资产。
+
+### 修复：标签路由错误绑定（重大修复）
+- 原错误：作品标签渲染 `<ResidentCardsPanel />`（含全部 5 类，其中 work_plan/travel_log/life_note/wish_list 即备忘子项）→ 与备忘标签内容重叠。
+- 修复：作品标签改为独立组件 `<ResidentWorksPanel />`；备忘标签保持 `<ResidentCardsPanel :filter-types="['work_plan','travel_log','life_note','wish_list']" />`（仅 4 子项）。两模块完全隔离，备忘 4 子项只在备忘标签内出现。
+
+### 新增：作品上传模块 ResidentWorksPanel.vue
+- 【+上传作品】按钮；图片上传（FileReader→dataURL，>2MB 提示）+ 标题 + 文字描述。
+- 保存 / 编辑 / 删除；单条权限下拉：原住民可见 / 仅自己可见。
+- 列表展示：作品图、标题、正文、权限标记、时间戳（含上传者昵称）。
+- 持久化：localStorage（key `vu:works:<username>`），自包含、不依赖后端内核（遵守「禁改后端」约束）。
+- 视觉：沿用苹果绿 + 白 + 浅灰 token、圆角卡片、同一弹窗样式。
+
+### 自检结果
+- 生产构建（正确配置：`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`）成功；产物 `index-o8f5HKXO.js` 含 ResidentWorksPanel（rw-panel / 上传作品 / 我的作品）+ 当前 ProfileView（vu-maincard / 简介与作品），确认新模块已入包。
+- 虚拟乌托邦单测 **13/13 ✅**；外层前端 **9/9 ✅**；后端 **33/33 ✅**；BP3 **7/7 ✅**。
+- 开发服务器（5199）已热更新并成功编译 `ResidentWorksPanel.vue`（curl 校验转换产物，`__name:'ResidentWorksPanel'`；ProfileView 转换产物同时引用 ResidentWorksPanel×4 / ResidentCardsPanel×5）。
+- 结论：全绿，无需回滚。
+
+### 重要环境发现（纠正历史自检口径）
+- 此前 `npm run build --workspace frontend` 实际构建的是**外层 frontend 壳应用**（`frontend/index.html` → `frontend/src/main.js`，不含 worldStore/ProfileView），`52 modules` 的产物根本不包含线上页面，属无效自检。
+- 虚拟乌托邦**真实应用**位于 `frontend/src/virtual-utopia/`（自带 `vite.config.js`：root=该目录、outDir=该目录/dist、dev port 5175，实际以 5199 运行；`index.html` 挂载点 `#virtual-utopia-app`）。
+- **正确构建命令**：`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`（必须显式 `--config`；直接 `cd frontend/src/virtual-utopia && npx vite build` 会误解析为外层配置并输出到 `frontend/dist`）。
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/profile-works-20260922/`（ProfileView.vue + ResidentCardsPanel.vue 回滚点）。
+- 提交：本次 `git commit`（`ProfileView.vue` + `ResidentWorksPanel.vue` + `memory-log.md`）。
