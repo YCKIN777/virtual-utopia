@@ -777,7 +777,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/env-detail-20260922/`（含 HEAD 版两文件 + 截图 + 自检脚本）。
-- 提交：`git commit <HASH9>`（ThreeWorld.js + mountainEnv.js + memory-log.md）。
+- 提交：`git commit 3d196f0`（ThreeWorld.js + mountainEnv.js + memory-log.md）。
 
 ### 说明 / 取舍
 - 「不堆模型」：新增几何以 **InstancedMesh** 为主（路面 1388、台阶 100、门灯 50、植被 124 等），draw call 与顶点数增量可控。
