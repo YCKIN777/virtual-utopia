@@ -330,7 +330,8 @@ export const planMountainEnv = ({ homes = [], hubs = [] }) => {
   let shadyCount = 0;
   const maxSlopeAttempts = 2600;
   let attempts = 0;
-  while (attempts < maxSlopeAttempts && slopeItems.length < 540) {
+  // 阶段九：山坡植被改为“分层克制”密度（原 540 → 320），保持画面通透干净。
+  while (attempts < maxSlopeAttempts && slopeItems.length < 320) {
     attempts += 1;
     const angle = random() * Math.PI * 2;
     const radius =

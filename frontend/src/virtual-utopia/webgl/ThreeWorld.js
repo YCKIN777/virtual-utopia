@@ -496,6 +496,21 @@ export class ThreeWorld {
     this.running = false;
     this.frameCount = 0;
     this.roamingAgents = new Set();
+    // 阶段九：基础环境层
+    this.groundLayerGroup = null;
+    this.groundMaterialCache = null;
+    this.pathSamples = [];
+    this.pathMeshes = [];
+    this.simpleBridges = [];
+    this.homeGrounding = [];
+    this.greeneryMeshes = [];
+    this.accentGroup = null;
+    this.accentMaterials = [];
+    this.accentGlowMaterials = [];
+    this.accentLights = [];
+    this.skyDome = null;
+    this.skyUniforms = null;
+    this.proximityLabels = [];
   }
 
   async init() {
@@ -533,6 +548,14 @@ export class ThreeWorld {
     this.buildStreamDetailPass();
     this.buildRoadDetailPass();
     this.buildHomeDetailPass();
+    // 阶段九：场景基础环境层细化（地面分层 / 路网 / 接地 / 植被 / 灯光 / 远景天空 / 就近标签）
+    this.buildGroundLayers();
+    this.buildPathNetwork();
+    this.buildHomeGrounding();
+    this.buildPathGreenery();
+    this.buildAccentLighting();
+    this.buildSkyDome();
+    this.buildProximityLabels();
     this.buildFoothillBuffer();
     // 山林公共环境细化（视觉层）：山坡植被 + 溪流乱石 + 林间薄雾。
     // 只读 homes/hubs/地形/河道，不改动任何几何、坐标、碰撞、AI、相机、后端、聊天、人设。
@@ -1859,12 +1882,13 @@ export class ThreeWorld {
       });
     }
 
+    // 阶段九：植被分层克制（不大量密集种树，保持空间通透干净）
     const nearPositions = positions
       .filter((tree) => Math.hypot(tree.x, tree.z) < 88)
-      .slice(0, 270);
+      .slice(0, 170);
     const farPositions = positions
       .filter((tree) => Math.hypot(tree.x, tree.z) >= 72)
-      .slice(0, 480);
+      .slice(0, 300);
     const trunks = new THREE.InstancedMesh(
       trunkGeometry,
       trunkMaterial,
@@ -2572,6 +2596,897 @@ export class ThreeWorld {
     this.centralPointLight = new THREE.PointLight('#ffe1b0', 2.6, 80, 1.7);
     this.centralPointLight.position.set(0, orbY, 0);
     group.add(this.centralPointLight);
+  }
+
+  // ==========================================================================
+  // 阶段九：场景基础环境层细化（地面分层 / 路网 / 建筑接地 / 分层植被 /
+  //          主次灯光 / 河岸小桥 / 远景天空 / 就近交互标签）
+  // 仅“补齐基础层”：不改中心广场木构穹顶、50 栋宅院本体模型、内部功能、
+  // 碰撞盒、河道水面轮廓与后端业务代码。
+  // ==========================================================================
+
+  groundMaterials() {
+    if (!this.groundMaterialCache) {
+      this.groundMaterialCache = {
+        stoneBand: new THREE.MeshStandardMaterial({
+          color: '#cdcbc4',
+          roughness: 0.93,
+          metalness: 0,
+        }),
+        stoneJoint: new THREE.MeshStandardMaterial({
+          color: '#a8a69f',
+          roughness: 0.96,
+        }),
+        slab: new THREE.MeshStandardMaterial({
+          color: '#bcb9b0',
+          roughness: 0.95,
+        }),
+        gravel: new THREE.MeshStandardMaterial({
+          color: '#b3a893',
+          roughness: 1,
+        }),
+        dirt: new THREE.MeshStandardMaterial({
+          color: '#a98d67',
+          roughness: 1,
+        }),
+        wood: createWoodMaterial('#b98d5a'),
+        plinth: new THREE.MeshStandardMaterial({
+          color: '#ada79d',
+          roughness: 0.94,
+        }),
+      };
+    }
+    return this.groundMaterialCache;
+  }
+
+  // ① 地面材质分层：广场边缘石材收边带 + 碎石过渡带 + 山脚泥土斑块
+  buildGroundLayers() {
+    const materials = this.groundMaterials();
+    const group = new THREE.Group();
+    group.name = 'ground-layers';
+
+    const band = new THREE.Mesh(
+      createTerrainBandGeometry({
+        innerRadius: 17.4,
+        outerRadius: 20.4,
+        segments: 132,
+        heightOffset: 0.07,
+      }),
+      materials.stoneBand,
+    );
+    band.receiveShadow = true;
+    group.add(band);
+
+    const joint = new THREE.Mesh(
+      createTerrainBandGeometry({
+        innerRadius: 20.4,
+        outerRadius: 21.05,
+        segments: 132,
+        heightOffset: 0.065,
+      }),
+      materials.stoneJoint,
+    );
+    group.add(joint);
+
+    const transition = new THREE.Mesh(
+      createTerrainBandGeometry({
+        innerRadius: 21.05,
+        outerRadius: 23.3,
+        segments: 132,
+        heightOffset: 0.055,
+      }),
+      materials.gravel,
+    );
+    group.add(transition);
+
+    // 山脚泥土斑块（贴地材质层，不改地形高度）
+    const patchCount = 14;
+    const patches = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(1, 18),
+      materials.dirt,
+      patchCount,
+    );
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-Math.PI / 2, 0, 0),
+    );
+    const position = new THREE.Vector3();
+    const scaleVector = new THREE.Vector3();
+    for (let index = 0; index < patchCount; index += 1) {
+      let angle = (index / patchCount) * Math.PI * 2 + 0.37;
+      let radius = 74 + (index % 5) * 12;
+      let x = Math.cos(angle) * radius;
+      let z = Math.sin(angle) * radius;
+      let guard = 0;
+      while (Math.abs(x - getStreamX(z)) < 9 && guard < 8) {
+        angle += 0.32;
+        radius = 74 + ((index + guard) % 5) * 12;
+        x = Math.cos(angle) * radius;
+        z = Math.sin(angle) * radius;
+        guard += 1;
+      }
+      position.set(x, 0.045, z);
+      const size = 5.4 + (index % 4) * 1.6;
+      scaleVector.set(size, size * (0.68 + (index % 3) * 0.14), 1);
+      matrix.compose(position, quaternion, scaleVector);
+      patches.setMatrixAt(index, matrix);
+    }
+    patches.receiveShadow = true;
+    group.add(patches);
+
+    this.scene.add(group);
+    this.groundLayerGroup = group;
+  }
+
+  // ② 路网路径系统：环形主路 + 过河小桥 + 入户支路
+  buildPathNetwork() {
+    const materials = this.groundMaterials();
+    const buckets = { slab: [], gravel: [], dirt: [] };
+    const ringSpecs = [
+      { radius: 23, material: 'slab', spacing: 1.15, width: 0.68 },
+      { radius: 62, material: 'gravel', spacing: 0.95, width: 1 },
+      { radius: 98, material: 'dirt', spacing: 1.1, width: 1 },
+    ];
+
+    const inWater = (x, z) =>
+      Math.abs(x - getStreamX(z)) < getStreamWidth(z) + 0.9;
+    const nearHome = (x, z) =>
+      homes.some((home) => Math.hypot(home.x - x, home.z - z) < 6.4);
+    const blocked = (x, z) => inWater(x, z) || nearHome(x, z);
+
+    ringSpecs.forEach((ring) => {
+      const total = Math.max(
+        48,
+        Math.round((Math.PI * 2 * ring.radius) / ring.spacing),
+      );
+      const points = [];
+      for (let index = 0; index < total; index += 1) {
+        const angle = (index / total) * Math.PI * 2;
+        const x = Math.cos(angle) * ring.radius;
+        const z = Math.sin(angle) * ring.radius;
+        points.push({ x, z, angle, blocked: blocked(x, z) });
+      }
+
+      points.forEach((point, index) => {
+        if (point.blocked) return;
+        const next = points[(index + 1) % total];
+        const rotation = Math.atan2(next.z - point.z, next.x - point.x);
+        buckets[ring.material].push({
+          x: point.x,
+          z: point.z,
+          rotation,
+          scale: ring.width,
+          y: ring.material === 'dirt' ? 0.075 : 0.085,
+        });
+        if (index % 3 === 0) {
+          this.pathSamples.push({ x: point.x, z: point.z, rotation });
+        }
+      });
+
+      // 连续水道缺口 → 架设简易平桥（连通两岸步道）
+      let start = -1;
+      for (let index = 0; index <= total; index += 1) {
+        const point = points[index % total];
+        if (point.blocked && start < 0) start = index;
+        if ((!point.blocked || index === total) && start >= 0) {
+          if (index < total) {
+            this.addSimpleBridge(
+              points[start % total],
+              points[(index - 1 + total) % total],
+              ring,
+            );
+          }
+          start = -1;
+        }
+      }
+    });
+
+    // 入户支路：每户 → 最近环网接入点
+    homes.forEach((home) => {
+      const hub = getNearestHub(home);
+      const entryAngle = Math.atan2(hub.z - home.z, hub.x - home.x);
+      const entry = {
+        x: home.x + Math.cos(entryAngle) * 2.95,
+        z: home.z + Math.sin(entryAngle) * 2.95,
+      };
+      const homeRadius = Math.hypot(home.x, home.z);
+      const ring = ringSpecs.reduce((best, candidate) =>
+        Math.abs(candidate.radius - homeRadius) <
+        Math.abs(best.radius - homeRadius)
+          ? candidate
+          : best,
+      );
+
+      const samples = 240;
+      let target = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < samples; index += 1) {
+        const angle = (index / samples) * Math.PI * 2;
+        const x = Math.cos(angle) * ring.radius;
+        const z = Math.sin(angle) * ring.radius;
+        if (blocked(x, z)) continue;
+        const distance = Math.hypot(x - entry.x, z - entry.z);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          target = { x, z };
+        }
+      }
+      if (!target) return;
+
+      const normalX = -(target.z - entry.z);
+      const normalZ = target.x - entry.x;
+      const normalLength = Math.hypot(normalX, normalZ) || 1;
+      const bend = (home.number % 2 ? 1 : -1) * Math.min(3.2, bestDistance * 0.15);
+      const controlX =
+        (entry.x + target.x) / 2 + (normalX / normalLength) * bend;
+      const controlZ =
+        (entry.z + target.z) / 2 + (normalZ / normalLength) * bend;
+
+      const steps = Math.max(4, Math.round(bestDistance / ring.spacing));
+      for (let index = 0; index <= steps; index += 1) {
+        const t = index / steps;
+        const inverse = 1 - t;
+        const x =
+          inverse * inverse * entry.x +
+          2 * inverse * t * controlX +
+          t * t * target.x;
+        const z =
+          inverse * inverse * entry.z +
+          2 * inverse * t * controlZ +
+          t * t * target.z;
+        if (blocked(x, z)) continue;
+        const tNext = Math.min(1, t + 1 / steps);
+        const inverseNext = 1 - tNext;
+        const nextX =
+          inverseNext * inverseNext * entry.x +
+          2 * inverseNext * tNext * controlX +
+          tNext * tNext * target.x;
+        const nextZ =
+          inverseNext * inverseNext * entry.z +
+          2 * inverseNext * tNext * controlZ +
+          tNext * tNext * target.z;
+        const rotation = Math.atan2(nextZ - z, nextX - x);
+        buckets[ring.material].push({
+          x,
+          z,
+          rotation,
+          scale: ring.width * 0.86,
+          y: ring.material === 'dirt' ? 0.072 : 0.082,
+        });
+        if (index % 3 === 0) {
+          this.pathSamples.push({ x, z, rotation });
+        }
+      }
+    });
+
+    const geometries = {
+      slab: new THREE.BoxGeometry(1.28, 0.12, 1.28),
+      gravel: new THREE.CylinderGeometry(0.72, 0.66, 0.09, 7),
+      dirt: new THREE.CylinderGeometry(0.86, 0.8, 0.07, 9),
+    };
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler();
+    const position = new THREE.Vector3();
+    const scaleVector = new THREE.Vector3();
+
+    Object.entries(buckets).forEach(([key, items]) => {
+      if (!items.length) return;
+      const mesh = new THREE.InstancedMesh(
+        geometries[key],
+        materials[key],
+        items.length,
+      );
+      items.forEach((item, index) => {
+        position.set(item.x, item.y, item.z);
+        euler.set(0, -item.rotation, 0);
+        quaternion.setFromEuler(euler);
+        scaleVector.set(item.scale, 1, item.scale * (key === 'slab' ? 0.84 : 0.94));
+        matrix.compose(position, quaternion, scaleVector);
+        mesh.setMatrixAt(index, matrix);
+      });
+      mesh.receiveShadow = true;
+      mesh.name = 'path-' + key;
+      this.scene.add(mesh);
+      this.pathMeshes.push(mesh);
+    });
+  }
+
+  addSimpleBridge(from, to, ring) {
+    const materials = this.groundMaterials();
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 1.8 || length > 34) return;
+
+    const centerX = (from.x + to.x) / 2;
+    const centerZ = (from.z + to.z) / 2;
+    const angle = Math.atan2(dz, dx);
+    const deckWidth = ring.radius > 50 ? 2.4 : 2.7;
+
+    const group = new THREE.Group();
+    group.name = 'simple-bridge';
+    group.position.set(centerX, 0.5, centerZ);
+    group.rotation.y = -angle;
+
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(length + 1.2, 0.24, deckWidth),
+      materials.wood,
+    );
+    deck.castShadow = true;
+    deck.receiveShadow = true;
+    group.add(deck);
+
+    const beamCount = Math.max(2, Math.round(length / 2.2));
+    for (let index = 0; index < beamCount; index += 1) {
+      const beam = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.18, deckWidth + 0.5),
+        materials.wood,
+      );
+      beam.position.set(
+        -length / 2 + ((index + 0.5) / beamCount) * length,
+        -0.21,
+        0,
+      );
+      group.add(beam);
+    }
+
+    [-1, 1].forEach((side) => {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(length + 1.2, 0.1, 0.1),
+        materials.wood,
+      );
+      rail.position.set(0, 0.5, side * (deckWidth / 2 - 0.05));
+      group.add(rail);
+      for (let index = 0; index < 4; index += 1) {
+        const post = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.065, 0.075, 0.48, 6),
+          materials.wood,
+        );
+        post.position.set(
+          -length / 2 + ((index + 0.5) / 4) * length,
+          0.26,
+          side * (deckWidth / 2 - 0.05),
+        );
+        group.add(post);
+      }
+    });
+
+    // 桥头两级矮踏（与地面小路衔接）
+    [-1, 1].forEach((side) => {
+      for (let index = 0; index < 2; index += 1) {
+        const step = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.14, deckWidth + 0.2),
+          materials.stoneJoint,
+        );
+        step.position.set(
+          side * (length / 2 + 0.55 + index * 0.62),
+          -0.22 - index * 0.14,
+          0,
+        );
+        group.add(step);
+      }
+    });
+
+    this.scene.add(group);
+    this.simpleBridges.push(group);
+  }
+
+  // ③ 建筑接地处理：台基 / 滨水木平台 / 挡土墙 / 入户矮台阶
+  buildHomeGrounding() {
+    const materials = this.groundMaterials();
+    const plinths = [];
+    const decks = [];
+    const walls = [];
+    const steps = [];
+
+    homes.forEach((home) => {
+      const hub = getNearestHub(home);
+      const entryAngle = Math.atan2(hub.z - home.z, hub.x - home.x);
+      const groupScale = home.scale * (home.variant === 2 ? 1.16 : 1) * 1.18;
+
+      if (home.zone === 'plaza') {
+        plinths.push({ x: home.x, z: home.z, radius: groupScale * 3.35, height: 0.34 });
+      } else if (home.zone === 'stream') {
+        decks.push({
+          x: home.x + Math.cos(entryAngle) * 3.05,
+          z: home.z + Math.sin(entryAngle) * 3.05,
+          rotation: entryAngle,
+          width: 3.1,
+          depth: 2,
+        });
+        const wallAngle = entryAngle + Math.PI;
+        walls.push({
+          x: home.x + Math.cos(wallAngle) * 3.95,
+          z: home.z + Math.sin(wallAngle) * 3.95,
+          rotation: wallAngle,
+          length: 4.6,
+          height: 0.42,
+        });
+      } else {
+        [-1, 1].forEach((side) => {
+          const angle = entryAngle + side * (Math.PI / 2);
+          walls.push({
+            x: home.x + Math.cos(angle) * 3.75,
+            z: home.z + Math.sin(angle) * 3.75,
+            rotation: angle,
+            length: 3.6,
+            height: 0.52,
+          });
+        });
+      }
+
+      for (let index = 0; index < 2; index += 1) {
+        const height = 0.24 - index * 0.1;
+        const distance = 3.35 + index * 0.62;
+        steps.push({
+          x: home.x + Math.cos(entryAngle) * distance,
+          z: home.z + Math.sin(entryAngle) * distance,
+          rotation: entryAngle,
+          width: 2.5 - index * 0.22,
+          height,
+        });
+      }
+    });
+
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler();
+    const position = new THREE.Vector3();
+    const scaleVector = new THREE.Vector3();
+
+    const addInstances = (name, geometry, material, items, resolve) => {
+      if (!items.length) return null;
+      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+      items.forEach((item, index) => {
+        const transform = resolve(item);
+        position.set(transform.x, transform.y, transform.z);
+        euler.set(0, -item.rotation, 0);
+        quaternion.setFromEuler(euler);
+        scaleVector.set(transform.sx, transform.sy, transform.sz);
+        matrix.compose(position, quaternion, scaleVector);
+        mesh.setMatrixAt(index, matrix);
+      });
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = name;
+      this.scene.add(mesh);
+      this.homeGrounding.push(mesh);
+      return mesh;
+    };
+
+    addInstances(
+      'home-plinth',
+      new THREE.CylinderGeometry(1, 1.08, 1, 20),
+      materials.plinth,
+      plinths,
+      (item) => ({
+        x: item.x,
+        y: item.height / 2,
+        z: item.z,
+        sx: item.radius,
+        sy: item.height,
+        sz: item.radius,
+      }),
+    );
+
+    addInstances(
+      'home-entry-deck',
+      new THREE.BoxGeometry(1, 1, 1),
+      materials.wood,
+      decks,
+      (item) => ({
+        x: item.x,
+        y: 0.1,
+        z: item.z,
+        sx: item.width,
+        sy: 0.2,
+        sz: item.depth,
+      }),
+    );
+
+    addInstances(
+      'home-retain-wall',
+      new THREE.BoxGeometry(1, 1, 1),
+      materials.plinth,
+      walls,
+      (item) => ({
+        x: item.x,
+        y: item.height / 2,
+        z: item.z,
+        sx: item.length,
+        sy: item.height,
+        sz: 0.36,
+      }),
+    );
+
+    addInstances(
+      'home-entry-step',
+      new THREE.BoxGeometry(1, 1, 1),
+      materials.stoneJoint,
+      steps,
+      (item) => ({
+        x: item.x,
+        y: item.height / 2,
+        z: item.z,
+        sx: item.width,
+        sy: item.height,
+        sz: 0.78,
+      }),
+    );
+  }
+
+  // ④ 轻量分层植物：只在路边、河岸、广场边缘、宅院门口点缀
+  buildPathGreenery() {
+    const shrubGeometry = new THREE.SphereGeometry(0.52, 8, 6);
+    const grassGeometry = new THREE.ConeGeometry(0.26, 0.82, 6);
+    const shrubMaterial = new THREE.MeshStandardMaterial({
+      color: '#4a7b4f',
+      roughness: 1,
+    });
+    const grassMaterial = new THREE.MeshStandardMaterial({
+      color: '#6f9757',
+      roughness: 1,
+    });
+    const shrubs = [];
+    const grasses = [];
+
+    // 广场边缘绿化（收边带外侧）
+    const edgeCount = 26;
+    for (let index = 0; index < edgeCount; index += 1) {
+      const angle = (index / edgeCount) * Math.PI * 2 + 0.21;
+      const radius = 22.4 + (index % 3) * 0.6;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      if (Math.abs(x - getStreamX(z)) < getStreamWidth(z) + 2.2) continue;
+      if (homes.some((home) => Math.hypot(home.x - x, home.z - z) < 5.6)) continue;
+      if (index % 2 === 0) {
+        shrubs.push({ x, z, scale: 0.9 + (index % 4) * 0.08 });
+      } else {
+        grasses.push({ x, z, scale: 0.9 + (index % 3) * 0.12 });
+      }
+    }
+
+    // 道路两侧（沿环网与支路取样点，稀疏点缀）
+    this.pathSamples.forEach((sample, index) => {
+      if (index % 9 !== 0) return;
+      const side = index % 18 === 0 ? 1 : -1;
+      const offset = 1.75 + (index % 3) * 0.3;
+      const x = sample.x + Math.cos(sample.rotation + Math.PI / 2) * offset * side;
+      const z = sample.z + Math.sin(sample.rotation + Math.PI / 2) * offset * side;
+      if (Math.abs(x - getStreamX(z)) < getStreamWidth(z) + 1.6) return;
+      if (homes.some((home) => Math.hypot(home.x - x, home.z - z) < 5.2)) return;
+      if (index % 27 === 0) {
+        grasses.push({ x, z, scale: 1 });
+      } else {
+        shrubs.push({ x, z, scale: 0.7 + (index % 5) * 0.06 });
+      }
+    });
+
+    // 宅院门口点缀（每户 1 处，避开门口正前方动线）
+    homes.forEach((home, index) => {
+      const hub = getNearestHub(home);
+      const entryAngle = Math.atan2(hub.z - home.z, hub.x - home.x);
+      const side = index % 2 ? 1 : -1;
+      const angle = entryAngle + side * 0.98;
+      const x = home.x + Math.cos(angle) * 4.15;
+      const z = home.z + Math.sin(angle) * 4.15;
+      if (index % 3 === 0) {
+        grasses.push({ x, z, scale: 0.9 });
+      } else {
+        shrubs.push({ x, z, scale: 0.66 });
+      }
+    });
+
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const position = new THREE.Vector3();
+    const scaleVector = new THREE.Vector3();
+
+    const addInstances = (name, geometry, material, items) => {
+      if (!items.length) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+      items.forEach((item, index) => {
+        position.set(item.x, 0.2, item.z);
+        scaleVector.set(item.scale, item.scale * (0.85 + (index % 3) * 0.14), item.scale);
+        matrix.compose(position, quaternion, scaleVector);
+        mesh.setMatrixAt(index, matrix);
+      });
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.name = name;
+      this.scene.add(mesh);
+      this.greeneryMeshes.push(mesh);
+    };
+
+    addInstances('greenery-shrub', shrubGeometry, shrubMaterial, shrubs);
+    addInstances('greenery-grass', grassGeometry, grassMaterial, grasses);
+  }
+
+  // ⑤ 主次灯光体系：中心球体为主光源，其余为柔和辅助
+  buildAccentLighting() {
+    const deckY = PLAZA_DECK_HEIGHT;
+    const outerRadius = 10.9;
+    const innerRadius = 7.6;
+    const angleOffset = (21 * Math.PI) / 180;
+    const outerCount = 9;
+
+    const lampMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffe7bd',
+      emissive: '#ffca84',
+      emissiveIntensity: 0.1,
+      roughness: 0.4,
+    });
+    const stripMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffeccd',
+      emissive: '#ffd191',
+      emissiveIntensity: 0.08,
+      roughness: 0.5,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: '#ffd9a4',
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.accentMaterials.push(lampMaterial, stripMaterial);
+    this.accentGlowMaterials.push(glowMaterial);
+
+    const group = new THREE.Group();
+    group.name = 'accent-lighting';
+
+    // 立柱底部洗地灯（9 处，与地标立柱环位一致）
+    for (let index = 0; index < outerCount; index += 1) {
+      const angle = angleOffset + (index / outerCount) * Math.PI * 2;
+      const x = Math.cos(angle) * outerRadius;
+      const z = Math.sin(angle) * outerRadius;
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.34, 0.1, 12),
+        lampMaterial,
+      );
+      base.position.set(x, deckY + 0.06, z);
+      group.add(base);
+
+      const glow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.44, 1.5, 10, 1, true),
+        glowMaterial,
+      );
+      glow.position.set(x, deckY + 0.86, z);
+      group.add(glow);
+    }
+
+    // 木构梁底隐藏灯带（外圈主梁底 + 内圈环梁底）
+    [
+      { radius: outerRadius, y: 24.82 },
+      { radius: innerRadius, y: 7.32 },
+    ].forEach((band) => {
+      const strip = new THREE.Mesh(
+        new THREE.TorusGeometry(band.radius, 0.085, 6, 72),
+        stripMaterial,
+      );
+      strip.rotation.x = Math.PI / 2;
+      strip.position.y = band.y;
+      group.add(strip);
+    });
+
+    // 广场边缘地面线性灯
+    const lineCount = 18;
+    for (let index = 0; index < lineCount; index += 1) {
+      const angle = (index / lineCount) * Math.PI * 2;
+      const x = Math.cos(angle) * 20.7;
+      const z = Math.sin(angle) * 20.7;
+      const segment = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.06, 0.16),
+        stripMaterial,
+      );
+      segment.position.set(x, 0.12, z);
+      segment.rotation.y = -angle + Math.PI / 2;
+      group.add(segment);
+    }
+
+    // 小路两侧矮庭院灯（沿广场外环，避开河道）
+    const bollardCount = 12;
+    for (let index = 0; index < bollardCount; index += 1) {
+      const angle = (index / bollardCount) * Math.PI * 2 + 0.13;
+      const x = Math.cos(angle) * 23.9;
+      const z = Math.sin(angle) * 23.9;
+      if (Math.abs(x - getStreamX(z)) < getStreamWidth(z) + 1.4) continue;
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.09, 1.05, 7),
+        createWoodMaterial('#7a5330'),
+      );
+      post.position.set(x, 0.53, z);
+      group.add(post);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.17, 10, 8),
+        lampMaterial,
+      );
+      head.position.set(x, 1.14, z);
+      group.add(head);
+    }
+
+    // 宅院入户门灯（50 户，实例化）
+    if (homes.length) {
+      const doorLamps = new THREE.InstancedMesh(
+        new THREE.SphereGeometry(0.15, 8, 6),
+        lampMaterial,
+        homes.length,
+      );
+      const matrix = new THREE.Matrix4();
+      const position = new THREE.Vector3();
+      const quaternion = new THREE.Quaternion();
+      const scaleVector = new THREE.Vector3(1, 1, 1);
+      homes.forEach((home, index) => {
+        const hub = getNearestHub(home);
+        const entryAngle = Math.atan2(hub.z - home.z, hub.x - home.x);
+        position.set(
+          home.x + Math.cos(entryAngle) * 2.65,
+          home.y + 3.05,
+          home.z + Math.sin(entryAngle) * 2.65,
+        );
+        matrix.compose(position, quaternion, scaleVector);
+        doorLamps.setMatrixAt(index, matrix);
+      });
+      doorLamps.name = 'door-lamps';
+      group.add(doorLamps);
+    }
+
+    // 仅 4 盏柔和辅助点光源（避免性能压力与眩光）
+    [
+      angleOffset,
+      angleOffset + (Math.PI * 2) / 3,
+      angleOffset + (Math.PI * 4) / 3,
+    ]
+      .map((angle) => ({
+        x: Math.cos(angle) * outerRadius,
+        z: Math.sin(angle) * outerRadius,
+        y: 3,
+      }))
+      .concat([{ x: 0, z: 21.6, y: 2.6 }])
+      .forEach((spec) => {
+        const light = new THREE.PointLight('#ffd6a0', 0, 16, 2);
+        light.position.set(spec.x, spec.y, spec.z);
+        group.add(light);
+        this.accentLights.push(light);
+      });
+
+    group.visible = false;
+    this.scene.add(group);
+    this.accentGroup = group;
+  }
+
+  // ⑥ 远景：干净柔和的渐变天空穹顶
+  buildSkyDome() {
+    this.skyUniforms = {
+      topColor: { value: new THREE.Color('#9dc3dd') },
+      bottomColor: { value: new THREE.Color('#e9f3f0') },
+      offset: { value: 34 },
+      exponent: { value: 0.72 },
+    };
+    const material = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      vertexShader: [
+        'varying vec3 vWorldPosition;',
+        'void main() {',
+        '  vec4 worldPosition = modelMatrix * vec4(position, 1.0);',
+        '  vWorldPosition = worldPosition.xyz;',
+        '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+        '}',
+      ].join('\n'),
+      fragmentShader: [
+        'uniform vec3 topColor;',
+        'uniform vec3 bottomColor;',
+        'uniform float offset;',
+        'uniform float exponent;',
+        'varying vec3 vWorldPosition;',
+        'void main() {',
+        '  float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;',
+        '  float t = pow(max(h, 0.0), exponent);',
+        '  gl_FragColor = vec4(mix(bottomColor, topColor, t), 1.0);',
+        '}',
+      ].join('\n'),
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(340, 32, 16), material);
+    dome.name = 'sky-dome';
+    dome.renderOrder = -1;
+    this.scene.add(dome);
+    this.skyDome = dome;
+  }
+
+  // ⑦ 轻量就近交互标签（靠近淡入、远离自动隐藏）
+  buildProximityLabels() {
+    const createLabelSprite = (text, options = {}) => {
+      const {
+        width = 256,
+        height = 72,
+        background = 'rgba(22, 44, 37, 0.62)',
+        color = '#eef7f1',
+        fontSize = 34,
+      } = options;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = background;
+      context.fillRect(8, 14, width - 16, height - 28);
+      context.fillStyle = color;
+      context.font = 'bold ' + fontSize + 'px "PingFang SC", "Microsoft YaHei", sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(text, width / 2, height / 2 + 1);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      return sprite;
+    };
+
+    const register = (text, x, y, z, options = {}) => {
+      const {
+        radiusIn = 15,
+        radiusOut = 27,
+        scale = 6.4,
+        fontSize = 32,
+      } = options;
+      const sprite = createLabelSprite(text, { fontSize });
+      sprite.position.set(x, y, z);
+      sprite.scale.set(scale, scale * 0.28, 1);
+      sprite.visible = false;
+      this.scene.add(sprite);
+      this.proximityLabels.push({
+        sprite,
+        x,
+        z,
+        radiusIn,
+        radiusOut,
+        base: 0.95,
+      });
+    };
+
+    register('生活广场', 0, 3.6, 22.6, { radiusIn: 24, radiusOut: 40, scale: 8.4, fontSize: 38 });
+    register('溪流 · 滨水步道', getStreamX(62), 2.6, 62, { radiusIn: 22, radiusOut: 36, scale: 8.8, fontSize: 36 });
+    register('溪流 · 滨水步道', getStreamX(-62), 2.6, -62, { radiusIn: 22, radiusOut: 36, scale: 8.8, fontSize: 36 });
+    register('山脚缓坡', 76, 3.2, 76, { radiusIn: 26, radiusOut: 42, scale: 8, fontSize: 36 });
+    register('山脚缓坡', -76, 3.2, -76, { radiusIn: 26, radiusOut: 42, scale: 8, fontSize: 36 });
+
+    homes.forEach((home) => {
+      register(home.number + ' 号宅院', home.x, home.y + 4.3, home.z, {
+        radiusIn: 13,
+        radiusOut: 25,
+        scale: 6.2,
+        fontSize: 30,
+      });
+    });
+  }
+
+  updateProximityLabels() {
+    if (!this.proximityLabels.length) return;
+    const focus = this.controls ? this.controls.target : this.camera.position;
+    this.proximityLabels.forEach((label) => {
+      const distance = Math.hypot(label.x - focus.x, label.z - focus.z);
+      const raw = clamp(
+        (label.radiusOut - distance) / (label.radiusOut - label.radiusIn),
+        0,
+        1,
+      );
+      const opacity = raw * raw * label.base;
+      label.sprite.visible = opacity > 0.02;
+      if (label.sprite.visible) {
+        label.sprite.material.opacity = opacity;
+      }
+    });
   }
 
   getPlazaGatheringPoints() {
@@ -5773,6 +6688,30 @@ export class ThreeWorld {
       material.emissiveIntensity =
         0.08 + nightBlend * (1.28 + (index % 3) * 0.12);
     });
+
+    // 阶段九：辅助灯光与渐变天空随昼夜变化（白天隐藏灯具模型，避免强光炫光）
+    if (this.accentGroup) {
+      this.accentGroup.visible = nightBlend > 0.18;
+      this.accentMaterials.forEach((material) => {
+        material.emissiveIntensity = 0.08 + nightBlend * 1.15;
+      });
+      this.accentGlowMaterials.forEach((material) => {
+        material.opacity = nightBlend * 0.12;
+      });
+      this.accentLights.forEach((light) => {
+        light.intensity = nightBlend * 1.35;
+      });
+    }
+    if (this.skyUniforms) {
+      this.skyUniforms.topColor.value
+        .set('#12233c')
+        .lerp(new THREE.Color('#9dc3dd'), blend)
+        .lerp(new THREE.Color('#f0b487'), dusk * 0.3);
+      this.skyUniforms.bottomColor.value
+        .set('#2b4159')
+        .lerp(new THREE.Color('#e9f3f0'), blend)
+        .lerp(new THREE.Color('#f6c9a0'), dusk * 0.42);
+    }
     this.interiorLights.forEach((light) => {
       light.intensity =
         (this.interiorMode ? 2.7 : 0.12) * (0.55 + nightBlend * 0.85);
@@ -5883,6 +6822,7 @@ export class ThreeWorld {
     this.updateRoamingAgents(delta);
     this.animateAvatars(elapsed, delta);
     this.animateFly(performance.now());
+    this.updateProximityLabels();
 
     if (this.forestCanopyMaterial?.userData.windUniform) {
       this.forestCanopyMaterial.userData.windUniform.value =

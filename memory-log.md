@@ -746,4 +746,40 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/homes-relayout-20260922/`（HEAD 版 + 改写前 worldLayout.js + 截图）。
-- 提交：`git commit <HASH8>`（worldLayout.js + memory-log.md）。
+- 提交：`git commit 90d6fca`（worldLayout.js + memory-log.md）。
+
+---
+
+## 2026-09-22 阶段九：3D 场景基础环境层细化（真实感提升，不堆模型）
+
+> 仅改 3D 场景视觉基础层（`ThreeWorld.js` + `decorations/mountainEnv.js`）；中心广场木构穹顶 / 50 栋宅院本体模型与位置 / 内部功能 / 碰撞盒 / 河道水面轮廓 / 注册·聊天·审批·权限等后端业务代码 全部未动。
+
+### 盘点结论（动手前）
+现有环境层已具备：单张地形网格（仅顶点色，**无材质分区**）、广场麻石地面、河岸毛石/芦苇/苔藓、滨水步道、蜿蜒远山、云、雾墙、星点、萤火虫；**缺少**：地面材质分层、路网、入户木平台/台阶、逐区接地处理、辅助灯光体系、渐变天空、就近交互标签；且植被偏密（乔木上限 270+480、山坡植被 540）。
+
+### 新增（`ThreeWorld.js` 新增 10 个方法，均在 `buildHomeDetailPass()` 之后调用）
+1. `groundMaterials()` + `buildGroundLayers()`：广场边缘**浅灰石材收边带**（r 17.4→20.4）+ 细缝线（20.4→21.05）+ **碎石过渡带**（21.05→23.3，均用 `createTerrainBandGeometry`）+ **山脚泥土斑块** 14 处（InstancedMesh，避开河道）。
+2. `buildPathNetwork()`：**环形主路 ×3** —— r=23 石板 / r=62 碎石 / r=98 泥土；逐点避让河道与宅院，**连续水道缺口自动架桥**；并从每户入户点沿二次贝塞尔接入最近环网（**50 户全部连通**）。合计 1388 块路面实例（slab 147 / gravel 488 / dirt 753）。
+3. `addSimpleBridge(from,to,ring)`：**简易平桥 11 座**（桥面 + 横向木梁 + 两侧低栏 + 桥头两级矮踏），仅连通环网跨河缺口，不新增大型构筑物。
+4. `buildHomeGrounding()`：**台地宅院**石砌台基 12 / **临溪宅院**滨水木平台 18 + 外侧低矮挡墙 / **崖边宅院**两侧挡土墙 40 / **全部宅院**入户两级矮台阶 100 —— 全部 InstancedMesh，配合原有地面接触阴影消除漂浮感。
+5. `buildPathGreenery()`：**分层克制**植被（灌木 79 + 观赏草 45 = 124 株），仅布置在广场边缘、道路两侧、宅院门口，避开建筑与地标视线；同时把 `buildForest` 乔木上限 **270/480 → 170/300**、`planMountainEnv` 山坡植被 **540 → 320**（总乔木 750→470）。
+6. `buildAccentLighting()`：**立柱底部洗地灯 9**（与地标立柱同环位，含发光底座 + 柔光锥罩）+ **木构梁底隐藏灯带 2 圈**（外圈主梁底 y≈24.82 / 内圈环梁底 y≈7.32）+ **广场边缘地面线性灯 18** + **小路矮庭院灯** + **宅院入户门灯 50**（InstancedMesh）+ **仅 4 盏柔和辅助点光源**；**白天隐藏灯具模型**，夜间由 `updateDayMode` 以 `nightBlend` 缓升（发光 0.08+1.15×nightBlend，点光 1.35×nightBlend），无强光炫光。
+7. `buildSkyDome()`：**干净柔和的渐变天空穹顶**（ShaderMaterial，半径 340，`fog:false`），昼夜/黄昏三色插值。
+8. `buildProximityLabels()` + `updateProximityLabels()`：**就近交互标签 55 个**（生活广场 / 溪流·滨水步道 ×2 / 山脚缓坡 ×2 / 50 个「N 号宅院」），Canvas 精灵，按与镜头焦点的距离**淡入淡出**（区域 24~40m、宅院 13~25m），远离自动隐藏；接入 `animate()` 每帧更新。
+
+### 自检
+- 构建成功（`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`）；单测：虚拟乌托邦 **13/13**、外层前端 **9/9**、后端 **33/33**、BP3 **7/7** 全绿。
+- **headless 实测（playwright + Edge）**：`homeObjects.size = 50`；`pathMeshes 3`（1388 实例）、`simpleBridges 11`、`homeGrounding 4`（plinth 12 / deck 18 / wall 58 / step 100）、`greenery 2`（124 株）、`accentGroup.children 63` + `accentLights 4`、`skyDome ✓`、`proximityLabels 55`、`treeCount 470`、`scene.children 377`、**console errors = []**。
+- 就近标签实测：位于广场边缘时「生活广场」标签 `visible=true`、opacity≈1，远端宅院标签 `visible=false`（淡出正常）。
+- 夜间实测：`nightBlend=1`、灯具组可见、发光强度 1.23、点光 1.35、天穹顶色 `#12233c`、星空可见 —— 立柱洗地灯 / 梁底灯带 / 广场边缘线性灯 / 小路庭院灯 / 入户门灯 均正常点亮且柔和不眩光。
+- 截图：`.workbuddy/backups/env-detail-20260922/p9-*.png`（广场边缘 / 小路 / 河岸小桥 / 全景 / 夜间）；复用自检脚本存同目录 `harness-p9-env.mjs`、`harness-p8-layout.mjs`。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/env-detail-20260922/`（含 HEAD 版两文件 + 截图 + 自检脚本）。
+- 提交：`git commit <HASH9>`（ThreeWorld.js + mountainEnv.js + memory-log.md）。
+
+### 说明 / 取舍
+- 「不堆模型」：新增几何以 **InstancedMesh** 为主（路面 1388、台阶 100、门灯 50、植被 124 等），draw call 与顶点数增量可控。
+- 河道：水面形态、驳岸毛石/芦苇/苔藓（阶段六成果）保持不动；新增的仅是**跨河简易平桥**，用于连通两岸环网步道。
+- 「白天不强制显示灯具模型」：灯具组整体按 `nightBlend > 0.18` 显隐。
