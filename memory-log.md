@@ -596,7 +596,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/scene-flat-20260922/`（ThreeWorld.js / worldLayout.js / WorldView.vue / modelLoader.js + 场景截图）。
-- 提交：`git commit <HASH>`（ThreeWorld.js + worldLayout.js + memory-log.md）。
+- 提交：`git commit a79d7fb`（ThreeWorld.js + worldLayout.js + memory-log.md）。
 
 ### 遗留（待确认）
 - 除 4/18/19 外，plot-8(r=11.3)、plot-5/9/11/17/20/21 等仍落在广场范围内（用户仅点名 3 栋）；如需彻底避免重叠可再批量外移。
