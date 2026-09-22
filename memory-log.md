@@ -936,3 +936,33 @@
 | 管理员（原有） | `admin` | `utopia2026` |
 | 原住民 · KIN 城主 | `KIN777` | `123456` |
 | 原住民 · 演示 | `traveler` | `utopia2026` |
+
+---
+
+## 2026-09-23 重启 3300/3400 后端服务 + 修复原启动脚本的健康探测地址
+
+### 操作
+1. 用 PowerShell 按端口**精确停止**旧进程（3300、3400 均确认变为不可达）。
+2. 用**原启动脚本** `node scripts/start-all.mjs` 重新拉起（注入 phase5 必需环境变量：`PHASE5_ENABLED=true`、`PHASE5_AUTH_SECRET=changeme`、`PHASE5_SERVICE_TOKEN=<backend/.env 值>`、`PHASE5_BOOTSTRAP_ADMIN_PASSWORD=utopia2026`、`PHASE5_DB_PATH=H:/BP2/data/virtual_utopia_phase5.sqlite`）。
+
+### 期间发现并修复：原启动脚本在本机失效
+- 首次执行输出 `[start-all] phase5 健康检查超时，终止` 并**杀掉了 phase5**。
+- 根因：脚本健康探测写死 `http://127.0.0.1:3300/...`，而本机 **Node 按 host 解析只绑定了 IPv6 `::1`**（`127.0.0.1:3300` 连接被拒、`localhost:3300` 正常）→ 探测必然超时。
+- 修复 `scripts/start-all.mjs`：`health` 改为**多地址数组**（`localhost` + `127.0.0.1` 依次探测，任一通过即视为就绪），`waitForHealth` 返回命中的 URL。这样 IPv4-only / IPv6-only 绑定都不会再误判。
+
+### 重启结果（健康检查原文）
+```
+① http://localhost:3300/api/phase5/health
+{"service":"virtual-utopia-phase5","status":"ok","databasePath":"H:\\BP2\\data\\virtual_utopia_phase5.sqlite","sessionStorageMode":"memory"}
+
+② http://localhost:3400/api/phase7/health
+{"service":"virtual-utopia-phase7","version":"1.0.0","dataDirectory":"H:\\BP2\\data","scenes":7,"index":{"documents":0,"tokens":1,"updatedAt":"2026-09-22T15:49:40.892Z"}}
+```
+- 启动日志确认：`[start-all] phase5 就绪` → `[start-all] phase6 就绪` → `[start-all] 全部必需服务已就绪`。
+- 附加：`http://localhost:3400/api/phase6/health` → `{"service":"virtual-utopia-phase6","status":"ok","phase5BaseUrl":"http://localhost:3300","ragBaseUrl":"http://localhost:3100"}`。
+- 重启后账号未受影响：`KIN` 登录 200（role=admin, id=40）——DB 持久化生效。
+- 提交：`git commit <HASH_RESTART>`（scripts/start-all.mjs + memory-log.md）。
+
+### 经验（已同步进技能）
+- 若要在本机用 `restart_services.ps1` 请务必注意：该脚本指向**验收用临时库** `H:\tmp\ma-v101-check\phase5.sqlite` 与另一套 secret/token，**不要**在正式环境直接运行，否则会切库丢数据。
+- 稳妥的重启方式：按端口精确杀进程 → `scripts/start-all.mjs`（已修好多地址健康探测）。

@@ -19,31 +19,42 @@ const SERVICES = [
   {
     name: 'phase5',
     entry: 'backend/src/phase5/server.js',
-    health: 'http://127.0.0.1:3300/api/phase5/health',
+    // 同时探测 localhost 与 127.0.0.1：Node 在 Windows 上会按 host 解析结果只绑定
+    // IPv6(::1) 或只绑定 IPv4，写死单一地址会被误判为「健康检查超时」并杀掉服务。
+    health: [
+      'http://localhost:3300/api/phase5/health',
+      'http://127.0.0.1:3300/api/phase5/health',
+    ],
     required: true,
   },
   {
     name: 'phase6',
     entry: 'backend/src/phase6/server.js',
-    health: 'http://127.0.0.1:3400/health',
+    health: [
+      'http://localhost:3400/health',
+      'http://127.0.0.1:3400/health',
+    ],
     required: true,
   },
 ];
 
 const children = [];
 
-const waitForHealth = async (url, timeoutMs) => {
+const waitForHealth = async (urls, timeoutMs) => {
+  const candidates = Array.isArray(urls) ? urls : [urls];
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) return true;
-    } catch {
-      // 未就绪，继续等待
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+        if (res.ok) return url;
+      } catch {
+        // 未就绪，继续等待
+      }
     }
     await new Promise((r) => setTimeout(r, HEALTH_INTERVAL_MS));
   }
-  return false;
+  return '';
 };
 
 const stopAll = () => {
