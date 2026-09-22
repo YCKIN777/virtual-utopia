@@ -559,3 +559,45 @@
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/profile-perm-20260922/`（HEAD=阶段二 state 的 6 文件快照）。
 - 提交：`git commit 5804a71`（ProfileView.vue + ResidentProfileView.vue + memory-log.md）。
+
+---
+
+## 2026-09-22 阶段四：3D 场景地形拉平 + 生活广场重构 + 宅院移出 + 悬空桥删除
+
+> 仅替换 3D 场景地形与生活广场资产、调整宅院坐标；未改居民主页/注册审批/聊天/权限等业务代码；宅院样式/大小/碰撞盒不变。
+
+### 地形拉平（req 1）
+- `webgl/worldLayout.js`：`getTerrainHeight` 由带台地/崖边/溪谷/噪声的起伏函数改为恒定 `0`（统一水平面）。该函数是全场景**唯一高度来源**（约 40 处贴地物件 + 地形网格 + 玩家 Y + 居民 Y）；拉平后所有物件落在同一平面，玩家 Y（`ThreeWorld.updateLocalAvatarTransform` 取 `getTerrainHeight`）恒定 → 彻底消除人物下沉/卡入地下。
+
+### 宅院移出广场（req 2）
+- 在 worldLayout 对 `homes` 做覆盖：plot-4 → (-40.41,-14.71)、plot-18 → (-40.61,15.59)、plot-19 → (39.46,9.11)（r≈40~43.5，广场外侧草地边缘）。
+- 仅改 x/z；样式/大小/朝向沿用原定义；平面地形下 y=0。`validateHomeLayout` 校验：**0 重叠**，同组最小间距 15.0、跨组 5.3。
+- 触发范围/碰撞盒/庭院小品均由 `home.x·z` 派生 → 随新坐标自动同步（含 WorldView 的 plot-39 KIN 区域触发、`getNearestHub`、`buildCourtyardDetails/Decor`）。
+
+### 生活广场重构为平地（req 3）
+- 重写 `buildCentralPlaza`：删除多层高台（upperDeck 3.1 / 水池 4.1 / 核心 6 / 24柱 7 / 48梁 10.2 / 锥顶 12.4）与 `group.scale=1.5`；改为贴地铺装圆台(高 0.36) + 收边木环 + 中央浅水池 + 低矮四柱平顶景观构架 + 中央核心球(保留 `centralCore` 字段供昼夜动画) + 12 低灯柱环；半径≈17，**单一水平面**。
+- 重写 `buildPlazaFurnishings`/`buildPlazaStoneDetails`：火盆/座椅/长桌/置物架/陈列台/告示牌/旗杆/火把/风铃/长凳/花坛/景观树全部下移到地面基准（y≈0.4~2.7）贴地摆放；保留 `plazaFireLight`/`plazaLights` 字段契约。
+
+### 删除悬空桥状结构（req 4）
+- 移除 `buildBridgeNetwork()` 调用（中心 (0,6.2,0) → 4 hub 的空中连廊 + 3 条跨组团悬空桥；`addBridgeAbutment/addCorridorRestNode/addHomeLanding/addBridgePier` 随之不再生成）。
+- 移除 `buildPlazaConnections()` 调用（向外落地平台/台阶）；广场边缘改为草地自然收边。
+- 新增 `buildFlatBridges()`：平地低矮小桥（桥面 0.34 / 栏杆 0.62，无高差），跨浅溪流于 z=±26/±62 共 4 座，满足「平地版本小桥」。
+
+### 保留不变
+- 庭院小品（石灯/景观石/矮竹/石凳/果树灌丛）逻辑未改，因依赖 `getTerrainHeight`+`home.x·z` 自动适配新地形/新宅院坐标。
+- 漫游相机、居民 AI、距离触发逻辑未改，随宅院新坐标自动同步。
+
+### 自检
+- 构建成功（`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`）。
+- 单测全绿：虚拟乌托邦 13/13、外层前端 9/9、后端 33/33、BP3 7/7；worldLayout 校验 50 户 / y 全 0 / 0 重叠。
+- **3D 场景 headless 实测（playwright + Edge）**：页面加载 → 「五十户山林庄园城镇」→ loading 卸载 → 「50/50 庄园」（全部宅院建成）→ canvas WebGL 正常、glb≥5、**console errors = []**。截图：`.workbuddy/backups/scene-flat-20260922/scene-check-overview.png`。
+- 注：`webgl/tests/world.e2e.mjs` 存在**历史失效断言**（点击「切换夜晚」按钮，但现网标签为「时段：白天」，与本次改动无关；场景加载/俯瞰/回家/室内各步均已通过），故改用聚焦版 headless 检查验证场景；未改动该测试文件（守住 scope）。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/scene-flat-20260922/`（ThreeWorld.js / worldLayout.js / WorldView.vue / modelLoader.js + 场景截图）。
+- 提交：`git commit <HASH>`（ThreeWorld.js + worldLayout.js + memory-log.md）。
+
+### 遗留（待确认）
+- 除 4/18/19 外，plot-8(r=11.3)、plot-5/9/11/17/20/21 等仍落在广场范围内（用户仅点名 3 栋）；如需彻底避免重叠可再批量外移。
+- 溪流水面在平地呈色带、视觉偏「苔绿」；如需更明显的深浅水效可后续单独调水材质。

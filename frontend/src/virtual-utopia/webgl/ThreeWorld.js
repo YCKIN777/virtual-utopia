@@ -490,8 +490,7 @@ export class ThreeWorld {
     this.buildCentralPlaza();
     this.updateProgress(0.7, '连接木构连廊');
     await waitFrame();
-    this.buildBridgeNetwork();
-    this.buildPlazaConnections();
+    this.buildFlatBridges();
     this.updateProgress(0.84, '放置 50 户生态庄园');
     await waitFrame();
     this.buildHomes();
@@ -1944,11 +1943,12 @@ export class ThreeWorld {
     });
     this.plazaLights.push(fireMaterial);
 
+    // 火盆（贴地）
     const fireBase = new THREE.Mesh(
       new THREE.CylinderGeometry(1.34, 1.5, 0.28, 18),
       stoneMaterial,
     );
-    fireBase.position.set(-5.8, 3.78, 0);
+    fireBase.position.set(-5.8, 0.5, 0);
     fireBase.castShadow = true;
     group.add(fireBase);
 
@@ -1960,7 +1960,7 @@ export class ThreeWorld {
       );
       log.position.set(
         -5.8 + Math.cos(angle) * 0.28,
-        4.02 + (index % 2) * 0.12,
+        0.74 + (index % 2) * 0.1,
         Math.sin(angle) * 0.28,
       );
       log.rotation.z = Math.PI / 2;
@@ -1969,15 +1969,15 @@ export class ThreeWorld {
     }
 
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.58, 1.15, 8),
+      new THREE.ConeGeometry(0.58, 1.05, 8),
       fireMaterial,
     );
-    flame.position.set(-5.8, 4.62, 0);
+    flame.position.set(-5.8, 1.2, 0);
     flame.scale.z = 0.72;
     group.add(flame);
 
-    this.plazaFireLight = new THREE.PointLight('#ff9b52', 0.5, 36, 1.75);
-    this.plazaFireLight.position.set(-5.8, 5.25, 0);
+    this.plazaFireLight = new THREE.PointLight('#ff9b52', 0.5, 34, 1.75);
+    this.plazaFireLight.position.set(-5.8, 1.8, 0);
     group.add(this.plazaFireLight);
 
     for (let index = 0; index < 6; index += 1) {
@@ -1989,7 +1989,7 @@ export class ThreeWorld {
       );
       seat.position.set(
         -5.8 + Math.cos(angle) * radius,
-        4.2,
+        0.78,
         Math.sin(angle) * radius,
       );
       seat.rotation.y = -angle;
@@ -2002,7 +2002,7 @@ export class ThreeWorld {
       );
       back.position.set(
         -5.8 + Math.cos(angle) * (radius + 0.18),
-        4.48,
+        1.06,
         Math.sin(angle) * (radius + 0.18),
       );
       back.rotation.y = -angle;
@@ -2014,7 +2014,7 @@ export class ThreeWorld {
       new THREE.BoxGeometry(3.2, 0.24, 1.0),
       benchMaterial,
     );
-    tableTop.position.set(6.2, 4.36, 0);
+    tableTop.position.set(6.2, 0.94, 0);
     tableTop.castShadow = true;
     group.add(tableTop);
 
@@ -2023,7 +2023,7 @@ export class ThreeWorld {
         new THREE.BoxGeometry(0.18, 1.2, 0.62),
         shelfMaterial,
       );
-      leg.position.set(6.2 + offset, 3.82, 0);
+      leg.position.set(6.2 + offset, 0.44, 0);
       leg.castShadow = true;
       group.add(leg);
     });
@@ -2032,7 +2032,7 @@ export class ThreeWorld {
       new THREE.BoxGeometry(2.2, 1.45, 0.45),
       shelfMaterial,
     );
-    storageRack.position.set(8.4, 4.25, 3.9);
+    storageRack.position.set(8.4, 0.95, 3.9);
     storageRack.rotation.y = -0.48;
     storageRack.castShadow = true;
     group.add(storageRack);
@@ -2041,7 +2041,7 @@ export class ThreeWorld {
       new THREE.CylinderGeometry(0.75, 0.9, 0.42, 12),
       stoneMaterial,
     );
-    displayBase.position.set(7.4, 3.92, -4.2);
+    displayBase.position.set(7.4, 0.5, -4.2);
     displayBase.castShadow = true;
     group.add(displayBase);
 
@@ -2049,7 +2049,7 @@ export class ThreeWorld {
       new THREE.CylinderGeometry(0.42, 0.48, 0.92, 10),
       benchMaterial,
     );
-    displayTop.position.set(7.4, 4.55, -4.2);
+    displayTop.position.set(7.4, 1.15, -4.2);
     displayTop.castShadow = true;
     group.add(displayTop);
 
@@ -2058,7 +2058,7 @@ export class ThreeWorld {
         new THREE.BoxGeometry(0.14, 2.5, 0.14),
         shelfMaterial,
       );
-      post.position.set(offset, 4.65, -7.2);
+      post.position.set(offset, 1.25, -7.2);
       post.castShadow = true;
       group.add(post);
     });
@@ -2066,17 +2066,17 @@ export class ThreeWorld {
       new THREE.BoxGeometry(2.1, 1.35, 0.18),
       createWoodMaterial('#c89b61'),
     );
-    noticeBoard.position.set(0, 5.2, -7.2);
+    noticeBoard.position.set(0, 1.9, -7.2);
     noticeBoard.castShadow = true;
     group.add(noticeBoard);
 
     for (let index = 0; index < 4; index += 1) {
       const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
       const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.08, 4.4, 6),
+        new THREE.CylinderGeometry(0.06, 0.08, 3.2, 6),
         shelfMaterial,
       );
-      pole.position.set(Math.cos(angle) * 9.6, 5.7, Math.sin(angle) * 9.6);
+      pole.position.set(Math.cos(angle) * 9.6, 1.6, Math.sin(angle) * 9.6);
       pole.castShadow = true;
       group.add(pole);
 
@@ -2088,7 +2088,7 @@ export class ThreeWorld {
           roughness: 0.88,
         }),
       );
-      flag.position.set(pole.position.x + 0.66, 7.2, pole.position.z);
+      flag.position.set(pole.position.x + 0.66, 2.7, pole.position.z);
       flag.rotation.y = -angle + Math.PI / 2;
       group.add(flag);
     }
@@ -2099,7 +2099,7 @@ export class ThreeWorld {
         new THREE.CylinderGeometry(0.07, 0.1, 2.0, 6),
         createWoodMaterial('#67472e'),
       );
-      torch.position.set(Math.cos(angle) * 11.4, 4.7, Math.sin(angle) * 11.4);
+      torch.position.set(Math.cos(angle) * 11.4, 1.0, Math.sin(angle) * 11.4);
       torch.castShadow = true;
       group.add(torch);
 
@@ -2121,7 +2121,7 @@ export class ThreeWorld {
           roughness: 0.55,
         }),
       );
-      chime.position.set(-1.3 + index * 0.34, 5.75, 7.5);
+      chime.position.set(-1.3 + index * 0.34, 2.1, 7.5);
       group.add(chime);
     }
   }
@@ -2141,14 +2141,14 @@ export class ThreeWorld {
       roughness: 1,
     });
 
-    // 石板纹路：同心环 + 放射接缝
+    // 石板纹路：同心环 + 放射接缝（贴于铺装面）
     [4.4, 8.4, 12.4].forEach((radius) => {
       const seam = new THREE.Mesh(
-        new THREE.TorusGeometry(radius, 0.09, 6, 56),
+        new THREE.TorusGeometry(radius, 0.07, 6, 56),
         groutMaterial,
       );
       seam.rotation.x = Math.PI / 2;
-      seam.position.y = 1.96;
+      seam.position.y = 0.37;
       group.add(seam);
     });
 
@@ -2158,12 +2158,12 @@ export class ThreeWorld {
         new THREE.BoxGeometry(0.08, 0.02, 15.2),
         groutMaterial,
       );
-      seam.position.set(Math.cos(angle) * 7.6, 1.96, Math.sin(angle) * 7.6);
+      seam.position.set(Math.cos(angle) * 7.6, 0.37, Math.sin(angle) * 7.6);
       seam.rotation.y = -angle;
       group.add(seam);
     }
 
-    // 简易石质长凳（4 条，对角布置）
+    // 石质长凳
     for (let index = 0; index < 4; index += 1) {
       const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
       const x = Math.cos(angle) * 13.1;
@@ -2172,7 +2172,7 @@ export class ThreeWorld {
         new THREE.BoxGeometry(2.5, 0.24, 0.7),
         stoneMaterial,
       );
-      seat.position.set(x, 2.32, z);
+      seat.position.set(x, 0.78, z);
       seat.rotation.y = -angle;
       seat.castShadow = true;
       seat.receiveShadow = true;
@@ -2185,7 +2185,7 @@ export class ThreeWorld {
         );
         leg.position.set(
           x + Math.sin(angle) * offset,
-          2.12,
+          0.55,
           z - Math.cos(angle) * offset,
         );
         leg.rotation.y = -angle;
@@ -2194,7 +2194,7 @@ export class ThreeWorld {
       });
     }
 
-    // 小型花坛（4 个，正向布置）
+    // 小型花坛
     const flowerPalette = [
       '#e06a6a',
       '#e8a34e',
@@ -2211,7 +2211,7 @@ export class ThreeWorld {
         darkStoneMaterial,
       );
       bed.rotation.x = Math.PI / 2;
-      bed.position.set(x, 2.12, z);
+      bed.position.set(x, 0.42, z);
       bed.castShadow = true;
       bed.receiveShadow = true;
       group.add(bed);
@@ -2227,14 +2227,14 @@ export class ThreeWorld {
         );
         bloom.position.set(
           x + Math.cos(flowerAngle) * 0.46,
-          2.36,
+          0.66,
           z + Math.sin(flowerAngle) * 0.46,
         );
         group.add(bloom);
       }
     }
 
-    // 景观小树（6 棵，绕广场外缘）
+    // 景观小树（绕广场外缘）
     for (let index = 0; index < 6; index += 1) {
       const angle = (index / 6) * Math.PI * 2 + 0.32;
       const x = Math.cos(angle) * 14.5;
@@ -2243,7 +2243,7 @@ export class ThreeWorld {
         new THREE.CylinderGeometry(0.13, 0.21, 1.7, 6),
         createWoodMaterial('#6b4a31'),
       );
-      trunk.position.set(x, 2.75, z);
+      trunk.position.set(x, 1.15, z);
       trunk.castShadow = true;
       trunk.receiveShadow = true;
       group.add(trunk);
@@ -2255,7 +2255,7 @@ export class ThreeWorld {
           roughness: 0.9,
         }),
       );
-      canopy.position.set(x, 3.95, z);
+      canopy.position.set(x, 2.35, z);
       canopy.castShadow = true;
       canopy.receiveShadow = true;
       group.add(canopy);
@@ -2272,33 +2272,29 @@ export class ThreeWorld {
       metalness: 0.02,
     });
     this.plazaDeckMaterial = deckMaterial;
+
+    // 贴地铺装圆台（无高差，单一水平面）
     const deck = new THREE.Mesh(
-      new THREE.CylinderGeometry(16, 18, 1.4, 48),
+      new THREE.CylinderGeometry(16, 17, 0.36, 48),
       deckMaterial,
     );
-    deck.position.y = 1.2;
+    deck.position.y = 0.18;
     deck.receiveShadow = true;
     group.add(deck);
 
-    const upperDeck = new THREE.Mesh(
-      new THREE.CylinderGeometry(10.5, 12, 1.1, 40),
-      createWoodMaterial('#b1844f'),
-    );
-    upperDeck.position.y = 3.1;
-    upperDeck.receiveShadow = true;
-    group.add(upperDeck);
-
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(16, 0.72, 8, 64),
+    // 边缘收边木环
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(16.2, 0.16, 8, 64),
       createWoodMaterial(WOOD_DARK),
     );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 3.1;
-    ring.castShadow = true;
-    group.add(ring);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.36;
+    rim.castShadow = true;
+    group.add(rim);
 
+    // 中央浅水池（与地面同层）
     const pool = new THREE.Mesh(
-      new THREE.CylinderGeometry(3.2, 3.2, 0.5, 32),
+      new THREE.CylinderGeometry(3.6, 3.6, 0.16, 32),
       new THREE.MeshPhysicalMaterial({
         color: '#78d0c1',
         transparent: true,
@@ -2306,11 +2302,27 @@ export class ThreeWorld {
         roughness: 0.12,
       }),
     );
-    pool.position.y = 4.1;
+    pool.position.y = 0.4;
     group.add(pool);
 
+    // 中央低矮景观构架：4 柱 + 平顶（不再使用多层高台/棚顶）
+    const canopyPostGeometry = new THREE.CylinderGeometry(0.16, 0.2, 1.9, 8);
+    [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]].forEach(([px, pz]) => {
+      const post = new THREE.Mesh(canopyPostGeometry, createWoodMaterial(WOOD_DARK));
+      post.position.set(px, 1.35, pz);
+      post.castShadow = true;
+      group.add(post);
+    });
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(4.4, 0.22, 4.4),
+      createWoodMaterial(WOOD),
+    );
+    canopy.position.y = 2.4;
+    canopy.castShadow = true;
+    group.add(canopy);
+
     const core = new THREE.Mesh(
-      new THREE.SphereGeometry(1.25, 20, 14),
+      new THREE.SphereGeometry(0.9, 20, 14),
       new THREE.MeshStandardMaterial({
         color: '#e4f6ec',
         emissive: '#bfe8d2',
@@ -2318,50 +2330,40 @@ export class ThreeWorld {
         roughness: 0.2,
       }),
     );
-    core.position.y = 6;
+    core.position.y = 1.45;
     group.add(core);
     this.centralCore = core;
 
-    this.centralPointLight = new THREE.PointLight('#ffe6cc', 1.35, 44, 1.6);
-    this.centralPointLight.position.set(0, 8, 0);
+    this.centralPointLight = new THREE.PointLight('#ffe6cc', 1.1, 40, 1.6);
+    this.centralPointLight.position.set(0, 3, 0);
     group.add(this.centralPointLight);
 
-    for (let index = 0; index < 24; index += 1) {
-      const angle = (index / 24) * Math.PI * 2;
-      const post = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.24, 0.32, 8, 7),
-        createWoodMaterial(WOOD_DARK),
-      );
-      post.position.set(Math.cos(angle) * 14.8, 7, Math.sin(angle) * 14.8);
+    // 外圈低灯柱（景观构架，贴地）
+    const lampMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffe1a4',
+      emissive: '#ffb85c',
+      emissiveIntensity: 0.08,
+      roughness: 0.25,
+    });
+    this.plazaLights.push(lampMaterial);
+    const lampGeometry = new THREE.SphereGeometry(0.18, 8, 6);
+    const lampPostGeometry = new THREE.CylinderGeometry(0.08, 0.1, 1.1, 6);
+    for (let index = 0; index < 12; index += 1) {
+      const angle = (index / 12) * Math.PI * 2;
+      const x = Math.cos(angle) * 14.6;
+      const z = Math.sin(angle) * 14.6;
+      const post = new THREE.Mesh(lampPostGeometry, createWoodMaterial(WOOD_DARK));
+      post.position.set(x, 0.55, z);
       post.castShadow = true;
       group.add(post);
 
-      const beam = new THREE.Mesh(
-        new THREE.BoxGeometry(15, 0.45, 0.55),
-        createWoodMaterial(WOOD),
-      );
-      beam.position.set(Math.cos(angle) * 7.4, 10.2, Math.sin(angle) * 7.4);
-      beam.rotation.y = -angle;
-      beam.castShadow = true;
-      group.add(beam);
+      const lamp = new THREE.Mesh(lampGeometry, lampMaterial);
+      lamp.position.set(x, 1.22, z);
+      group.add(lamp);
     }
-
-    const roof = new THREE.Mesh(
-      new THREE.ConeGeometry(18, 5, 48, 1, true),
-      new THREE.MeshPhysicalMaterial({
-        color: '#d9eee7',
-        transparent: true,
-        opacity: 0.46,
-        side: THREE.DoubleSide,
-        roughness: 0.25,
-      }),
-    );
-    roof.position.y = 12.4;
-    group.add(roof);
 
     this.buildPlazaFurnishings(group);
     this.buildPlazaStoneDetails(group);
-    group.scale.setScalar(1.5);
 
     group.traverse((child) => {
       if (child.isMesh) {
@@ -2371,6 +2373,52 @@ export class ThreeWorld {
     });
     this.scene.add(group);
     this.centralGroup = group;
+  }
+
+  // 阶段四：平地版本小桥（贴地、低矮、无高差悬空），跨越浅溪流
+  buildFlatBridges() {
+    const group = new THREE.Group();
+    group.name = 'flat-bridges';
+    const deckMaterial = createWoodMaterial('#b1844f');
+    const railMaterial = createWoodMaterial(WOOD_DARK);
+    const bridgeZs = [-26, 26, 62, -62];
+
+    bridgeZs.forEach((z) => {
+      const x = getStreamX(z);
+      const heading = Math.atan2(getStreamX(z + 1) - getStreamX(z - 1), 1);
+
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(3.0, 0.22, 5.6),
+        deckMaterial,
+      );
+      deck.position.set(x, 0.34, z);
+      deck.rotation.y = heading;
+      deck.castShadow = true;
+      deck.receiveShadow = true;
+      group.add(deck);
+
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 0.5, 5.6),
+          railMaterial,
+        );
+        rail.position.set(x + side * 1.42, 0.62, z);
+        rail.rotation.y = heading;
+        rail.castShadow = true;
+        group.add(rail);
+
+        for (let index = -1; index <= 1; index += 1) {
+          const post = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.62, 0.14),
+            railMaterial,
+          );
+          post.position.set(x + side * 1.42, 0.58, z + index * 2.0);
+          group.add(post);
+        }
+      }
+    });
+
+    this.scene.add(group);
   }
 
   buildPlazaConnections() {

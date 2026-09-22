@@ -1,24 +1,9 @@
 const HOME_COUNT = 50;
 
-export const getTerrainHeight = (x, z) => {
-  const distance = Math.hypot(x, z);
-  const plateau = distance < 16 ? (16 - distance) * 0.18 : 0;
-  const streamDistance = Math.abs(x - Math.sin(z * 0.075) * 9);
-  const valley =
-    streamDistance < 7.2 ? -4.6 * Math.pow(1 - streamDistance / 7.2, 0.72) : 0;
-  const microRelief =
-    Math.sin(x * 0.33) * Math.cos(z * 0.27) * 0.18 +
-    Math.sin(x * 0.11 + z * 0.17) * 0.14;
-  return (
-    Math.sin(x * 0.065) * 2.2 +
-    Math.cos(z * 0.058) * 1.8 +
-    Math.sin((x + z) * 0.031) * 2.6 +
-    Math.cos(distance * 0.055) * 1.2 +
-    plateau +
-    valley +
-    microRelief
-  );
-};
+// 阶段四：地形统一为水平面（消除台地/崖边/溪谷的高低起伏）。
+// 角色行走与所有贴地物件均落在同一平面 y=0，彻底解决人物下沉/卡入地下问题。
+// 「浅溪流」改由水面色带 + 浅水几何呈现，不再依赖地形起伏。
+export const getTerrainHeight = () => 0;
 
 const getStreamX = (z) => Math.sin(z * 0.075) * 9;
 
@@ -185,6 +170,23 @@ const createHomes = () => {
 };
 
 export const homes = createHomes();
+
+// 阶段四：将原先落在生活广场内部的 4 / 18 / 19 号宅院整体平移到广场外侧草地边缘。
+// 仅调整坐标（x/z）；宅院样式、大小、朝向沿用原定义不变，平面地形下 y 统一为 0。
+// 触发范围 / 碰撞盒 / 庭院小品均由 home.x·z 派生，会随新坐标自动同步。
+const PLAZA_RELOCATIONS = {
+  'plot-4': { x: -40.41, z: -14.71 },
+  'plot-18': { x: -40.61, z: 15.59 },
+  'plot-19': { x: 39.46, z: 9.11 },
+};
+
+homes.forEach((home) => {
+  const target = PLAZA_RELOCATIONS[home.id];
+  if (!target) return;
+  home.x = target.x;
+  home.z = target.z;
+  home.y = getTerrainHeight(target.x, target.z);
+});
 
 const groupCenters = {
   stream: { x: getStreamX(0) + 9, z: 0 },
