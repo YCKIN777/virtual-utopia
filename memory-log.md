@@ -633,7 +633,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/plaza-20260922/`（HEAD=阶段四 state 的 ThreeWorld.js / worldLayout.js）。
-- 提交：`git commit <HASH>`（ThreeWorld.js + worldLayout.js + memory-log.md）。
+- 提交：`git commit 46bfcef`（ThreeWorld.js + worldLayout.js + memory-log.md）。
 
 ### 遗留/说明
 - 地标「中式攒尖顶」以 9 面锥顶近似（无雕花），符合「简约」要求；如需更精细的榫卯/举折造型可后续细化。
