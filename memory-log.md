@@ -1026,4 +1026,4 @@
 - 验证矩阵应同时包含：本机三个常用端口 × 真实账号 × 演示账号 × **恶意外域**（必须 403），少一项都可能在角落漏掉 CORS 漏配。
 
 ### 提交
-- `git commit <HASH>`（config.js + app.js + worldStore.js + memory-log.md）。
+- `git commit f9173c1`（config.js + app.js + worldStore.js + memory-log.md）。
