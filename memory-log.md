@@ -522,3 +522,40 @@
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/profile-links-20260922/`（8 文件：ProfileView/ResidentCardsPanel/ResidentWorksPanel/ResidentDirectoryPanel/HomepageS2Panel/ResidentChatPanel/router/index.js/styles.css）。
 - 提交：`git commit 4283c7a`（ProfileView.vue + ResidentDirectoryPanel.vue + router/index.js + ResidentProfileView.vue + memory-log.md）。
+
+---
+
+## 2026-09-22 阶段三：个人主页权限控制与业务规则落地
+
+> 仅改前端个人主页组件 + 权限渲染逻辑；未动 3D/地形/碰撞盒/居民 AI/注册审批/聊天后端内核/已验收资产。经确认采用「纯前端方案（不改后端）」。
+
+### 身份模型（代码既有）
+- `worldStore.state.permissions.role`：`'viewer'`=已登录**访客**；`'editor'/'admin'`=**原住民**；未登录=游客(无 token)。
+- 访客=`viewer`；其他原住民=已登录非 viewer 且非本人；本人=`username` 匹配。
+
+### 权限控制（按身份渲染）
+- **ProfileView(本人)**：完整可见；简介/作品/备忘每条均有权限下拉。新增角色门控：`role==='viewer'` 时隐藏 作品/备忘 标签与中部 3 折叠模块(消息与协作/邻里往来/个人收藏)，**不渲染 DOM**。
+- **ResidentProfileView(他人)**：
+  - 访客(viewer)：仅渲染「简介」；作品/备忘/私密模块全部 `v-if` 不渲染、无占位。
+  - 原住民：渲染「简介 + 公开作品」；「备忘」对他人一律不渲染。
+  - 本人访问自己对外页 → `router.replace` 回 `/profile`。
+- 简介权限：本机持久化(localStorage `vu:intro-perm:<username>`)，切换**即时生效**+提示，无需刷新。
+- 作品权限：沿用 ResidentWorksPanel 单条权限下拉（本机 localStorage）。
+- 备忘权限：沿用 ResidentCardsPanel 单条权限（服务端 `resident-cards.permission`，严格生效）。
+
+### 业务规则加固
+- 全局无内卷元素：profile 相关组件扫描无 点赞/浏览量/热度/排行/积分/亲密度/徽章/等级（仅 HomepageS2Panel 一句「无点赞与排行」说明文案）。
+- 临时群：群主专属「解散群」占位按钮 `v-if="isGroupOwner"`，普通成员不可见。
+- 作品模块无任何热度统计。
+
+### 已知限制（纯前端方案，守住禁改后端）
+- 简介无后端权限字段、作品存于本机 localStorage → **跨用户严格可见性无法保证**；他人主页「公开作品」以服务端已有公开展示板(`resident-board` 公开卡片)承载；备忘权限为服务端严格生效。如需严格跨用户生效，需后续最小后端改动（新增 `work` 卡类型 + 简介权限位）。
+
+### 自检
+- 构建成功；主包含 `vu:intro-perm`/`解散群`，ResidentProfileView chunk 含 访客可见范围/公开作品/暂无公开作品。
+- 单测：虚拟乌托邦 13/13、外层前端 9/9、后端 33/33、BP3 7/7 全绿。dev(5199) 两文件 HTTP 200。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/profile-perm-20260922/`（HEAD=阶段二 state 的 6 文件快照）。
+- 提交：`git commit <HASH>`（ProfileView.vue + ResidentProfileView.vue + memory-log.md）。

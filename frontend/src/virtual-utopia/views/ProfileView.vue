@@ -201,8 +201,41 @@ const submitPasswordChange = async () => {
   passwordDone.value = true;
 };
 
-// ---- 简介可见权限（占位） ----
+// ---- 身份与权限（阶段三） ----
+// role: 'viewer' = 已登录访客；'editor'/'admin' = 原住民；未登录 = 游客
+const role = computed(() => worldStore.state.permissions?.role || 'viewer');
+const isVisitor = computed(() => role.value === 'viewer');
+// 访客仅可见「简介」，作品/备忘/消息与协作/邻里往来/个人收藏全部隐藏（不渲染 DOM）
+const canSeePrivate = computed(() => !isVisitor.value);
+
+// ---- 简介可见权限（本机持久化；本机即时生效） ----
+const INTRO_PERM_KEY = computed(() => `vu:intro-perm:${user.value?.username || 'guest'}`);
 const introVisibility = ref('residents');
+const INTRO_PERM_LABEL = { residents: '原住民可见', self: '仅自己可见' };
+const loadIntroPerm = () => {
+  if (!user.value) return;
+  try {
+    const stored = localStorage.getItem(INTRO_PERM_KEY.value);
+    introVisibility.value = stored === 'self' ? 'self' : 'residents';
+  } catch {
+    introVisibility.value = 'residents';
+  }
+};
+watch(introVisibility, (value) => {
+  if (!user.value) return;
+  try {
+    localStorage.setItem(INTRO_PERM_KEY.value, value);
+  } catch {
+    /* 忽略存储异常 */
+  }
+  worldStore.notify(`「简介」可见权限已更新为：${INTRO_PERM_LABEL[value]}`, 'success');
+});
+watch(user, loadIntroPerm, { immediate: true });
+// 访客不可见私密模块 → 回到简介标签
+watch(canSeePrivate, (ok) => {
+  if (!ok) mainTab.value = 'intro';
+});
+
 
 // ---- 邻里心愿看板：公开 wish_list 卡片 ----
 const wishItems = computed(() =>
@@ -257,6 +290,7 @@ onBeforeUnmount(() => {
             {{ nickname }}·简介
           </button>
           <button
+            v-if="canSeePrivate"
             type="button"
             class="vu-maintab"
             :class="{ 'vu-maintab--active': mainTab === 'works' }"
@@ -265,6 +299,7 @@ onBeforeUnmount(() => {
             {{ nickname }}·作品
           </button>
           <button
+            v-if="canSeePrivate"
             type="button"
             class="vu-maintab"
             :class="{ 'vu-maintab--active': mainTab === 'memo' }"
@@ -285,7 +320,7 @@ onBeforeUnmount(() => {
                   <option value="self">仅自己</option>
                   <option value="residents">原住民可见</option>
                 </select>
-                <small class="vu-intro__hint">权限设置将在后端就绪后生效</small>
+                <small class="vu-intro__hint">更改后即时生效 · 无需刷新</small>
               </div>
             </div>
 
@@ -302,8 +337,8 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <!-- 中部折叠面板组：3 大模块，默认全部收起 -->
-      <section class="vu-modules">
+      <!-- 中部折叠面板组：3 大模块，默认全部收起（访客不渲染） -->
+      <section v-if="canSeePrivate" class="vu-modules">
         <!-- ① 消息与协作 -->
         <div class="vu-module">
           <button type="button" class="vu-module__head" :aria-expanded="middle.collab" @click="middle.collab = !middle.collab">

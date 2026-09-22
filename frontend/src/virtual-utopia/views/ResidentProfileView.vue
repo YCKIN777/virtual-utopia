@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
@@ -12,20 +12,20 @@ const route = useRoute();
 const router = useRouter();
 
 const currentUser = computed(() => worldStore.state.user);
+const role = computed(() => worldStore.state.permissions?.role || 'viewer');
+
+const targetUsername = computed(() => props.username || String(route.params.username || ''));
+
+// 身份：self（本人）/ visitor（未登录游客 或 role=viewer 访客）/ resident（其他原住民）
+const isSelf = computed(
+  () => Boolean(currentUser.value) && currentUser.value.username === targetUsername.value,
+);
+const isVisitor = computed(() => !currentUser.value || role.value === 'viewer');
+
 const resident = ref(null);
 const board = computed(() => worldStore.state.board);
 const loading = ref(true);
 const errorMessage = ref('');
-
-const TYPE_LABELS = {
-  work_plan: '工作计划',
-  travel_log: '出游记录',
-  life_note: '生活随记',
-  wish_list: '心愿清单',
-  favorite: '收藏角',
-};
-
-const targetUsername = computed(() => props.username || String(route.params.username || ''));
 
 const displayName = computed(
   () => resident.value?.displayName || resident.value?.username || targetUsername.value,
@@ -36,8 +36,6 @@ const identityLabel = computed(() => {
   if (!name) return '';
   return seedResidents.some((r) => r.residentName === name) ? 'AI 居民' : '真人';
 });
-
-const typeLabel = (cardType) => TYPE_LABELS[cardType] || cardType || '内容';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -73,7 +71,10 @@ const load = async () => {
     return;
   }
 
-  await worldStore.loadResidentBoard(resident.value.userId);
+  // 访客仅加载公开「简介」；作品/公开内容对访客不加载、不渲染
+  if (!isVisitor.value) {
+    await worldStore.loadResidentBoard(resident.value.userId);
+  }
   loading.value = false;
 };
 
@@ -85,11 +86,19 @@ const goBack = () => {
   }
 };
 
-const startDmTip = () => {
-  worldStore.notify('私聊请回到自己的个人主页，在「原住民名录」中发起', 'info');
-};
+// 本人访问自己的对外主页 → 回到个人中心
+watch(
+  isSelf,
+  (self) => {
+    if (self && currentUser.value) {
+      router.replace({ name: 'profile' });
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(load);
+watch(() => targetUsername.value, load);
 </script>
 
 <template>
@@ -124,9 +133,14 @@ onMounted(load);
               <span v-if="resident.homePlotId" class="rp-at">· {{ resident.homePlotId }}</span>
             </div>
           </div>
-          <button type="button" class="rp-btn" @click="startDmTip">私聊</button>
         </header>
 
+        <!-- 访客可见范围提示 -->
+        <p v-if="isVisitor" class="rp-scope">
+          访客可见范围：仅展示对方的公开简介
+        </p>
+
+        <!-- 简介：所有已登录身份可见 -->
         <section class="rp-card">
           <h2 class="rp-card__title">简介</h2>
           <p class="rp-intro">{{ resident.selfIntro || '（这位居民还没有写下简介）' }}</p>
@@ -136,15 +150,16 @@ onMounted(load);
           </div>
         </section>
 
-        <section class="rp-card">
-          <h2 class="rp-card__title">{{ displayName }}·展示板</h2>
+        <!-- 作品/公开内容：仅原住民可见；访客不渲染 -->
+        <section v-if="!isVisitor" class="rp-card">
+          <h2 class="rp-card__title">{{ displayName }}·公开作品</h2>
+          <p class="rp-card__sub">仅展示对方标记为「原住民可见」的公开内容</p>
           <div v-if="!board.items.length" class="rp-empty rp-empty--inline">
-            暂无公开内容
+            对方暂无公开作品
           </div>
           <div v-else class="rp-list">
             <article v-for="item in board.items" :key="item.id" class="rp-item">
               <div class="rp-item__head">
-                <span class="rp-type">{{ typeLabel(item.cardType) }}</span>
                 <strong>{{ item.content?.title || '（无标题）' }}</strong>
               </div>
               <p v-if="item.content?.body" class="rp-item__body">{{ item.content.body }}</p>
@@ -152,6 +167,7 @@ onMounted(load);
             </article>
           </div>
         </section>
+        <!-- 「备忘」模块对他人一律不渲染（无 DOM、无占位） -->
       </template>
     </div>
   </main>
@@ -182,6 +198,15 @@ onMounted(load);
   font-size: 14px;
   cursor: pointer;
   padding: 4px 0;
+}
+
+.rp-scope {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(47, 168, 79, 0.08);
+  color: var(--vu-accent-dark, #258a41);
+  font-size: 13px;
 }
 
 .rp-topbar {
@@ -252,9 +277,15 @@ onMounted(load);
 }
 
 .rp-card__title {
-  margin: 0 0 14px;
+  margin: 0 0 6px;
   font-size: 20px;
   font-weight: 600;
+}
+
+.rp-card__sub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--vu-muted, #6e6e73);
 }
 
 .rp-intro {
@@ -285,23 +316,8 @@ onMounted(load);
   border-radius: 12px;
 }
 
-.rp-item__head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 .rp-item__head strong {
   font-size: 15px;
-}
-
-.rp-type {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(47, 168, 79, 0.14);
-  color: var(--vu-accent-dark, #258a41);
-  font-size: 11px;
 }
 
 .rp-item__body {
