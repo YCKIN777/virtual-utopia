@@ -558,4 +558,4 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/profile-perm-20260922/`（HEAD=阶段二 state 的 6 文件快照）。
-- 提交：`git commit <HASH>`（ProfileView.vue + ResidentProfileView.vue + memory-log.md）。
+- 提交：`git commit 5804a71`（ProfileView.vue + ResidentProfileView.vue + memory-log.md）。
