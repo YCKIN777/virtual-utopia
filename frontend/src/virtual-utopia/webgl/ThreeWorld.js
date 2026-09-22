@@ -175,6 +175,33 @@ const createWoodMaterial = (color = WOOD) =>
     metalness: 0.02,
   });
 
+// 阶段七：生活广场深灰哑光麻石（花岗岩）程序化纹理——天然浅灰斑点
+const createGraniteTexture = () => {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#34373c';
+  context.fillRect(0, 0, size, size);
+  for (let index = 0; index < 2800; index += 1) {
+    const shade = 140 + Math.random() * 80;
+    context.fillStyle =
+      'rgba(' + shade + ', ' + shade + ', ' + (shade + 8) + ', ' + (0.04 + Math.random() * 0.12) + ')';
+    const radius = 0.5 + Math.random() * 1.6;
+    context.beginPath();
+    context.arc(Math.random() * size, Math.random() * size, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(5, 5);
+  texture.anisotropy = 4;
+  return texture;
+};
+
 const createManorProxy = (home) => {
   const proxy = new THREE.Group();
   const wallMaterial = new THREE.MeshStandardMaterial({
@@ -2179,9 +2206,11 @@ export class ThreeWorld {
     const group = new THREE.Group();
     group.name = 'life-plaza';
 
+    // 阶段七：广场地面改为大块深灰哑光麻石（斑点 + 缝隙），承托下部木平台
     const deckMaterial = new THREE.MeshStandardMaterial({
-      color: '#b1844f',
-      roughness: 0.85,
+      color: '#ffffff',
+      map: createGraniteTexture(),
+      roughness: 0.96,
       metalness: 0.02,
     });
     this.plazaDeckMaterial = deckMaterial;
@@ -2189,12 +2218,12 @@ export class ThreeWorld {
     const railMaterial = createWoodMaterial(WOOD_DARK);
     const deckY = PLAZA_DECK_HEIGHT;
 
-    // 3-1：约 1 米抬高整体木平台（实体台体，遮蔽下方河面）
+    // 3-1：约 1 米抬高整体木平台（实体台体，遮蔽下方河面；顶面让位给麻石地面）
     const plinth = new THREE.Mesh(
-      new THREE.CylinderGeometry(PLAZA_RADIUS - 0.3, PLAZA_RADIUS + 0.3, deckY, 72),
+      new THREE.CylinderGeometry(PLAZA_RADIUS - 0.3, PLAZA_RADIUS + 0.3, deckY - 0.14, 72),
       beamMaterial,
     );
-    plinth.position.y = deckY / 2;
+    plinth.position.y = (deckY - 0.14) / 2;
     plinth.receiveShadow = true;
     plinth.castShadow = true;
     plinth.userData.plazaSelectable = true;
@@ -2298,140 +2327,205 @@ export class ThreeWorld {
     this.centralGroup = group;
   }
 
-  // 3-5：集会区中心中式木构地标（9 根原木圆柱 + 中式攒尖木顶 + 内部发光球）
-  // 3-5：集会区中心中式木构地标（9 根原木立柱 + 外圈环形主梁 + 放射斜梁/交叉斜撑 + 透明攒尖顶 + 悬挂发光球）
+    // 阶段七：参照参考图重建——双层环形中式木构透明穹顶地标
+  // 外圈 9 柱(3 主柱Φ80 + 6 辅柱Φ60) + 内圈辅助短柱(双层柱廊) →
+  // 环形主梁/斗拱 → 中层环梁与横向连梁 → 放射斜梁+交叉斜撑 → 透明玻璃穹顶 → 顶部中心收束木环 + Φ4m 发光球
   buildPlazaLandmark(group) {
-    const columnMaterial = createWoodMaterial('#8a5f38');
+    const columnMaterial = createWoodMaterial('#9c6b3f');
     const beamMaterial = createWoodMaterial('#7a5330');
     const braceMaterial = createWoodMaterial('#96693f');
     const stoneMaterial = new THREE.MeshStandardMaterial({
-      color: '#9f978a',
+      color: '#ffffff',
+      map: createGraniteTexture(),
       roughness: 0.95,
+      metalness: 0.02,
     });
     const glassMaterial = new THREE.MeshStandardMaterial({
-      color: '#eaf7ff',
+      color: '#dceef7',
       transparent: true,
-      opacity: 0.22,
-      roughness: 0.08,
+      opacity: 0.2,
+      roughness: 0.06,
       metalness: 0,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
 
-    const deckY = PLAZA_DECK_HEIGHT;
-    const RING_RADIUS = 10.9;
+    const deckY = PLAZA_DECK_HEIGHT; // 1.0
+    const OUTER_RADIUS = 10.9; // 集会区外围（中心完全空旷）
     const ANGLE_OFFSET = (21 * Math.PI) / 180;
-    const COLUMN_HEIGHT = 30; // 立柱总高 30 米（底座固定于平台板面，不穿透）
-    const COLUMN_COUNT = 9;
-    const MAIN_INDICES = new Set([0, 3, 6]); // 3 根主柱（Φ80）均匀分布，其余 6 根辅柱（Φ60）
-    const topY = deckY + COLUMN_HEIGHT;
-    const apexY = topY + 5.6;
-    const sphereY = deckY + 25.5; // 离地 24~28m
+    const OUTER_HEIGHT = 24; // 立柱高（结构总高约 30m）
+    const OUTER_COUNT = 9;
+    const MAIN_INDICES = new Set([0, 3, 6]); // 3 主柱 Φ80，其余 6 辅柱 Φ60
+    const topY = deckY + OUTER_HEIGHT; // 25.0
+    const INNER_RADIUS = 7.6;
+    const INNER_HEIGHT = 6.6; // 内圈辅助短柱
+    const innerTopY = deckY + INNER_HEIGHT; // 7.6
+    const apexY = deckY + 29; // 顶部中心收束木环（结构总高 ≈ 30m）
+    const orbY = deckY + 26.5; // 发光球心（离地 27.5m ∈ 26~28）
 
-    const tops = [];
+    const outerTops = [];
 
-    // 9 根原木立柱（环形布置在集会区外围，中心保持开阔）
-    for (let index = 0; index < COLUMN_COUNT; index += 1) {
-      const angle = ANGLE_OFFSET + (index / COLUMN_COUNT) * Math.PI * 2;
-      const x = Math.cos(angle) * RING_RADIUS;
-      const z = Math.sin(angle) * RING_RADIUS;
+    // ---- 外圈 9 根原木立柱 + 厚重麻石基座 ----
+    for (let index = 0; index < OUTER_COUNT; index += 1) {
+      const angle = ANGLE_OFFSET + (index / OUTER_COUNT) * Math.PI * 2;
+      const x = Math.cos(angle) * OUTER_RADIUS;
+      const z = Math.sin(angle) * OUTER_RADIUS;
       const isMain = MAIN_INDICES.has(index);
       const radius = isMain ? 0.4 : 0.3; // 主柱 Φ80 / 辅柱 Φ60
 
       const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius + 0.2, radius + 0.3, 0.24, 12),
+        new THREE.CylinderGeometry(radius + 0.42, radius + 0.55, 0.6, 14),
         stoneMaterial,
       );
-      base.position.set(x, deckY + 0.12, z);
+      base.position.set(x, deckY + 0.3, z);
       base.receiveShadow = true;
+      base.castShadow = true;
       group.add(base);
 
       const column = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, COLUMN_HEIGHT, 14),
+        new THREE.CylinderGeometry(radius, radius, OUTER_HEIGHT, 16),
         columnMaterial,
       );
-      column.position.set(x, deckY + COLUMN_HEIGHT / 2, z);
+      column.position.set(x, deckY + 0.6 + OUTER_HEIGHT / 2, z);
       column.castShadow = true;
       column.userData.plazaSelectable = true;
       group.add(column);
 
-      // 柱顶榫卯节点（斗形垫块）
-      const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(radius * 2.5, 0.5, radius * 2.5),
+      // 柱顶斗拱（中式榫卯节点）
+      const douBlock = new THREE.Mesh(
+        new THREE.BoxGeometry(radius * 3.0, 0.34, radius * 3.0),
         beamMaterial,
       );
-      cap.position.set(x, topY - 0.25, z);
-      cap.castShadow = true;
-      group.add(cap);
+      douBlock.position.set(x, topY - 0.17, z);
+      douBlock.castShadow = true;
+      group.add(douBlock);
+      for (const arm of [0, Math.PI / 2]) {
+        const crossArm = new THREE.Mesh(
+          new THREE.BoxGeometry(radius * 6.2, 0.22, radius * 1.1),
+          beamMaterial,
+        );
+        crossArm.position.set(x, topY + 0.1, z);
+        crossArm.rotation.y = arm + angle;
+        crossArm.castShadow = true;
+        group.add(crossArm);
+      }
 
-      tops.push({ x, z, isMain });
+      outerTops.push({ x, z, angle, isMain });
     }
 
-    // 外圈环形主梁：把 9 根立柱连成整体
+    // ---- 底层：外圈粗大环形原木主梁（连成整体） ----
     const ringBeam = new THREE.Mesh(
-      new THREE.TorusGeometry(RING_RADIUS, 0.34, 8, 54),
+      new THREE.TorusGeometry(OUTER_RADIUS, 0.4, 8, 60),
       beamMaterial,
     );
     ringBeam.rotation.x = Math.PI / 2;
-    ringBeam.position.y = topY + 0.35;
+    ringBeam.position.y = topY + 0.3;
     ringBeam.castShadow = true;
     ringBeam.userData.plazaSelectable = true;
     group.add(ringBeam);
 
-    // 放射状斜梁：由外圈主梁向中心上方汇聚（主柱杆件更粗，主次分明）
-    const apex = new THREE.Vector3(0, apexY, 0);
-    tops.forEach((top) => {
-      const start = new THREE.Vector3(top.x, topY + 0.35, top.z);
+    // ---- 内侧一圈辅助短柱（双层柱廊） ----
+    const innerTops = [];
+    for (let index = 0; index < OUTER_COUNT; index += 1) {
+      const angle =
+        ANGLE_OFFSET +
+        (index / OUTER_COUNT) * Math.PI * 2 +
+        Math.PI / OUTER_COUNT;
+      const x = Math.cos(angle) * INNER_RADIUS;
+      const z = Math.sin(angle) * INNER_RADIUS;
+      const innerBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.5, 0.36, 12),
+        stoneMaterial,
+      );
+      innerBase.position.set(x, deckY + 0.18, z);
+      innerBase.receiveShadow = true;
+      group.add(innerBase);
+      const innerColumn = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.22, INNER_HEIGHT, 12),
+        columnMaterial,
+      );
+      innerColumn.position.set(x, deckY + INNER_HEIGHT / 2, z);
+      innerColumn.castShadow = true;
+      group.add(innerColumn);
+      innerTops.push({ x, z });
+    }
+
+    // ---- 中层：内圈第二层环形木梁 + 横向连梁（连接内外两圈） ----
+    const innerRingBeam = new THREE.Mesh(
+      new THREE.TorusGeometry(INNER_RADIUS, 0.26, 8, 48),
+      beamMaterial,
+    );
+    innerRingBeam.rotation.x = Math.PI / 2;
+    innerRingBeam.position.y = innerTopY + 0.06;
+    innerRingBeam.castShadow = true;
+    group.add(innerRingBeam);
+    innerTops.forEach((t) => {
+      const outward = new THREE.Vector3(t.x, innerTopY, t.z)
+        .normalize()
+        .multiplyScalar(OUTER_RADIUS);
       group.add(
         createBeamBetween(
-          start,
-          apex,
-          top.isMain ? 0.24 : 0.15,
-          top.isMain ? beamMaterial : braceMaterial,
+          new THREE.Vector3(t.x, innerTopY, t.z),
+          new THREE.Vector3(outward.x, innerTopY, outward.z),
+          0.13,
+          braceMaterial,
         ),
       );
     });
 
-    // 内圈环梁（汇聚处）
-    const innerRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.5, 0.2, 6, 36),
-      beamMaterial,
-    );
-    innerRing.rotation.x = Math.PI / 2;
-    innerRing.position.y = topY + 3.2;
-    innerRing.castShadow = true;
-    group.add(innerRing);
-
-    // 交叉斜撑：相邻放射梁之间，避免过度堆叠
-    for (let index = 0; index < COLUMN_COUNT; index += 1) {
-      const a = tops[index];
-      const b = tops[(index + 1) % COLUMN_COUNT];
-      const midY = topY + 1.5;
+    // ---- 上层：放射斜梁（外圈主梁 → 顶部中心收束环）+ 交叉斜撑 ----
+    const apex = new THREE.Vector3(0, apexY, 0);
+    outerTops.forEach((top) => {
+      const start = new THREE.Vector3(top.x, topY + 0.3, top.z);
+      group.add(
+        createBeamBetween(
+          start,
+          apex,
+          top.isMain ? 0.26 : 0.17,
+          top.isMain ? beamMaterial : braceMaterial,
+        ),
+      );
+    });
+    for (let index = 0; index < OUTER_COUNT; index += 1) {
+      const a = outerTops[index];
+      const b = outerTops[(index + 1) % OUTER_COUNT];
+      const y1 = topY + 1.6;
       const p1 = new THREE.Vector3(
         a.x * 0.7 + b.x * 0.3,
-        midY,
+        y1,
         a.z * 0.7 + b.z * 0.3,
       );
       const p2 = new THREE.Vector3(
         a.x * 0.3 + b.x * 0.7,
-        midY + 0.95,
+        y1 + 1.1,
         a.z * 0.3 + b.z * 0.7,
       );
-      group.add(createBeamBetween(p1, p2, 0.09, braceMaterial));
+      group.add(createBeamBetween(p1, p2, 0.1, braceMaterial));
     }
 
-    // 透明攒尖顶（9 面三角形，透明可挡雨，木梁骨架外露）
-    const roofBaseRadius = RING_RADIUS + 1.6;
-    const roof = new THREE.Mesh(
-      new THREE.ConeGeometry(roofBaseRadius, 5.6, 9, 1, true),
+    // ---- 顶部中心收束原木圆环 ----
+    const topRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.24, 0.24, 8, 40),
+      beamMaterial,
+    );
+    topRing.rotation.x = Math.PI / 2;
+    topRing.position.y = apexY;
+    topRing.castShadow = true;
+    topRing.userData.plazaSelectable = true;
+    group.add(topRing);
+
+    // ---- 透明玻璃穹顶（放射梁上方，木骨架外露，可挡雨） ----
+    const domeRadius = OUTER_RADIUS + 1.7;
+    const domeHeight = apexY - topY; // 25 → 30
+    const dome = new THREE.Mesh(
+      new THREE.ConeGeometry(domeRadius, domeHeight, OUTER_COUNT, 1, true),
       glassMaterial,
     );
-    roof.position.y = topY + 2.8;
-    roof.userData.plazaSelectable = true;
-    group.add(roof);
-
+    dome.position.y = topY + domeHeight / 2;
+    dome.userData.plazaSelectable = true;
+    group.add(dome);
     const eave = new THREE.Mesh(
-      new THREE.TorusGeometry(roofBaseRadius, 0.16, 6, 54),
+      new THREE.TorusGeometry(domeRadius, 0.16, 6, 60),
       beamMaterial,
     );
     eave.rotation.x = Math.PI / 2;
@@ -2439,46 +2533,44 @@ export class ThreeWorld {
     eave.castShadow = true;
     group.add(eave);
 
-    // 顶盖封心 + 宝顶
-    const finial = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.34, 0.9, 8),
+    // ---- 中心承托木环 + Φ4m 发光球体（无吊线，坐落环内） ----
+    const orbHoldRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.16, 0.16, 8, 36),
       beamMaterial,
     );
-    finial.position.y = apexY + 0.5;
-    finial.castShadow = true;
-    group.add(finial);
-
-    // 吊杆 + 内部发光球体（离地 24~28m，广场仰视可见、被木梁框住）
-    const hanger = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, apexY - sphereY, 6),
-      beamMaterial,
-    );
-    hanger.position.y = (apexY + sphereY) / 2;
-    group.add(hanger);
+    orbHoldRing.rotation.x = Math.PI / 2;
+    orbHoldRing.position.y = orbY;
+    orbHoldRing.castShadow = true;
+    group.add(orbHoldRing);
+    for (let index = 0; index < 4; index += 1) {
+      const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
+      const px = Math.cos(angle) * 2.16;
+      const pz = Math.sin(angle) * 2.16;
+      group.add(
+        createBeamBetween(
+          new THREE.Vector3(px, orbY, pz),
+          new THREE.Vector3(px * 0.85, apexY, pz * 0.85),
+          0.08,
+          braceMaterial,
+        ),
+      );
+    }
 
     const core = new THREE.Mesh(
-      new THREE.SphereGeometry(1.5, 24, 18),
+      new THREE.SphereGeometry(2, 32, 24),
       new THREE.MeshStandardMaterial({
-        color: '#eafaf1',
-        emissive: '#8fe6c0',
-        emissiveIntensity: 0.9,
-        roughness: 0.22,
+        color: '#fff6e2',
+        emissive: '#ffd9a0',
+        emissiveIntensity: 1.05,
+        roughness: 0.25,
       }),
     );
-    core.position.y = sphereY;
+    core.position.y = orbY;
     group.add(core);
     this.centralCore = core;
 
-    const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(1.95, 0.05, 6, 28),
-      beamMaterial,
-    );
-    halo.rotation.x = Math.PI / 2;
-    halo.position.y = sphereY + 0.95;
-    group.add(halo);
-
-    this.centralPointLight = new THREE.PointLight('#ffe6cc', 2.4, 72, 1.7);
-    this.centralPointLight.position.set(0, sphereY, 0);
+    this.centralPointLight = new THREE.PointLight('#ffe1b0', 2.6, 80, 1.7);
+    this.centralPointLight.position.set(0, orbY, 0);
     group.add(this.centralPointLight);
   }
 
