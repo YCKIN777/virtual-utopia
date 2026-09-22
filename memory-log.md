@@ -368,3 +368,40 @@
 
 ### 里程碑
 - **v1.0 打包完成**：项目基线见 memory-core.md，归档包 `release/BP2-v1.0-src.tar.gz`。
+
+---
+
+## 2026-09-22 个人中心改版：苹果绿配色 + 紧凑布局 + 折叠交互（BP2 第二轮）
+
+> 仅改前端 UI 渲染层（styles.css 主题变量 + ProfileView.vue），未动 3D 场景/地形/碰撞/居民漫游/注册审批/聊天后端内核/已验收资产。
+
+### 改动文件
+- `frontend/src/virtual-utopia/styles.css`：`:root` 主题变量改为苹果绿 `#2fa84f`（hover `#258a41`）+ 白底 `#fbfbfd` + 浅灰 `#f1f1f4`/`#e3e3e8` + 深灰文字 `#1d1d1f`/`#424245`/`#6e6e73`；`--vu-pine` 由深绿 `#1d4d40` 改中性深灰 `#2a2a2e`；`--vu-danger` 改 `#e0483b`；同步修正硬编码红棕强调（focus 轮廓、字段聚焦阴影、material 选中态）为绿色。移除原红棕 `#dc6f55`/`#bd523d` 与深绿主色调。
+- `frontend/src/virtual-utopia/views/ProfileView.vue`：新增 `panels` 折叠状态（默认全收起）；5 个长模块（已解锁场景/我的任务记录/修改密码/我的主页卡片/展示板与留言簿）改为可折叠（标题栏 + 展开收起 ▾ 开关），仅顶部个人信息与原住民名录常显；scoped 样式将个人中心 hero 改为白底深字、收紧区块与卡片间距、苹果绿头像/开关。
+
+### 关键实现
+- 折叠交互：每个可折叠 section 用 `<button class="vu-collapse__head">` 切换 `v-show` 内容；标题用 `<span>`（避免 button 内嵌 h2 的非法结构）；chevron 旋转动画。`panels` 默认 `{scenes:false,tasks:false,password:false,cards:false,showcase:false}`。
+- 配色收敛到单一苹果绿强调 + 白/浅灰/深灰，符合「放弃深绿/红棕」要求。
+- 全部原有字段/表单/按钮/列表/子面板（ResidentCardsPanel 五卡片、HomepageS2Panel 展示板+留言簿、ResidentDirectoryPanel 名录+私聊+建群）逻辑零改动，仅调整外观与折叠包裹。
+- 任务清单中的「任务记录 / 邻里留言簿 / 工作计划卡片组」分别对应实际页面「我的任务记录 / 展示板与留言簿(HomepageS2Panel) / 我的主页卡片(ResidentCardsPanel 五卡片：work_plan/travel_log/life_note/wish_list/favorite)」。
+
+### 测试结果
+- 前端生产构建通过（vite build，52 modules transformed）。
+- 前端单测 9/9 ✅；后端单测 33/33 ✅；BP3 单测 7/7 ✅。
+- 场景流 E2E ❌ **环境缺失 DEEPSEEK_API_KEY**（后端编排器调 LLM 失败 500），与本 UI 改动无关；前台复跑 backend/frontend/BP3 均绿，确认 FAIL 非本改动引发。
+- 注：首次后台跑 `scripts/test-all.mjs` 四套全 FAIL 且无输出，系后台 shell 无法解析 npm workspace 所致；前台复跑后 backend/frontend/BP3 均通过。
+
+### 自检清单（对照用户清单）
+- [x] 整体配色为苹果绿+白色，清爽干净，无旧版深绿/红棕主色调
+- [x] 页面排版紧凑，间距内边距收紧，信息密度提升（hero/scene/卡片间距下调）
+- [x] 任务记录、留言簿(HomepageS2Panel)、计划卡片组(ResidentCardsPanel) 支持下拉折叠展开
+- [x] 原有全部功能入口、表单、列表完整保留，业务逻辑不变
+- [x] 原住民名录、私聊、建群功能不受样式修改影响（仅常显，逻辑未动）
+- [x] 原有 AI 智能体、居民相关功能无退化（子面板逻辑未改）
+- [x] 3D 场景、居民漫游、注册审批功能完全不受改动影响（未触及）
+- [x] 页面加载性能稳定，前端构建 + 单测通过，无控制台报错（构建期）
+- [~] 变更记录写入 memory-log（本条目）；E2E 因环境缺密钥未全绿，已说明
+
+### 备份与提交
+- 备份：`H:/BP2/.workbuddy/backups/profile-ui-20260922/ProfileView.vue.bak`、`styles.css.bak`（回滚点）。
+- 提交：`git commit 85a3879`（仅以上两文件，未带入 memory-core.md / DESIGN.md / prototypes 等无关改动）。

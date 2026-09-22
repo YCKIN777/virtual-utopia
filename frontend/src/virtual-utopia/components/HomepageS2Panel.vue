@@ -171,15 +171,15 @@ onMounted(() => {
 }
 
 .s2-head span {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
 .s2-empty {
   padding: 24px;
   text-align: center;
-  color: rgba(244, 246, 245, 0.5);
-  border: 1px dashed rgba(244, 246, 245, 0.14);
+  color: rgba(29, 29, 31, 0.5);
+  border: 1px dashed rgba(29, 29, 31, 0.14);
   border-radius: 12px;
   font-size: 13px;
 }
@@ -193,9 +193,9 @@ onMounted(() => {
   display: grid;
   gap: 6px;
   padding: 14px 16px;
-  border: 1px solid rgba(244, 246, 245, 0.1);
+  border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .s2-item__head {
@@ -211,14 +211,14 @@ onMounted(() => {
 .s2-type {
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(191, 232, 210, 0.16);
-  color: #bfe8d2;
+  background: rgba(47, 168, 79, 0.14);
+  color: var(--vu-accent-dark, #258a41);
   font-size: 11px;
 }
 
 .s2-item__body {
   margin: 0;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -226,7 +226,7 @@ onMounted(() => {
 }
 
 .s2-item__time {
-  color: rgba(244, 246, 245, 0.42);
+  color: rgba(29, 29, 31, 0.42);
   font-size: 12px;
 }
 
@@ -242,7 +242,7 @@ onMounted(() => {
   border: 1px solid rgba(242, 166, 160, 0.3);
   border-radius: 6px;
   background: transparent;
-  color: #f2a6a0;
+  color: var(--vu-danger, #e0483b);
   cursor: pointer;
   font-size: 12px;
 }
@@ -254,10 +254,10 @@ onMounted(() => {
 
 .s2-form textarea {
   padding: 10px 12px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f4f6f5;
+  background: #ffffff;
+  color: #1d1d1f;
   font-size: 14px;
   resize: vertical;
 }
@@ -270,7 +270,7 @@ onMounted(() => {
 }
 
 .s2-error {
-  color: #f2a6a0;
+  color: var(--vu-danger, #e0483b);
   font-size: 13px;
 }
 
@@ -279,8 +279,8 @@ onMounted(() => {
   padding: 8px 18px;
   border: none;
   border-radius: 8px;
-  background: var(--vu-accent, #bfe8d2);
-  color: #13231f;
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
   font-weight: 600;
   cursor: pointer;
 }

@@ -37,7 +37,7 @@
 
 ## 四、开发铁则（永久约束）
 1. 不改动已验收通过的模块。
-2. 任务完成后：追加记录到 memory-log.md + 更新 memory-modules.md 对应章节 + 附自检清单。
+2. 任务完成后：追加记录到 memory-log.md + 更新 memory-modules.md 对应章节 + 附自检清单；**同时更新本文件第八节「当前交接点」（上一轮停在/下一轮要做/相关文件）**，保证下次开新窗口能直接接上。
 3. 新功能优先复用既有端点/store，不重复造轮子。
 4. 改动范围最小化，只动目标模块文件。
 5. 完成后跑回归测试确认无影响。
@@ -67,3 +67,14 @@
 ## 七、待办 / 注意
 - 运行中 phase5/phase6 若改端点需重启加载。
 - phase5 users 表 status 已扩展为 `('active','disabled','pending','moved_out')`，并有 FK 修复逻辑（见 database.js）。
+
+## 八、当前交接点（上下文快满 / 新窗口 / 换智能体时从这里接）
+> 每次收工前更新本节；新窗口/换智能体第一句让其读本文件，按本节继续，不要重新讨论方向。
+- 当前进度（截至 2026-09-22）：居民UI第二轮真实前端改版 **v4 已完成并提交** —— `git commit 85a3879`（仅 ProfileView.vue + styles.css 两文件，未带入无关改动）。
+  - 改动：styles.css `:root` 主题改为苹果绿 `#2fa84f`（hover `#258a41`）+ 白底 `#fbfbfd` + 浅灰分隔 `#f1f1f4`/`#e3e3e8` + 深灰文字，移除原红棕 `#dc6f55`/深绿 `#1d4d40` 主色；ProfileView.vue 新增 `panels` 折叠态（默认全收起），5 个长模块（已解锁场景 / 我的任务记录 / 修改密码 / 我的主页卡片 / 展示板与留言簿）默认折叠带展开收起开关，**仅顶部个人信息 + 原住民名录常显**。
+  - 零改动范围：全部原有字段/表单/按钮/列表/子面板（ResidentCardsPanel 五卡片、HomepageS2Panel 展示板+留言簿、ResidentDirectoryPanel 名录+私聊+建群）逻辑不变；未动 3D 场景/地形/碰撞/居民漫游/注册审批/聊天后端内核/已验收资产。
+  - 自检：前端 `vite build` 通过（52 modules）；前端单测 9/9 ✅、后端单测 33/33 ✅、BP3 单测 7/7 ✅；场景流 E2E ❌ 仅因环境缺 `DEEPSEEK_API_KEY`（后端编排器调 LLM 报 500），与本 UI 改动无关，需配密钥后重跑确认全绿。
+  - 归档：memory-log.md 已追加「2026-09-22 个人中心改版」条目；备份位于 `.workbuddy/backups/profile-ui-20260922/`。
+- 下一步待办：① 在配好 `DEEPSEEK_API_KEY` 的环境重跑 E2E 确认全绿；② 等用户对 v4 苹果绿改版验收/纠偏（是否保留苹果绿配色、折叠默认项是否调整）；③ 后续 3D 遗留：stream-manor 变体新增、stone/bamboo 材质新模型激活（毛石地基/竹篱）、移动端 `MANOR_TEXTURE_SIZE=512` 并关 roughnessMap。
+- 相关文件：frontend/src/virtual-utopia/views/ProfileView.vue、frontend/src/virtual-utopia/styles.css
+- 运行状态：phase5:3300 / phase6:3400（新窗口接手先确认服务是否在跑；E2E 需 DEEPSEEK_API_KEY）

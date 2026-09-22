@@ -420,7 +420,7 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-head span {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
@@ -435,10 +435,10 @@ onBeforeUnmount(stopPolling);
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(244, 246, 245, 0.1);
+  border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #f4f6f5;
+  background: rgba(0, 0, 0, 0.03);
+  color: #1d1d1f;
   cursor: pointer;
   text-align: left;
 }
@@ -454,8 +454,8 @@ onBeforeUnmount(stopPolling);
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: rgba(191, 232, 210, 0.16);
-  color: #bfe8d2;
+  background: rgba(47, 168, 79, 0.14);
+  color: var(--vu-accent-dark, #258a41);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -471,12 +471,12 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-resident__info small {
-  color: rgba(244, 246, 245, 0.5);
+  color: rgba(29, 29, 31, 0.5);
   font-size: 12px;
 }
 
 .s3-resident__info .s3-resident__meta {
-  color: rgba(244, 246, 245, 0.72);
+  color: rgba(29, 29, 31, 0.72);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -491,7 +491,7 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-groups__head {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
@@ -500,10 +500,10 @@ onBeforeUnmount(stopPolling);
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border: 1px solid rgba(244, 246, 245, 0.1);
+  border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #f4f6f5;
+  background: rgba(0, 0, 0, 0.03);
+  color: #1d1d1f;
   cursor: pointer;
   text-align: left;
 }
@@ -513,37 +513,37 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-group small {
-  color: rgba(244, 246, 245, 0.5);
+  color: rgba(29, 29, 31, 0.5);
   font-size: 12px;
 }
 
 .s3-empty {
   padding: 22px;
   text-align: center;
-  color: rgba(244, 246, 245, 0.5);
-  border: 1px dashed rgba(244, 246, 245, 0.14);
+  color: rgba(29, 29, 31, 0.5);
+  border: 1px dashed rgba(29, 29, 31, 0.14);
   border-radius: 12px;
   font-size: 13px;
 }
 
 .s3-error {
-  color: #f2a6a0;
+  color: var(--vu-danger, #e0483b);
   font-size: 13px;
   margin: 0;
 }
 
 .s3-btn {
   padding: 8px 16px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
   background: transparent;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   cursor: pointer;
 }
 
 .s3-btn--primary {
-  background: var(--vu-accent, #bfe8d2);
-  color: #13231f;
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
   border-color: transparent;
   font-weight: 600;
 }
@@ -560,7 +560,7 @@ onBeforeUnmount(stopPolling);
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(8, 16, 14, 0.6);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .s3-dialog {
@@ -569,8 +569,8 @@ onBeforeUnmount(stopPolling);
   width: min(520px, 100%);
   max-height: 86vh;
   border-radius: 14px;
-  background: #16251f;
-  border: 1px solid rgba(244, 246, 245, 0.12);
+  background: #ffffff;
+  border: 1px solid rgba(29, 29, 31, 0.12);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
@@ -580,7 +580,7 @@ onBeforeUnmount(stopPolling);
   align-items: center;
   gap: 10px;
   padding: 16px 18px;
-  border-bottom: 1px solid rgba(244, 246, 245, 0.08);
+  border-bottom: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .s3-dialog__header h3 {
@@ -590,14 +590,14 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-members {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
 .s3-close {
   border: none;
   background: transparent;
-  color: rgba(244, 246, 245, 0.7);
+  color: rgba(29, 29, 31, 0.7);
   cursor: pointer;
   font-size: 16px;
 }
@@ -626,7 +626,7 @@ onBeforeUnmount(stopPolling);
 
 .s3-msg__author {
   font-size: 12px;
-  color: rgba(244, 246, 245, 0.6);
+  color: rgba(29, 29, 31, 0.6);
 }
 
 .s3-msg--mine .s3-msg__author {
@@ -636,7 +636,7 @@ onBeforeUnmount(stopPolling);
 .s3-msg__content {
   padding: 8px 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.04);
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -644,11 +644,11 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-msg--mine .s3-msg__content {
-  background: rgba(191, 232, 210, 0.18);
+  background: rgba(47, 168, 79, 0.12);
 }
 
 .s3-msg__time {
-  color: rgba(244, 246, 245, 0.4);
+  color: rgba(29, 29, 31, 0.4);
   font-size: 11px;
 }
 
@@ -660,15 +660,15 @@ onBeforeUnmount(stopPolling);
   display: grid;
   gap: 8px;
   padding: 12px 18px;
-  border-top: 1px solid rgba(244, 246, 245, 0.08);
+  border-top: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .s3-composer textarea {
   padding: 10px 12px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f4f6f5;
+  background: #ffffff;
+  color: #1d1d1f;
   font-size: 14px;
   resize: vertical;
 }
@@ -696,7 +696,7 @@ onBeforeUnmount(stopPolling);
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 18px;
-  border-top: 1px solid rgba(244, 246, 245, 0.08);
+  border-top: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .s3-field {
@@ -705,16 +705,16 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-field > span {
-  color: rgba(244, 246, 245, 0.65);
+  color: rgba(29, 29, 31, 0.65);
   font-size: 13px;
 }
 
 .s3-field input {
   padding: 10px 12px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f4f6f5;
+  background: #ffffff;
+  color: #1d1d1f;
   font-size: 14px;
 }
 
@@ -731,7 +731,7 @@ onBeforeUnmount(stopPolling);
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid rgba(244, 246, 245, 0.1);
+  border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -742,7 +742,7 @@ onBeforeUnmount(stopPolling);
 }
 
 .s3-pick small {
-  color: rgba(244, 246, 245, 0.5);
+  color: rgba(29, 29, 31, 0.5);
   font-size: 11px;
 }
 </style>

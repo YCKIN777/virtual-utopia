@@ -46,7 +46,20 @@ const CARD_TYPES = [
   },
 ];
 
+const props = defineProps({
+  filterTypes: { type: Array, default: null },
+});
+
+const visibleTypes = computed(() =>
+  props.filterTypes
+    ? CARD_TYPES.filter((type) => props.filterTypes.includes(type.id))
+    : CARD_TYPES,
+);
+
 const activeType = ref('work_plan');
+if (!visibleTypes.value.some((type) => type.id === activeType.value)) {
+  activeType.value = visibleTypes.value[0]?.id || 'work_plan';
+}
 const dialogOpen = ref(false);
 const editingId = ref(null);
 const busy = ref(false);
@@ -168,7 +181,7 @@ onMounted(() => {
   <section class="rc-panel">
     <nav class="rc-tabs" aria-label="居民主页卡片分类">
       <button
-        v-for="type in CARD_TYPES"
+        v-for="type in visibleTypes"
         :key="type.id"
         type="button"
         class="rc-tab"
@@ -384,17 +397,17 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 9px 14px;
-  border: 1px solid rgba(244, 246, 245, 0.14);
+  border: 1px solid rgba(29, 29, 31, 0.14);
   border-radius: 999px;
   background: transparent;
-  color: rgba(244, 246, 245, 0.72);
+  color: rgba(29, 29, 31, 0.72);
   cursor: pointer;
   font-size: 14px;
 }
 
 .rc-tab--active {
-  background: var(--vu-accent, #bfe8d2);
-  color: #13231f;
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
   border-color: transparent;
   font-weight: 600;
 }
@@ -420,7 +433,7 @@ onMounted(() => {
 }
 
 .rc-head__meta span {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
@@ -428,8 +441,8 @@ onMounted(() => {
   padding: 8px 16px;
   border: none;
   border-radius: 8px;
-  background: var(--vu-accent, #bfe8d2);
-  color: #13231f;
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
   font-weight: 600;
   cursor: pointer;
 }
@@ -437,8 +450,8 @@ onMounted(() => {
 .rc-empty {
   padding: 28px;
   text-align: center;
-  color: rgba(244, 246, 245, 0.5);
-  border: 1px dashed rgba(244, 246, 245, 0.14);
+  color: rgba(29, 29, 31, 0.5);
+  border: 1px dashed rgba(29, 29, 31, 0.14);
   border-radius: 12px;
   font-size: 13px;
 }
@@ -454,9 +467,9 @@ onMounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid rgba(244, 246, 245, 0.1);
+  border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .rc-card__main {
@@ -478,7 +491,7 @@ onMounted(() => {
 
 .rc-card__body {
   margin: 0;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -486,7 +499,7 @@ onMounted(() => {
 }
 
 .rc-card__time {
-  color: rgba(244, 246, 245, 0.42);
+  color: rgba(29, 29, 31, 0.42);
   font-size: 12px;
 }
 
@@ -498,16 +511,16 @@ onMounted(() => {
 
 .rc-mini {
   padding: 5px 10px;
-  border: 1px solid rgba(244, 246, 245, 0.14);
+  border: 1px solid rgba(29, 29, 31, 0.14);
   border-radius: 6px;
   background: transparent;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   cursor: pointer;
   font-size: 12px;
 }
 
 .rc-mini--danger {
-  color: #f2a6a0;
+  color: var(--vu-danger, #e0483b);
   border-color: rgba(242, 166, 160, 0.3);
 }
 
@@ -518,29 +531,29 @@ onMounted(() => {
 }
 
 .rc-badge--self {
-  background: rgba(244, 246, 245, 0.1);
-  color: rgba(244, 246, 245, 0.6);
+  background: rgba(29, 29, 31, 0.1);
+  color: rgba(29, 29, 31, 0.6);
 }
 
 .rc-badge--residents {
-  background: rgba(191, 232, 210, 0.16);
-  color: #bfe8d2;
+  background: rgba(47, 168, 79, 0.14);
+  color: var(--vu-accent-dark, #258a41);
 }
 
 .rc-badge--invite {
   background: rgba(255, 190, 103, 0.16);
-  color: #ffbe67;
+  color: var(--vu-gold, #d3a24b);
 }
 
 .rc-community {
   display: grid;
   gap: 10px;
   padding-top: 14px;
-  border-top: 1px solid rgba(244, 246, 245, 0.08);
+  border-top: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .rc-community__head {
-  color: rgba(244, 246, 245, 0.55);
+  color: rgba(29, 29, 31, 0.55);
   font-size: 12px;
 }
 
@@ -555,7 +568,7 @@ onMounted(() => {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(8, 16, 14, 0.6);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .rc-dialog {
@@ -563,8 +576,8 @@ onMounted(() => {
   max-height: 90vh;
   overflow: auto;
   border-radius: 14px;
-  background: #16251f;
-  border: 1px solid rgba(244, 246, 245, 0.12);
+  background: #ffffff;
+  border: 1px solid rgba(29, 29, 31, 0.12);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 
@@ -573,7 +586,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 18px;
-  border-bottom: 1px solid rgba(244, 246, 245, 0.08);
+  border-bottom: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .rc-dialog__header h3 {
@@ -584,7 +597,7 @@ onMounted(() => {
 .rc-close {
   border: none;
   background: transparent;
-  color: rgba(244, 246, 245, 0.7);
+  color: rgba(29, 29, 31, 0.7);
   cursor: pointer;
   font-size: 16px;
 }
@@ -601,17 +614,17 @@ onMounted(() => {
 }
 
 .rc-field > span {
-  color: rgba(244, 246, 245, 0.65);
+  color: rgba(29, 29, 31, 0.65);
   font-size: 13px;
 }
 
 .rc-field input,
 .rc-field textarea {
   padding: 10px 12px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #f4f6f5;
+  background: #ffffff;
+  color: #1d1d1f;
   font-size: 14px;
   resize: vertical;
 }
@@ -631,14 +644,14 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   font-size: 13px;
   cursor: pointer;
 }
 
 .rc-error {
   margin: 0;
-  color: #f2a6a0;
+  color: var(--vu-danger, #e0483b);
   font-size: 13px;
 }
 
@@ -647,21 +660,21 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 18px;
-  border-top: 1px solid rgba(244, 246, 245, 0.08);
+  border-top: 1px solid rgba(29, 29, 31, 0.08);
 }
 
 .rc-button {
   padding: 9px 18px;
-  border: 1px solid rgba(244, 246, 245, 0.16);
+  border: 1px solid rgba(29, 29, 31, 0.16);
   border-radius: 8px;
   background: transparent;
-  color: rgba(244, 246, 245, 0.8);
+  color: rgba(29, 29, 31, 0.8);
   cursor: pointer;
 }
 
 .rc-button--primary {
-  background: var(--vu-accent, #bfe8d2);
-  color: #13231f;
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
   border-color: transparent;
   font-weight: 600;
 }
