@@ -1,28 +1,48 @@
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue';
-import { RouterLink } from 'vue-router';
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
 import HomepageS2Panel from '../components/HomepageS2Panel.vue';
 import ResidentCardsPanel from '../components/ResidentCardsPanel.vue';
-import ResidentWorksPanel from '../components/ResidentWorksPanel.vue';
 import ResidentDirectoryPanel from '../components/ResidentDirectoryPanel.vue';
+import ResidentWorksPanel from '../components/ResidentWorksPanel.vue';
 import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
 
+const router = useRouter();
+
 const user = computed(() => worldStore.state.user);
 const nickname = computed(() => user.value?.displayName || '居民');
+const myUserId = computed(() => user.value?.phase5UserId);
 const identityLabel = computed(() => {
   if (!user.value) return '';
   const isAI = seedResidents.some((r) => r.residentName === user.value.displayName);
   return isAI ? 'AI 居民' : '真人';
 });
 
-// 主卡片标签：简介 / 作品 / 备忘
+const formatDate = (value) => {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+};
+
+// ---- 链路1：主标签（本地状态切换，不改变路由，故保持滚动位置不跳顶） ----
 const mainTab = ref('intro');
 
-// 中部折叠模块，默认全部收起
+// ---- 中部折叠模块 ----
 const middle = reactive({ collab: false, neighbor: false, collect: false });
 
-// 弹窗路由
+// ---- 通用弹窗（单层，避免叠层错乱；子对话框 z-index 更高） ----
 const MODAL_TITLES = {
   plaza: '广场消息通知',
   groups: '我的临时群聊空间',
@@ -41,6 +61,7 @@ const EMPTY_TEXT = {
 };
 const activeModal = ref('');
 const modalTitle = computed(() => MODAL_TITLES[activeModal.value] || '');
+
 const openModal = (key) => {
   activeModal.value = key;
   if (key === 'groups') loadGroups();
@@ -50,23 +71,57 @@ const closeModal = () => {
   closeGroupChat();
 };
 
-// 临时群聊（复用 worldStore，不新增后端）
-const groupList = ref([]);
-const groupListBusy = ref(false);
-const loadGroups = async () => {
-  groupListBusy.value = true;
-  const res = await worldStore.listGroups();
-  groupListBusy.value = false;
-  if (res.ok) groupList.value = res.groups || [];
+// ---- 链路2：广场消息通知（UI 外壳 + 空状态；红点绑定未读数，待后端接入） ----
+const plaza = reactive({ unread: 0, items: [] });
+const plazaHasUnread = computed(() => plaza.unread > 0);
+const gotoPlazaPost = (item) => {
+  // 后端无“帖子定位”接口且本轮禁止改 3D；此处跳转到生活广场场景详情作为安全落点
+  activeModal.value = '';
+  router.push({ name: 'scene-detail', params: { sceneId: item?.sceneId || 'yard' } });
 };
-const activeGroup = reactive({ group: null, messages: [], input: '', error: '', open: false });
+
+// ---- 链路3：临时群聊空间 ----
+const groups = ref([]);
+const groupsBusy = ref(false);
+const groupMeta = reactive({}); // groupId -> { members, last }
+
+const loadGroups = async () => {
+  groupsBusy.value = true;
+  const res = await worldStore.listGroups();
+  groupsBusy.value = false;
+  if (!res.ok) return;
+  groups.value = res.groups || [];
+  await Promise.all(
+    groups.value.map(async (g) => {
+      const r = await worldStore.listGroupMessages(g.id);
+      if (r.ok) {
+        const msgs = r.messages || [];
+        groupMeta[g.id] = {
+          members: r.members || [],
+          last: msgs.length ? msgs[msgs.length - 1] : null,
+        };
+      }
+    }),
+  );
+};
+
+const groupInitials = (g) => {
+  const members = groupMeta[g.id]?.members || [];
+  return members.slice(0, 3).map((m) => (m.username || '?').slice(0, 1));
+};
+
+const activeGroup = reactive({ group: null, members: [], messages: [], input: '', error: '', open: false });
 let groupTimer = null;
 const refreshGroup = async () => {
   if (!activeGroup.group) return;
   const res = await worldStore.listGroupMessages(activeGroup.group.id);
-  if (res.ok) activeGroup.messages = res.messages || [];
+  if (res.ok) {
+    activeGroup.messages = res.messages || [];
+    activeGroup.members = res.members || [];
+  }
 };
 const openGroup = async (group) => {
+  activeModal.value = '';
   activeGroup.group = group;
   activeGroup.input = '';
   activeGroup.error = '';
@@ -78,6 +133,7 @@ const closeGroupChat = () => {
   activeGroup.open = false;
   activeGroup.group = null;
   activeGroup.messages = [];
+  activeGroup.members = [];
   if (groupTimer) {
     clearInterval(groupTimer);
     groupTimer = null;
@@ -94,8 +150,26 @@ const sendGroup = async () => {
     activeGroup.error = res.error || '发送失败';
   }
 };
+const isGroupOwner = computed(
+  () => Boolean(activeGroup.group) && activeGroup.group.creatorUserId === myUserId.value,
+);
+const dissolveGroup = () => {
+  worldStore.notify('「解散群」待后端开放，本期为占位入口', 'info');
+};
 
-// 修改密码
+// 建群成功（来自名录弹窗）→ 关闭名录并打开新群聊
+const onGroupCreated = (group) => {
+  activeModal.value = '';
+  openGroup(group);
+};
+
+// 点击名录居民卡片 → 跳对方主页
+const openResidentProfile = (resident) => {
+  activeModal.value = '';
+  router.push({ name: 'resident-profile', params: { username: resident.username } });
+};
+
+// ---- 修改密码 ----
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
 const passwordErrors = reactive({ currentPassword: '', newPassword: '', confirmPassword: '', submit: '' });
 const passwordBusy = ref(false);
@@ -127,16 +201,29 @@ const submitPasswordChange = async () => {
   passwordDone.value = true;
 };
 
-// 简介可见权限（占位，后端就绪后生效）
+// ---- 简介可见权限（占位） ----
 const introVisibility = ref('residents');
 
-// 邻里心愿看板：公开 wish_list 卡片
+// ---- 邻里心愿看板：公开 wish_list 卡片 ----
 const wishItems = computed(() =>
   (worldStore.state.residentCards.community || []).filter((c) => c.cardType === 'wish_list'),
 );
 
+// ---- 链路5：弹窗打开时锁定背景滚动 ----
+const anyOverlayOpen = computed(() => Boolean(activeModal.value) || activeGroup.open);
+watch(anyOverlayOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : '';
+});
+
 onMounted(() => {
   worldStore.loadResidentCards();
+});
+onBeforeUnmount(() => {
+  document.body.style.overflow = '';
+  if (groupTimer) {
+    clearInterval(groupTimer);
+    groupTimer = null;
+  }
 });
 </script>
 
@@ -188,28 +275,30 @@ onMounted(() => {
         </nav>
 
         <div class="vu-maintab__body">
-          <!-- 简介 -->
-          <div v-if="mainTab === 'intro'" class="vu-intro">
-            <p class="vu-intro__text">{{ user.selfIntro || '（暂无简介）' }}</p>
-            <div class="vu-intro__perm">
-              <span class="vu-intro__perm-label">可见权限</span>
-              <select v-model="introVisibility" class="vu-select">
-                <option value="self">仅自己</option>
-                <option value="residents">原住民可见</option>
-              </select>
-              <small class="vu-intro__hint">权限设置将在后端就绪后生效</small>
+          <Transition name="vu-fade" mode="out-in">
+            <!-- 简介 -->
+            <div v-if="mainTab === 'intro'" key="intro" class="vu-intro">
+              <p class="vu-intro__text">{{ user.selfIntro || '（暂无简介）' }}</p>
+              <div class="vu-intro__perm">
+                <span class="vu-intro__perm-label">可见权限</span>
+                <select v-model="introVisibility" class="vu-select">
+                  <option value="self">仅自己</option>
+                  <option value="residents">原住民可见</option>
+                </select>
+                <small class="vu-intro__hint">权限设置将在后端就绪后生效</small>
+              </div>
             </div>
-          </div>
 
-          <!-- 作品：独立上传模块，与备忘子项完全隔离 -->
-          <div v-else-if="mainTab === 'works'">
-            <ResidentWorksPanel />
-          </div>
+            <!-- 作品：独立上传模块，与备忘子项完全隔离 -->
+            <div v-else-if="mainTab === 'works'" key="works">
+              <ResidentWorksPanel />
+            </div>
 
-          <!-- 备忘：仅内部展示 4 个子项，外层不重复 -->
-          <div v-else-if="mainTab === 'memo'">
-            <ResidentCardsPanel :filter-types="['work_plan', 'travel_log', 'life_note', 'wish_list']" />
-          </div>
+            <!-- 备忘：仅内部展示 4 个子项，外层不重复 -->
+            <div v-else-if="mainTab === 'memo'" key="memo">
+              <ResidentCardsPanel :filter-types="['work_plan', 'travel_log', 'life_note', 'wish_list']" />
+            </div>
+          </Transition>
         </div>
       </section>
 
@@ -223,7 +312,11 @@ onMounted(() => {
           </button>
           <div v-show="middle.collab" class="vu-rows">
             <button type="button" class="vu-row" @click="openModal('plaza')">
-              <span>广场消息通知</span><span class="vu-row__chev">›</span>
+              <span class="vu-row__label">
+                广场消息通知
+                <span v-if="plazaHasUnread" class="vu-dot" aria-label="有未读" />
+              </span>
+              <span class="vu-row__chev">›</span>
             </button>
             <button type="button" class="vu-row" @click="openModal('groups')">
               <span>我的临时群聊空间</span><span class="vu-row__chev">›</span>
@@ -278,18 +371,21 @@ onMounted(() => {
       </nav>
     </div>
 
-    <!-- 通用弹窗 -->
+    <!-- 通用弹窗（单层） -->
     <Teleport to="body">
       <div v-if="activeModal" class="vu-modal-backdrop" @mousedown.self="closeModal">
-        <section class="vu-modal" role="dialog" aria-modal="true">
+        <section class="vu-modal" :class="{ 'vu-modal--wide': activeModal === 'directory' }" role="dialog" aria-modal="true">
           <header class="vu-modal__header">
             <h3>{{ modalTitle }}</h3>
             <button type="button" class="vu-modal__close" aria-label="关闭" @click="closeModal">✕</button>
           </header>
           <div class="vu-modal__body">
+            <!-- 名录弹窗 -->
             <template v-if="activeModal === 'directory'">
-              <ResidentDirectoryPanel />
+              <ResidentDirectoryPanel @open-profile="openResidentProfile" @group-created="onGroupCreated" />
             </template>
+
+            <!-- 修改密码 -->
             <template v-else-if="activeModal === 'password'">
               <form class="vu-pwform" novalidate @submit.prevent="submitPasswordChange">
                 <label class="vu-field">
@@ -314,12 +410,18 @@ onMounted(() => {
                 </button>
               </form>
             </template>
+
+            <!-- 个人收藏 -->
             <template v-else-if="activeModal === 'favorites'">
               <ResidentCardsPanel :filter-types="['favorite']" />
             </template>
+
+            <!-- 留言簿 -->
             <template v-else-if="activeModal === 'guestbook'">
               <HomepageS2Panel />
             </template>
+
+            <!-- 邻里心愿看板 -->
             <template v-else-if="activeModal === 'wishboard'">
               <div v-if="!wishItems.length" class="vu-empty">暂无邻里心愿</div>
               <div v-else class="vu-wishlist">
@@ -332,16 +434,50 @@ onMounted(() => {
                 </article>
               </div>
             </template>
-            <template v-else-if="activeModal === 'groups'">
-              <div v-if="groupListBusy" class="vu-empty">加载中…</div>
-              <div v-else-if="!groupList.length" class="vu-empty">你还没有加入或创建临时群</div>
-              <div v-else class="vu-grouplist">
-                <button v-for="g in groupList" :key="g.id" type="button" class="vu-group" @click="openGroup(g)">
-                  <strong>{{ g.name }}</strong>
-                  <small>{{ g.members?.length || 0 }} 人</small>
+
+            <!-- 广场消息通知：UI 外壳 + 空状态（数据待后端接入） -->
+            <template v-else-if="activeModal === 'plaza'">
+              <div v-if="!plaza.items.length" class="vu-empty">{{ EMPTY_TEXT.plaza }}</div>
+              <div v-else class="vu-msglist">
+                <button
+                  v-for="item in plaza.items"
+                  :key="item.id"
+                  type="button"
+                  class="vu-msgitem"
+                  @click="gotoPlazaPost(item)"
+                >
+                  <span class="vu-msgitem__head">
+                    <strong>{{ item.fromName || item.fromUsername || '邻居' }}</strong>
+                    <small>{{ formatDate(item.createdAt) }}</small>
+                  </span>
+                  <span class="vu-msgitem__summary">{{ item.summary || item.content }}</span>
                 </button>
               </div>
             </template>
+
+            <!-- 我的临时群聊空间 -->
+            <template v-else-if="activeModal === 'groups'">
+              <div v-if="groupsBusy" class="vu-empty">加载中…</div>
+              <div v-else-if="!groups.length" class="vu-empty">你还没有加入或创建临时群</div>
+              <div v-else class="vu-grouplist">
+                <button v-for="g in groups" :key="g.id" type="button" class="vu-group" @click="openGroup(g)">
+                  <span class="vu-group__avatars" aria-hidden="true">
+                    <span v-for="(ch, i) in groupInitials(g)" :key="i" class="vu-group__avatar">{{ ch }}</span>
+                  </span>
+                  <span class="vu-group__main">
+                    <strong>{{ g.name }}</strong>
+                    <small class="vu-group__preview">
+                      {{ groupMeta[g.id]?.last ? groupMeta[g.id].last.content : '暂无消息' }}
+                    </small>
+                  </span>
+                  <span class="vu-group__side">
+                    <small>{{ (groupMeta[g.id]?.members || []).length }} 人</small>
+                  </span>
+                </button>
+              </div>
+            </template>
+
+            <!-- 其余无后端模块：空状态 -->
             <template v-else>
               <p class="vu-empty">{{ EMPTY_TEXT[activeModal] || '暂无内容' }}</p>
             </template>
@@ -349,26 +485,36 @@ onMounted(() => {
         </section>
       </div>
 
-      <!-- 群聊弹窗 -->
-      <div v-if="activeGroup.open" class="vu-modal-backdrop" @mousedown.self="closeGroupChat">
+      <!-- 群聊覆盖窗 -->
+      <div v-if="activeGroup.open" class="vu-modal-backdrop vu-modal-backdrop--top" @mousedown.self="closeGroupChat">
         <section class="vu-modal vu-modal--chat" role="dialog" aria-modal="true">
           <header class="vu-modal__header">
             <h3>{{ activeGroup.group?.name }}</h3>
+            <small class="vu-modal__members">{{ activeGroup.members.length }} 人</small>
+            <button
+              v-if="isGroupOwner"
+              type="button"
+              class="vu-dissolve"
+              @click="dissolveGroup"
+            >
+              解散群
+            </button>
             <button type="button" class="vu-modal__close" aria-label="关闭" @click="closeGroupChat">✕</button>
           </header>
           <div class="vu-chat">
+            <div v-if="!activeGroup.messages.length" class="vu-empty">群聊还没有消息</div>
             <div
               v-for="m in activeGroup.messages"
               :key="m.id"
               class="vu-msg"
-              :class="{ 'vu-msg--mine': m.fromUserId === user?.phase5UserId }"
+              :class="{ 'vu-msg--mine': m.fromUserId === myUserId }"
             >
               <strong class="vu-msg__author">{{ m.fromUsername }}</strong>
               <span class="vu-msg__content">{{ m.content }}</span>
             </div>
           </div>
           <footer class="vu-composer">
-            <textarea v-model="activeGroup.input" rows="2" maxlength="300" placeholder="输入消息……"></textarea>
+            <textarea v-model="activeGroup.input" rows="2" maxlength="300" placeholder="输入消息……" />
             <button type="button" class="vu-btn vu-btn--primary" :disabled="!activeGroup.input.trim()" @click="sendGroup">发送</button>
           </footer>
         </section>
@@ -480,13 +626,23 @@ onMounted(() => {
   color: var(--vu-ink-soft, #424245);
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 .vu-maintab--active {
   background: var(--vu-accent, #2fa84f);
   color: #fff;
   border-color: transparent;
   font-weight: 600;
+}
+
+/* 切换过渡 */
+.vu-fade-enter-active,
+.vu-fade-leave-active {
+  transition: opacity 0.16s ease;
+}
+.vu-fade-enter-from,
+.vu-fade-leave-to {
+  opacity: 0;
 }
 
 /* 简介 */
@@ -577,8 +733,20 @@ onMounted(() => {
 .vu-row:hover {
   background: var(--vu-muted-surface, #f1f1f4);
 }
+.vu-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .vu-row__chev {
   color: var(--vu-muted, #6e6e73);
+}
+.vu-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vu-danger, #e0483b);
+  display: inline-block;
 }
 
 /* 底部纯图标按钮 */
@@ -621,6 +789,9 @@ onMounted(() => {
   padding: 20px;
   background: rgba(0, 0, 0, 0.4);
 }
+.vu-modal-backdrop--top {
+  z-index: 1200;
+}
 .vu-modal {
   width: min(560px, 100%);
   max-height: 86vh;
@@ -630,10 +801,13 @@ onMounted(() => {
   border-radius: 18px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
 }
+.vu-modal--wide {
+  width: min(720px, 100%);
+}
 .vu-modal__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 16px 18px;
   border-bottom: 1px solid var(--vu-line, #e3e3e8);
 }
@@ -641,6 +815,20 @@ onMounted(() => {
   margin: 0;
   font-size: 17px;
   color: var(--vu-ink, #1d1d1f);
+  flex: 1;
+}
+.vu-modal__members {
+  color: var(--vu-muted, #6e6e73);
+  font-size: 12px;
+}
+.vu-dissolve {
+  padding: 5px 12px;
+  border: 1px solid rgba(224, 72, 59, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vu-danger, #e0483b);
+  cursor: pointer;
+  font-size: 12px;
 }
 .vu-modal__close {
   border: none;
@@ -657,6 +845,103 @@ onMounted(() => {
   text-align: center;
   color: var(--vu-muted, #6e6e73);
   font-size: 14px;
+}
+
+/* 广场消息列表（外壳） */
+.vu-msglist {
+  display: grid;
+  gap: 8px;
+}
+.vu-msgitem {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--vu-line, #e3e3e8);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.vu-msgitem:hover {
+  background: var(--vu-muted-surface, #f1f1f4);
+}
+.vu-msgitem__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vu-msgitem__head strong {
+  font-size: 14px;
+}
+.vu-msgitem__head small {
+  color: var(--vu-muted, #6e6e73);
+  font-size: 12px;
+}
+.vu-msgitem__summary {
+  color: var(--vu-ink-soft, #424245);
+  font-size: 13px;
+}
+
+/* 群列表 */
+.vu-grouplist {
+  display: grid;
+  gap: 8px;
+}
+.vu-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--vu-line, #e3e3e8);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.vu-group:hover {
+  background: var(--vu-muted-surface, #f1f1f4);
+}
+.vu-group__avatars {
+  display: flex;
+  flex-shrink: 0;
+}
+.vu-group__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--vu-accent, #2fa84f);
+  border: 2px solid #fff;
+  margin-left: -8px;
+}
+.vu-group__avatar:first-child {
+  margin-left: 0;
+}
+.vu-group__main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.vu-group__main strong {
+  font-size: 14px;
+}
+.vu-group__preview {
+  color: var(--vu-muted, #6e6e73);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vu-group__side {
+  flex-shrink: 0;
+  color: var(--vu-muted, #6e6e73);
+  font-size: 12px;
 }
 
 /* 心愿看板 */
@@ -689,33 +974,6 @@ onMounted(() => {
   color: var(--vu-ink-soft, #424245);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* 群组列表 */
-.vu-grouplist {
-  display: grid;
-  gap: 8px;
-}
-.vu-group {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border: 1px solid var(--vu-line, #e3e3e8);
-  border-radius: 12px;
-  background: #fff;
-  cursor: pointer;
-  text-align: left;
-}
-.vu-group:hover {
-  background: var(--vu-muted-surface, #f1f1f4);
-}
-.vu-group strong {
-  font-size: 14px;
-}
-.vu-group small {
-  color: var(--vu-muted, #6e6e73);
-  font-size: 12px;
 }
 
 /* 群聊 */

@@ -481,3 +481,44 @@
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/profile-works-20260922/`（ProfileView.vue + ResidentCardsPanel.vue 回滚点）。
 - 提交：`git commit f525f7c`（3 文件：`ProfileView.vue` + `ResidentWorksPanel.vue` + `memory-log.md`；未带入 DESIGN.md / prototypes / .workbuddy 等无关改动）。
+
+---
+
+## 2026-09-22 阶段二：个人主页内部链接全链路打通
+
+> 仅改前端个人主页组件 + 路由；未动 3D 场景/地形/碰撞盒/居民 AI 闲逛/注册审批/聊天后端内核/已验收 3D 资产。
+
+### 链路1 主标签切换
+- 三主标签(简介/作品/备忘)为**本地状态**切换、不改变路由 → 滚动位置天然保持不跳顶；加 `<Transition name="vu-fade" mode="out-in">` 平滑淡入，无白屏。
+- 备忘标签内 4 子项(工作计划/出游记录/生活随记/心愿清单)由 ResidentCardsPanel(filterTypes) 内部 tab 切换。
+
+### 链路2 广场消息通知（UI 外壳 + 空状态）
+- 后端**无**通知/未读接口：入口 + 红点占位(`plaza.unread` 驱动，当前 0，接后端即亮)+弹窗列表(发送人/摘要/时间)渲染已就绪，无数据显示空态。
+- 点击条目跳 `/scenes/:sceneId`（无帖子定位接口且禁改 3D，用场景详情作安全落点）。
+
+### 链路3 临时群聊空间
+- 群列表弹窗：`listGroups` + 逐群 `listGroupMessages` 取成员与最新消息；展示群名/成员头像缩略/最新消息预览/人数；行内红点占位。
+- 点击群 → 覆盖式群聊窗(activeGroup)：收发消息、3s 轮询历史、关闭返回主页。
+- 群主(`creatorUserId === myUserId`)可见「解散群」占位按钮 → notify「待后端开放」。
+
+### 链路4 原住民名录弹窗（重点）
+- ResidentDirectoryPanel 重构：顶部 Tab「居民名录 / 已到访场景」。
+- 居民卡片：头像/昵称/身份标签(AI 居民按 `seedResidents` 匹配,否则真人)/一句话简介；卡片点击 `emit('open-profile')` → ProfileView 路由跳 `/resident/:username`；卡片带多选勾选框；私聊按钮保留。
+- 勾选 ≥2 人 → 底部出现「创建临时项目群」→ 确认框(群名+已选成员 chips) → `worldStore.createGroup` → `emit('group-created')` → ProfileView 自动打开新群聊。
+- 已到访场景：用「已解锁场景」近似(`scenes.filter(isSceneUnlocked)`)；点击跳 `/scenes/:sceneId`。
+
+### 链路5 底部按钮 & 弹窗交互
+- 底部 👥名录 / 🔒改密 弹窗；所有弹窗居中 + 半透明遮罩 + 点遮罩/✕ 关闭；`watch(anyOverlayOpen)` 锁定 body 滚动；层级：通用弹窗 1000 < 子对话框(建群/私聊) 1100 < 群聊覆盖窗 1200，不叠层错乱。
+
+### 新增路由/视图
+- 新增只读路由 `/resident/:username`(name: `resident-profile`) + `views/ResidentProfileView.vue`：展示对方 头像/昵称/真人·AI 标签/简介/公开展示板(`loadResidentBoard(userId)`)，含返回与登录态守卫；懒加载独立 chunk。
+
+### 自检结果
+- 正确配置构建成功（`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`）：主包与 `ResidentProfileView` 独立 chunk 均含全部新功能标记；路由 `resident/:username` 入包。
+- 单测全绿：**虚拟乌托邦 13/13、外层前端 9/9、后端 33/33、BP3 7/7**。
+- dev(5199) 三个改动文件 curl 均 HTTP 200（编译通过）。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/profile-links-20260922/`（8 文件：ProfileView/ResidentCardsPanel/ResidentWorksPanel/ResidentDirectoryPanel/HomepageS2Panel/ResidentChatPanel/router/index.js/styles.css）。
+- 提交：`git commit <HASH>`（ProfileView.vue + ResidentDirectoryPanel.vue + router/index.js + ResidentProfileView.vue + memory-log.md）。

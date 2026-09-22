@@ -1,44 +1,103 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { scenes } from '../data/scenes.js';
+import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
 
+const emit = defineEmits(['open-profile', 'group-created']);
+
+const router = useRouter();
 const GROUP_MAX_MEMBERS = 8;
 
+const tab = ref('residents'); // residents | scenes
+
 const directory = ref([]);
-const groups = ref([]);
 const loading = ref(false);
 const errorMessage = ref('');
 
 const myUserId = computed(() => worldStore.state.user?.phase5UserId);
 
-// 一对一私聊
-const dm = reactive({
-  open: false,
-  peer: null,
-  messages: [],
-  input: '',
-  error: '',
-});
-const dmBusy = ref(false);
+const identityLabel = (resident) =>
+  seedResidents.some((r) => r.residentName === resident.displayName) ? 'AI 居民' : '真人';
 
-// 群聊
-const groupChat = reactive({
-  open: false,
-  group: null,
-  members: [],
-  messages: [],
-  input: '',
-  error: '',
-});
-const groupBusy = ref(false);
+const oneLineIntro = (resident) =>
+  resident.selfIntro || resident.occupation || resident.hobbies || '这位居民还没有写下简介';
 
-// 建群
+// 已到访场景：用「已解锁场景」近似（后端无访问记录接口）
+const visitedScenes = computed(() => scenes.filter((scene) => worldStore.isSceneUnlocked(scene.id)));
+
+const openScene = (scene) => {
+  router.push({ name: 'scene-detail', params: { sceneId: scene.id } });
+};
+
+const load = async () => {
+  loading.value = true;
+  errorMessage.value = '';
+  const res = await worldStore.listResidentDirectory();
+  loading.value = false;
+  if (res.ok) {
+    directory.value = res.residents;
+  } else {
+    errorMessage.value = res.error || '加载名录失败';
+  }
+};
+
+// ---- 多选 ----
+const selectedMembers = ref([]);
+const isSelf = (resident) => resident.userId === myUserId.value;
+const isSelected = (resident) => selectedMembers.value.includes(resident.userId);
+
+const toggleSelect = (resident) => {
+  if (isSelf(resident)) return;
+  if (isSelected(resident)) {
+    selectedMembers.value = selectedMembers.value.filter((id) => id !== resident.userId);
+  } else if (selectedMembers.value.length + 1 < GROUP_MAX_MEMBERS) {
+    selectedMembers.value = [...selectedMembers.value, resident.userId];
+  }
+};
+
+const canCreateGroup = computed(() => selectedMembers.value.length >= 2);
+
+// ---- 建群确认 ----
 const createOpen = ref(false);
 const newGroupName = ref('');
-const selectedMembers = ref([]);
 const createError = ref('');
 const createBusy = ref(false);
 
+const openCreateGroup = () => {
+  newGroupName.value = '';
+  createError.value = '';
+  createOpen.value = true;
+};
+
+const submitCreateGroup = async () => {
+  const name = newGroupName.value.trim();
+  if (!name) {
+    createError.value = '请填写群名称';
+    return;
+  }
+  if (selectedMembers.value.length < 2) {
+    createError.value = '请至少选择 2 位居民';
+    return;
+  }
+  createBusy.value = true;
+  createError.value = '';
+  const res = await worldStore.createGroup({ name, memberIds: selectedMembers.value });
+  createBusy.value = false;
+  if (!res.ok) {
+    createError.value = res.error || '建群失败';
+    return;
+  }
+  createOpen.value = false;
+  const created = res.group || { id: `grp-${Date.now()}`, name, creatorUserId: myUserId.value };
+  selectedMembers.value = [];
+  emit('group-created', created);
+};
+
+// ---- 私聊 ----
+const dm = reactive({ open: false, peer: null, messages: [], input: '', error: '' });
+const dmBusy = ref(false);
 let pollTimer = null;
 
 const formatDate = (value) => {
@@ -51,33 +110,10 @@ const formatDate = (value) => {
   }).format(new Date(value));
 };
 
-const load = async () => {
-  loading.value = true;
-  errorMessage.value = '';
-
-  const [dirRes, groupsRes] = await Promise.all([
-    worldStore.listResidentDirectory(),
-    worldStore.listGroups(),
-  ]);
-
-  loading.value = false;
-
-  if (dirRes.ok) {
-    directory.value = dirRes.residents;
-  } else {
-    errorMessage.value = dirRes.error || '加载名录失败';
-  }
-
-  if (groupsRes.ok) {
-    groups.value = groupsRes.groups;
-  }
-};
-
 const startPolling = (fn) => {
   stopPolling();
   pollTimer = setInterval(fn, 3000);
 };
-
 const stopPolling = () => {
   if (pollTimer) {
     clearInterval(pollTimer);
@@ -85,13 +121,11 @@ const stopPolling = () => {
   }
 };
 
-// ---- 私聊 ----
 const refreshDm = async () => {
   if (!dm.peer) return;
   const res = await worldStore.listDirectMessages(dm.peer.userId);
   if (res.ok) dm.messages = res.messages;
 };
-
 const openDm = async (resident) => {
   dm.peer = resident;
   dm.input = '';
@@ -100,131 +134,25 @@ const openDm = async (resident) => {
   await refreshDm();
   startPolling(refreshDm);
 };
-
 const closeDm = () => {
   dm.open = false;
   dm.peer = null;
   dm.messages = [];
   stopPolling();
 };
-
 const sendDm = async () => {
   const content = dm.input.trim();
   if (!content) return;
-
   dmBusy.value = true;
   dm.error = '';
-
-  const res = await worldStore.sendDirectMessage({
-    toUserId: dm.peer.userId,
-    content,
-  });
-
+  const res = await worldStore.sendDirectMessage({ toUserId: dm.peer.userId, content });
   dmBusy.value = false;
-
   if (!res.ok) {
     dm.error = res.error || '发送失败';
     return;
   }
-
   dm.input = '';
   await refreshDm();
-};
-
-// ---- 群聊 ----
-const refreshGroupChat = async () => {
-  if (!groupChat.group) return;
-  const res = await worldStore.listGroupMessages(groupChat.group.id);
-  if (res.ok) {
-    groupChat.messages = res.messages;
-    groupChat.members = res.members;
-  }
-};
-
-const openGroup = async (group) => {
-  groupChat.group = group;
-  groupChat.input = '';
-  groupChat.error = '';
-  groupChat.open = true;
-  await refreshGroupChat();
-  startPolling(refreshGroupChat);
-};
-
-const closeGroup = () => {
-  groupChat.open = false;
-  groupChat.group = null;
-  groupChat.messages = [];
-  groupChat.members = [];
-  stopPolling();
-};
-
-const sendGroup = async () => {
-  const content = groupChat.input.trim();
-  if (!content) return;
-
-  groupBusy.value = true;
-  groupChat.error = '';
-
-  const res = await worldStore.sendGroupMessage(groupChat.group.id, {
-    content,
-  });
-
-  groupBusy.value = false;
-
-  if (!res.ok) {
-    groupChat.error = res.error || '发言失败';
-    return;
-  }
-
-  groupChat.input = '';
-  await refreshGroupChat();
-};
-
-// ---- 建群 ----
-const openCreateGroup = () => {
-  newGroupName.value = '';
-  selectedMembers.value = [];
-  createError.value = '';
-  createOpen.value = true;
-};
-
-const toggleMember = (userId) => {
-  if (selectedMembers.value.includes(userId)) {
-    selectedMembers.value = selectedMembers.value.filter((id) => id !== userId);
-  } else if (selectedMembers.value.length + 1 < GROUP_MAX_MEMBERS) {
-    selectedMembers.value = [...selectedMembers.value, userId];
-  }
-};
-
-const submitCreateGroup = async () => {
-  const name = newGroupName.value.trim();
-  if (!name) {
-    createError.value = '请填写群名称';
-    return;
-  }
-
-  if (!selectedMembers.value.length) {
-    createError.value = '至少邀请一位原住民';
-    return;
-  }
-
-  createBusy.value = true;
-  createError.value = '';
-
-  const res = await worldStore.createGroup({
-    name,
-    memberIds: selectedMembers.value,
-  });
-
-  createBusy.value = false;
-
-  if (!res.ok) {
-    createError.value = res.error || '建群失败';
-    return;
-  }
-
-  createOpen.value = false;
-  await load();
 };
 
 onMounted(load);
@@ -233,63 +161,166 @@ onBeforeUnmount(stopPolling);
 
 <template>
   <section class="s3-panel">
-    <div class="s3-head">
-      <div>
-        <strong>原住民名录</strong>
-        <span>共 {{ directory.length }} 户 · 点击居民可发起私聊 · 无活跃度与排行</span>
+    <div class="s3-tabs" role="tablist">
+      <button
+        type="button"
+        class="s3-tab"
+        :class="{ 's3-tab--active': tab === 'residents' }"
+        @click="tab = 'residents'"
+      >
+        居民名录
+      </button>
+      <button
+        type="button"
+        class="s3-tab"
+        :class="{ 's3-tab--active': tab === 'scenes' }"
+        @click="tab = 'scenes'"
+      >
+        已到访场景
+      </button>
+    </div>
+
+    <!-- 居民名录 -->
+    <template v-if="tab === 'residents'">
+      <div class="s3-head">
+        <div>
+          <strong>原住民名录</strong>
+          <span>共 {{ directory.length }} 户 · 点击卡片查看对方主页 · 勾选≥2人可建临时项目群</span>
+        </div>
       </div>
-      <button type="button" class="s3-btn s3-btn--primary" @click="openCreateGroup">
-        + 创建临时小群
-      </button>
-    </div>
 
-    <p v-if="errorMessage" class="s3-error">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="s3-error">{{ errorMessage }}</p>
+      <div v-if="loading" class="s3-empty">正在加载名录……</div>
+      <div v-else-if="!directory.length" class="s3-empty">暂无原住民</div>
 
-    <div v-if="loading" class="s3-empty">正在加载名录……</div>
+      <div v-else class="s3-directory">
+        <div
+          v-for="resident in directory"
+          :key="resident.userId"
+          class="s3-card"
+          :class="{ 's3-card--self': isSelf(resident), 's3-card--picked': isSelected(resident) }"
+          role="button"
+          tabindex="0"
+          @click="emit('open-profile', resident)"
+          @keydown.enter="emit('open-profile', resident)"
+        >
+          <div class="s3-card__top">
+            <span class="s3-avatar" aria-hidden="true">
+              {{ (resident.displayName || resident.username).slice(0, 1) }}
+            </span>
+            <div class="s3-card__id">
+              <strong>{{ resident.displayName || resident.username }}</strong>
+              <span
+                class="s3-tag"
+                :class="identityLabel(resident) === 'AI 居民' ? 's3-tag--ai' : 's3-tag--human'"
+              >
+                {{ identityLabel(resident) }}
+              </span>
+            </div>
+            <label
+              class="s3-check"
+              :title="isSelf(resident) ? '不能选择自己' : '勾选后可创建临时项目群'"
+              @click.stop
+            >
+              <input
+                type="checkbox"
+                :checked="isSelected(resident)"
+                :disabled="isSelf(resident)"
+                @change="toggleSelect(resident)"
+              />
+            </label>
+          </div>
+          <p class="s3-card__intro">{{ oneLineIntro(resident) }}</p>
+          <div class="s3-card__foot">
+            <small>@{{ resident.username }} · {{ resident.homePlotId || '未分配' }}</small>
+            <button
+              v-if="!isSelf(resident)"
+              type="button"
+              class="s3-mini"
+              @click.stop="openDm(resident)"
+            >
+              私聊
+            </button>
+          </div>
+        </div>
+      </div>
 
-    <div v-else-if="!directory.length" class="s3-empty">暂无原住民</div>
+      <!-- 底部：勾选≥2人后出现 -->
+      <div v-if="canCreateGroup" class="s3-bottom">
+        <span>已选 {{ selectedMembers.length }} 位居民</span>
+        <button type="button" class="s3-btn s3-btn--primary" @click="openCreateGroup">
+          创建临时项目群
+        </button>
+      </div>
+    </template>
 
-    <div v-else class="s3-directory">
-      <button
-        v-for="resident in directory"
-        :key="resident.userId"
-        type="button"
-        class="s3-resident"
-        :class="{ 's3-resident--self': resident.userId === myUserId }"
-        :disabled="resident.userId === myUserId"
-        @click="openDm(resident)"
-      >
-        <span class="s3-avatar" aria-hidden="true">
-          {{ (resident.displayName || resident.username).slice(0, 1) }}
-        </span>
-        <span class="s3-resident__info">
-          <strong>{{ resident.displayName || resident.username }}</strong>
-          <small>@{{ resident.username }} · {{ resident.homePlotId || '未分配' }}</small>
-          <small v-if="resident.occupation" class="s3-resident__meta">职业：{{ resident.occupation }}</small>
-          <small v-if="resident.hobbies" class="s3-resident__meta">爱好：{{ resident.hobbies }}</small>
-          <small v-if="resident.selfIntro" class="s3-resident__meta">{{ resident.selfIntro }}</small>
-        </span>
-      </button>
-    </div>
+    <!-- 已到访场景 -->
+    <template v-else>
+      <div class="s3-head">
+        <div>
+          <strong>已到访场景</strong>
+          <span>你去过的 3D 场景（当前按已解锁场景展示）· 点击卡片前往</span>
+        </div>
+      </div>
 
-    <div v-if="groups.length" class="s3-groups">
-      <div class="s3-groups__head">我的小群</div>
-      <button
-        v-for="group in groups"
-        :key="group.id"
-        type="button"
-        class="s3-group"
-        @click="openGroup(group)"
-      >
-        <strong>{{ group.name }}</strong>
-        <small>{{ group.members?.length || 0 }} 人</small>
-      </button>
-    </div>
+      <div v-if="!visitedScenes.length" class="s3-empty">
+        还没有到访过任何场景，去世界里走走吧
+      </div>
+      <div v-else class="s3-scenes">
+        <button
+          v-for="scene in visitedScenes"
+          :key="scene.id"
+          type="button"
+          class="s3-scene"
+          @click="openScene(scene)"
+        >
+          <span class="s3-scene__mark" :style="{ background: scene.accent }" aria-hidden="true">
+            {{ scene.name.slice(0, 1) }}
+          </span>
+          <span class="s3-scene__info">
+            <strong>{{ scene.name }}</strong>
+            <small>{{ scene.category }}</small>
+            <small class="s3-scene__summary">{{ scene.summary }}</small>
+          </span>
+        </button>
+      </div>
+    </template>
 
-    <!-- 私聊弹窗 -->
+    <!-- 建群确认框（z-index 高于名录弹窗） -->
     <Teleport to="body">
-      <div v-if="dm.open" class="s3-dialog-backdrop" @mousedown.self="closeDm">
-        <section class="s3-dialog">
+      <div v-if="createOpen" class="s3-dialog-backdrop s3-dialog-backdrop--top" @mousedown.self="createOpen = false">
+        <section class="s3-dialog" role="dialog" aria-modal="true">
+          <header class="s3-dialog__header">
+            <h3>创建临时项目群</h3>
+            <button type="button" class="s3-close" @click="createOpen = false">✕</button>
+          </header>
+          <div class="s3-dialog__body">
+            <label class="s3-field">
+              <span>群名称</span>
+              <input v-model="newGroupName" type="text" maxlength="40" placeholder="给群起个名字" />
+            </label>
+            <div class="s3-field">
+              <span>已选成员（{{ selectedMembers.length }}）</span>
+              <div class="s3-chips">
+                <span v-for="id in selectedMembers" :key="id" class="s3-chip">
+                  {{ (directory.find((r) => r.userId === id)?.displayName) || id }}
+                </span>
+              </div>
+            </div>
+            <p v-if="createError" class="s3-error">{{ createError }}</p>
+          </div>
+          <footer class="s3-dialog__footer">
+            <button type="button" class="s3-btn" @click="createOpen = false">取消</button>
+            <button type="button" class="s3-btn s3-btn--primary" :disabled="createBusy" @click="submitCreateGroup">
+              {{ createBusy ? '创建中' : '确认建群' }}
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <!-- 私聊弹窗（z-index 高于名录弹窗） -->
+      <div v-if="dm.open" class="s3-dialog-backdrop s3-dialog-backdrop--top" @mousedown.self="closeDm">
+        <section class="s3-dialog" role="dialog" aria-modal="true">
           <header class="s3-dialog__header">
             <h3>与 {{ dm.peer?.displayName || dm.peer?.username }} 私聊</h3>
             <button type="button" class="s3-close" @click="closeDm">✕</button>
@@ -317,82 +348,6 @@ onBeforeUnmount(stopPolling);
           </footer>
         </section>
       </div>
-
-      <!-- 群聊弹窗 -->
-      <div v-if="groupChat.open" class="s3-dialog-backdrop" @mousedown.self="closeGroup">
-        <section class="s3-dialog">
-          <header class="s3-dialog__header">
-            <h3>{{ groupChat.group?.name }}</h3>
-            <small class="s3-members">{{ groupChat.members.length }} 人</small>
-            <button type="button" class="s3-close" @click="closeGroup">✕</button>
-          </header>
-          <div class="s3-messages">
-            <div v-if="!groupChat.messages.length" class="s3-empty">群聊还没有消息</div>
-            <div
-              v-for="msg in groupChat.messages"
-              :key="msg.id"
-              class="s3-msg"
-              :class="{ 's3-msg--mine': msg.fromUserId === myUserId }"
-            >
-              <strong class="s3-msg__author">{{ msg.fromUsername }}</strong>
-              <span class="s3-msg__content">{{ msg.content }}</span>
-              <small class="s3-msg__time">{{ formatDate(msg.createdAt) }}</small>
-            </div>
-          </div>
-          <footer class="s3-composer">
-            <textarea v-model="groupChat.input" rows="2" maxlength="300" placeholder="输入消息……" />
-            <div class="s3-composer__row">
-              <span v-if="groupChat.error" class="s3-error">{{ groupChat.error }}</span>
-              <button type="button" class="s3-btn s3-btn--primary" :disabled="groupBusy" @click="sendGroup">
-                {{ groupBusy ? '发送中' : '发送' }}
-              </button>
-            </div>
-          </footer>
-        </section>
-      </div>
-
-      <!-- 建群弹窗 -->
-      <div v-if="createOpen" class="s3-dialog-backdrop" @mousedown.self="createOpen = false">
-        <section class="s3-dialog">
-          <header class="s3-dialog__header">
-            <h3>创建临时小群</h3>
-            <button type="button" class="s3-close" @click="createOpen = false">✕</button>
-          </header>
-          <div class="s3-dialog__body">
-            <label class="s3-field">
-              <span>群名称</span>
-              <input v-model="newGroupName" type="text" maxlength="40" placeholder="给群起个名字" />
-            </label>
-            <div class="s3-field">
-              <span>邀请原住民（最多 {{ GROUP_MAX_MEMBERS - 1 }} 人）</span>
-              <div class="s3-pick-list">
-                <label
-                  v-for="resident in directory.filter((r) => r.userId !== myUserId)"
-                  :key="resident.userId"
-                  class="s3-pick"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedMembers.includes(resident.userId)"
-                    @change="toggleMember(resident.userId)"
-                  />
-                  <span>
-                    {{ resident.displayName || resident.username }}
-                    <small>@{{ resident.username }}</small>
-                  </span>
-                </label>
-              </div>
-            </div>
-            <p v-if="createError" class="s3-error">{{ createError }}</p>
-          </div>
-          <footer class="s3-dialog__footer">
-            <button type="button" class="s3-btn" @click="createOpen = false">取消</button>
-            <button type="button" class="s3-btn s3-btn--primary" :disabled="createBusy" @click="submitCreateGroup">
-              {{ createBusy ? '创建中' : '创建' }}
-            </button>
-          </footer>
-        </section>
-      </div>
     </Teleport>
   </section>
 </template>
@@ -401,6 +356,28 @@ onBeforeUnmount(stopPolling);
 .s3-panel {
   display: grid;
   gap: 16px;
+}
+
+.s3-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.s3-tab {
+  padding: 7px 16px;
+  border: 1px solid rgba(29, 29, 31, 0.14);
+  border-radius: 999px;
+  background: var(--vu-muted-surface, #f1f1f4);
+  color: rgba(29, 29, 31, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.s3-tab--active {
+  background: var(--vu-accent, #2fa84f);
+  color: #ffffff;
+  border-color: transparent;
+  font-weight: 600;
 }
 
 .s3-head {
@@ -426,26 +403,40 @@ onBeforeUnmount(stopPolling);
 
 .s3-directory {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 10px;
 }
 
-.s3-resident {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.s3-card {
+  display: grid;
+  gap: 8px;
   padding: 12px 14px;
   border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.03);
   color: #1d1d1f;
   cursor: pointer;
-  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.s3-resident--self {
-  opacity: 0.5;
-  cursor: default;
+.s3-card:hover {
+  border-color: rgba(47, 168, 79, 0.5);
+  background: rgba(47, 168, 79, 0.06);
+}
+
+.s3-card--picked {
+  border-color: var(--vu-accent, #2fa84f);
+  background: rgba(47, 168, 79, 0.1);
+}
+
+.s3-card--self {
+  opacity: 0.6;
+}
+
+.s3-card__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .s3-avatar {
@@ -460,22 +451,47 @@ onBeforeUnmount(stopPolling);
   flex-shrink: 0;
 }
 
-.s3-resident__info {
-  display: grid;
-  gap: 2px;
+.s3-card__id {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.s3-resident__info strong {
+.s3-card__id strong {
   font-size: 14px;
 }
 
-.s3-resident__info small {
-  color: rgba(29, 29, 31, 0.5);
-  font-size: 12px;
+.s3-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.s3-resident__info .s3-resident__meta {
+.s3-tag--ai {
+  background: rgba(47, 168, 79, 0.14);
+  color: var(--vu-accent-dark, #258a41);
+}
+
+.s3-tag--human {
+  background: rgba(29, 29, 31, 0.08);
+  color: rgba(29, 29, 31, 0.6);
+}
+
+.s3-check {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.s3-card__intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
   color: rgba(29, 29, 31, 0.72);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -484,21 +500,60 @@ onBeforeUnmount(stopPolling);
   -webkit-box-orient: vertical;
 }
 
-.s3-groups {
-  display: grid;
-  gap: 8px;
-  padding-top: 6px;
-}
-
-.s3-groups__head {
-  color: rgba(29, 29, 31, 0.55);
-  font-size: 12px;
-}
-
-.s3-group {
+.s3-card__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.s3-card__foot small {
+  color: rgba(29, 29, 31, 0.5);
+  font-size: 12px;
+}
+
+.s3-mini {
+  padding: 4px 12px;
+  border: 1px solid rgba(29, 29, 31, 0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(29, 29, 31, 0.8);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.s3-mini:hover {
+  border-color: var(--vu-accent, #2fa84f);
+  color: var(--vu-accent-dark, #258a41);
+}
+
+/* 底部建群条 */
+.s3-bottom {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(47, 168, 79, 0.35);
+  border-radius: 12px;
+  background: rgba(47, 168, 79, 0.08);
+  font-size: 13px;
+  color: rgba(29, 29, 31, 0.75);
+}
+
+/* 场景列表 */
+.s3-scenes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.s3-scene {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 12px 14px;
   border: 1px solid rgba(29, 29, 31, 0.1);
   border-radius: 12px;
@@ -508,17 +563,48 @@ onBeforeUnmount(stopPolling);
   text-align: left;
 }
 
-.s3-group strong {
+.s3-scene:hover {
+  border-color: rgba(47, 168, 79, 0.5);
+  background: rgba(47, 168, 79, 0.06);
+}
+
+.s3-scene__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: #ffffff;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.s3-scene__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.s3-scene__info strong {
   font-size: 14px;
 }
 
-.s3-group small {
+.s3-scene__info small {
   color: rgba(29, 29, 31, 0.5);
   font-size: 12px;
 }
 
+.s3-scene__summary {
+  color: rgba(29, 29, 31, 0.7) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .s3-empty {
-  padding: 22px;
+  padding: 24px;
   text-align: center;
   color: rgba(29, 29, 31, 0.5);
   border: 1px dashed rgba(29, 29, 31, 0.14);
@@ -563,10 +649,14 @@ onBeforeUnmount(stopPolling);
   background: rgba(0, 0, 0, 0.4);
 }
 
+.s3-dialog-backdrop--top {
+  z-index: 1100;
+}
+
 .s3-dialog {
   display: flex;
   flex-direction: column;
-  width: min(520px, 100%);
+  width: min(480px, 100%);
   max-height: 86vh;
   border-radius: 14px;
   background: #ffffff;
@@ -589,17 +679,60 @@ onBeforeUnmount(stopPolling);
   flex: 1;
 }
 
-.s3-members {
-  color: rgba(29, 29, 31, 0.55);
-  font-size: 12px;
-}
-
 .s3-close {
   border: none;
   background: transparent;
   color: rgba(29, 29, 31, 0.7);
   cursor: pointer;
   font-size: 16px;
+}
+
+.s3-dialog__body {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+}
+
+.s3-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid rgba(29, 29, 31, 0.08);
+}
+
+.s3-field {
+  display: grid;
+  gap: 6px;
+}
+
+.s3-field > span {
+  color: rgba(29, 29, 31, 0.65);
+  font-size: 13px;
+}
+
+.s3-field input {
+  padding: 10px 12px;
+  border: 1px solid rgba(29, 29, 31, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1d1f;
+  font-size: 14px;
+}
+
+.s3-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.s3-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(47, 168, 79, 0.12);
+  color: var(--vu-accent-dark, #258a41);
+  font-size: 12px;
 }
 
 .s3-messages {
@@ -622,15 +755,6 @@ onBeforeUnmount(stopPolling);
 
 .s3-msg--mine {
   align-self: flex-end;
-}
-
-.s3-msg__author {
-  font-size: 12px;
-  color: rgba(29, 29, 31, 0.6);
-}
-
-.s3-msg--mine .s3-msg__author {
-  text-align: right;
 }
 
 .s3-msg__content {
@@ -671,6 +795,7 @@ onBeforeUnmount(stopPolling);
   color: #1d1d1f;
   font-size: 14px;
   resize: vertical;
+  font-family: inherit;
 }
 
 .s3-composer__row {
@@ -682,67 +807,5 @@ onBeforeUnmount(stopPolling);
 
 .s3-composer__row .s3-btn {
   margin-left: auto;
-}
-
-.s3-dialog__body {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-  overflow: auto;
-}
-
-.s3-dialog__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 18px;
-  border-top: 1px solid rgba(29, 29, 31, 0.08);
-}
-
-.s3-field {
-  display: grid;
-  gap: 6px;
-}
-
-.s3-field > span {
-  color: rgba(29, 29, 31, 0.65);
-  font-size: 13px;
-}
-
-.s3-field input {
-  padding: 10px 12px;
-  border: 1px solid rgba(29, 29, 31, 0.16);
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1d1d1f;
-  font-size: 14px;
-}
-
-.s3-pick-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 6px;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.s3-pick {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid rgba(29, 29, 31, 0.1);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.s3-pick span {
-  display: grid;
-}
-
-.s3-pick small {
-  color: rgba(29, 29, 31, 0.5);
-  font-size: 11px;
 }
 </style>

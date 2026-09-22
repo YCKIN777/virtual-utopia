@@ -45,6 +45,12 @@ export const router = createRouter({
       component: ProfileView,
     },
     {
+      path: '/resident/:username',
+      name: 'resident-profile',
+      component: () => import('../views/ResidentProfileView.vue'),
+      props: true,
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: { name: 'world' },
     },
