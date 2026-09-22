@@ -961,7 +961,7 @@
 - 启动日志确认：`[start-all] phase5 就绪` → `[start-all] phase6 就绪` → `[start-all] 全部必需服务已就绪`。
 - 附加：`http://localhost:3400/api/phase6/health` → `{"service":"virtual-utopia-phase6","status":"ok","phase5BaseUrl":"http://localhost:3300","ragBaseUrl":"http://localhost:3100"}`。
 - 重启后账号未受影响：`KIN` 登录 200（role=admin, id=40）——DB 持久化生效。
-- 提交：`git commit <HASH_RESTART>`（scripts/start-all.mjs + memory-log.md）。
+- 提交：`git commit e2295bc`（scripts/start-all.mjs + memory-log.md）。
 
 ### 经验（已同步进技能）
 - 若要在本机用 `restart_services.ps1` 请务必注意：该脚本指向**验收用临时库** `H:\tmp\ma-v101-check\phase5.sqlite` 与另一套 secret/token，**不要**在正式环境直接运行，否则会切库丢数据。
