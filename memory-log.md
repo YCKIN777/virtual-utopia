@@ -927,7 +927,7 @@
 ### 备份与提交
 - 备份快照：`H:/BP2/.workbuddy/backups/admin-kin-20260922/`（**改动前** `virtual_utopia_phase5.sqlite.bak` + **改动后** `.after`）；另经 `POST /api/phase7/backup` 生成整个 `data` 目录快照（`backups/<时间戳>/data` + manifest）。
 - 说明：`data/` 在 `.gitignore` 中，账号数据本身不入库；**可用 `node scripts/seed-admin-kin.mjs` 随时重建**（脚本已入库）。
-- 提交：`git commit <HASH_KIN>`。
+- 提交：`git commit 535c23e`。
 
 ### 账号总表（当前有效，网页登录框填明文）
 | 角色 | 账号 | 口令 |
