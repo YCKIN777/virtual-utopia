@@ -88,10 +88,18 @@ export const readPhase6Config = (environment = process.env) => {
       'http://localhost:5173',
       'http://localhost:5174',
       'http://localhost:5175',
+      'http://localhost:5199',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174',
       'http://127.0.0.1:5175',
+      'http://127.0.0.1:5199',
     ]),
+    // 浏览器请求一定携带 Origin，而开发端口经常变动（vite 配置写 5175，实际可跑 5199）。
+    // 这里默认额外放行本机回环来源（localhost / 127.0.0.1 / [::1] 的任意端口），
+    // 避免出现「curl 能登录、浏览器却 403 origin is not allowed」。
+    // 生产环境可用 PHASE6_ALLOW_LOOPBACK_ORIGINS=false 关闭该放宽。
+    allowLoopbackOrigins:
+      environment.PHASE6_ALLOW_LOOPBACK_ORIGINS !== 'false',
   };
 };
 

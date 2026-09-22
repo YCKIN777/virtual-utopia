@@ -966,3 +966,64 @@
 ### 经验（已同步进技能）
 - 若要在本机用 `restart_services.ps1` 请务必注意：该脚本指向**验收用临时库** `H:\tmp\ma-v101-check\phase5.sqlite` 与另一套 secret/token，**不要**在正式环境直接运行，否则会切库丢数据。
 - 稳妥的重启方式：按端口精确杀进程 → `scripts/start-all.mjs`（已修好多地址健康探测）。
+
+---
+
+## 2026-09-23 真实浏览器实测定位 KIN/admin 登录根因 —— CORS 403 + 前端静默降级 bug
+
+### 现象
+- 重启后 KIN 在管理台 `localhost:5174` 仍报「用户名或密码错误」；curl / 直连 API 用同一对凭据都是 200。
+- 演示账号 `traveler` 表现奇特：填凭据点登录 → 不报错 → 静默进入「演示模式」（无 token、所有接口走 demo 分支）。
+- 这条线索指向**浏览器专属**问题：curl 没 Origin 而浏览器一定有。
+
+### 真实根因（双坑叠加）
+
+**坑 1：phase6 CORS allowlist 写死端口，与实际运行端口不一致**
+- `backend/src/phase6/config.js` 的 `allowedOrigins` 仅 5173 / 5174 / 5175 三个端口。
+- 主世界 vite 端口这次跑在 **5199**（5175 配置被占用时 vite 自动顺延）→ 浏览器请求带 `Origin: http://localhost:5199` 命中 phase6 路由 → `cors({ origin })` 拒绝 → 返回 `403 origin is not allowed`。
+- 注意：**curl 默认不发 Origin**，所以 curl 一直能通——这也是此前所有命令行验证都没发现这个问题的原因。
+
+**坑 2：`worldStore.js` 把 CORS 403 当成"离线"，做了静默降级**
+- `isOfflinePersistenceError()` 把 `PHASE6_FORBIDDEN + /origin is not allowed/i` 视为离线错误 → 触发 demo 模式。
+- 结果就是「**只有 demo 凭据（`traveler`）能登得进去**」——demo 分支根本不校验账号，演示账号静默通过；真实账号撞到 403 后被错误地降级，登录框反而报密码错。
+- 这层降级掩盖了坑 1，让表面症状看上去像"只有 traveler 能登"。
+
+### 变更 1：phase6 CORS 放行本机回环（任意端口）
+- `backend/src/phase6/config.js`：
+  - `allowedOrigins` 显式补上 `http://localhost:5199` / `http://127.0.0.1:5199`；
+  - **新增** `allowLoopbackOrigins: env.PHASE6_ALLOW_LOOPBACK_ORIGINS !== 'false'`，生产可用环境变量关闭。
+- `backend/src/phase6/app.js`：
+  - 新增 `isLoopbackOrigin(origin)`：解析 hostname，匹配 `localhost` / `127.0.0.1` / `::1` / `[::1]` 即视为本机回环；
+  - `createCorsOptions(allowedOrigins, { allowLoopbackOrigins = true } = {})` 接受第二参数，未允许列表中的回环 origin 也放行；
+  - 在 `createPhase6App` 注册 CORS 时把 `config.allowLoopbackOrigins !== false` 透传过去。
+
+### 变更 2：前端不再把 403 当离线
+- `frontend/src/virtual-utopia/stores/worldStore.js`：
+  - `isOfflinePersistenceError` **移除** `error?.code === 'PHASE6_FORBIDDEN' && /origin is not allowed/i.test(error.message)` 分支；
+  - 403（CORS / origin 不允许）属于**配置问题**，必须如实抛给用户，而不是静默降级到 demo 模式。
+  - 保留真正离线的判定：`PERSISTENCE_UNAVAILABLE` / `PERSISTENCE_TIMEOUT` / `PHASE6_UPSTREAM_UNAVAILABLE` / `REQUEST_TIMEOUT` / 502 / 503 / 504。
+
+### 真实浏览器实测（playwright + Edge，无 headless）
+| 场景 | 结果 |
+|---|---|
+| 5199 主世界 `traveler` 登录 | ✅ 200，拿到 token，进入主世界 |
+| 5199 主世界 `KIN` 登录 | ✅ 200，role=admin，跳转到管理台入口可见 |
+| 5199 主世界 `admin` 登录 | ✅ 200，role=admin |
+| 5174 管理台 `KIN` 登录 | ✅ 200，进入管理员控制台 |
+| **5174 管理台「入驻申请」** | ✅ 可见 1 条 pending 申请并有「批准 / 驳回」按钮 |
+| **外域 Origin `http://evil.example.com`** | ✅ 仍 403 origin is not allowed（CORS 安全边界未放开） |
+| 控制台错误 | ✅ 0 报错 |
+
+### 自检（4 套单测全绿）
+- 虚拟乌托邦 13/13、外层前端 9/9、**backend 42/42**、BP3 7/7。
+- 真实浏览器三账号 `traveler / KIN / admin` 均 200 并存 token。
+- KIN 在管理台可见 pending 申请并能操作。
+
+### 经验（写入技能库 `virtual-utopia-safe-iteration`）
+- 凡是后端出现「curl 通、浏览器不通」的特征，第一时间怀疑 CORS / Origin。
+- 凡是被静默降级的分支都要审视：是否把**配置错误**误判成了**运行时降级**。任何「认证 / 权限 / 配置」类错误都不应静默吞掉。
+- 真实浏览器自动化（playwright + Edge）是这类问题的唯一可靠验证手段——单测和 curl 都会撒谎。
+- 验证矩阵应同时包含：本机三个常用端口 × 真实账号 × 演示账号 × **恶意外域**（必须 403），少一项都可能在角落漏掉 CORS 漏配。
+
+### 提交
+- `git commit <HASH>`（config.js + app.js + worldStore.js + memory-log.md）。

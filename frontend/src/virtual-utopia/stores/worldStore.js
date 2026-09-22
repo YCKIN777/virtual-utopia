@@ -34,16 +34,18 @@ const writeStoredToken = (storage, token) => {
   }
 };
 
+// 判定「持久化服务不可用」以便降级到内存演示模式。
+// 注意：不要把 CORS 403（origin is not allowed）算作离线 —— 那会掩盖真实的
+// 配置错误：仅演示账号会被静默当作「登录成功」（且拿不到 token），
+// 其他账号则报「用户名或密码错误」，看起来像"只有演示账号能登录"。
+// CORS 属于配置问题，应如实抛出并暴露出来。
 const isOfflinePersistenceError = (error) =>
   [
     'PERSISTENCE_UNAVAILABLE',
     'PERSISTENCE_TIMEOUT',
     'PHASE6_UPSTREAM_UNAVAILABLE',
     'REQUEST_TIMEOUT',
-  ].includes(error?.code) ||
-  [502, 503, 504].includes(error?.status) ||
-  (error?.code === 'PHASE6_FORBIDDEN' &&
-    /origin is not allowed/i.test(error.message));
+  ].includes(error?.code) || [502, 503, 504].includes(error?.status);
 const createSeedHomes = () =>
   Array.from({ length: 50 }, (_, index) => {
     const plotNumber = index + 1;

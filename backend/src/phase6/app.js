@@ -32,9 +32,34 @@ const readPagination = (query) => ({
   offset: Number.parseInt(query.offset, 10) || 0,
 });
 
-const createCorsOptions = (allowedOrigins) => ({
+// 判断是否为本机回环来源（localhost / 127.0.0.1 / [::1]，端口不限）。
+// 开发端口可能变化（vite 配置 5175、实际运行 5199 等），写死端口会让浏览器
+// 请求被 CORS 拒绝成 403 origin is not allowed，而 curl 因不带 Origin 却能通过。
+const isLoopbackOrigin = (origin) => {
+  try {
+    const { hostname } = new URL(origin);
+
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '[::1]'
+    );
+  } catch {
+    return false;
+  }
+};
+
+const createCorsOptions = (
+  allowedOrigins,
+  { allowLoopbackOrigins = true } = {},
+) => ({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      allowedOrigins.includes(origin) ||
+      (allowLoopbackOrigins && isLoopbackOrigin(origin))
+    ) {
       callback(null, true);
       return;
     }
@@ -161,7 +186,13 @@ export const createPhase6App = ({
   app.locals.residentSocialStore = residentSocialStore;
 
   app.disable('x-powered-by');
-  app.use(cors(createCorsOptions(config.allowedOrigins)));
+  app.use(
+    cors(
+      createCorsOptions(config.allowedOrigins, {
+        allowLoopbackOrigins: config.allowLoopbackOrigins !== false,
+      }),
+    ),
+  );
   app.use(express.json({ limit: '2mb' }));
 
   // 根路径友好入口：浏览器直接访问 http://localhost:3400 时不再只看到 404 JSON。
