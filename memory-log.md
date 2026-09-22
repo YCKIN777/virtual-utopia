@@ -707,7 +707,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/plaza-dome-20260922/`（HEAD 版 ThreeWorld.js + 截图）。
-- 提交：`git commit <HASH>`（ThreeWorld.js + memory-log.md）。
+- 提交：`git commit ef523bc`（ThreeWorld.js + memory-log.md）。
 
 ### 取舍说明（几何互斥）
 - 规格「立柱总高 30m」与「Φ4m 球坐落在**顶部**中心木环内、离地 26–28m」在几何上互斥（若立柱 30m，穹顶与顶环位于 31m 以上，球体只能落回柱廊内）。本实现按**参考图效果优先**：立柱 24m、穹顶/顶环至 ≈30m、球心 27.5m 位于穹顶内部并被放射梁框住。如需立柱本体 30m，可改（球体将下移至柱廊内、不再处于穹顶内）。
