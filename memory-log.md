@@ -669,7 +669,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/plaza-landmark-20260922/`（HEAD 版 ThreeWorld.js + 截图）。
-- 提交：`git commit <HASH>`（ThreeWorld.js + memory-log.md）。
+- 提交：`git commit 1e7f6c1`（ThreeWorld.js + memory-log.md）。
 
 ### 说明
 - 「三角攒尖顶」按 9 面三角锥（与 9 柱对应）实现，透明可挡雨、木梁外露。
