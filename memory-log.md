@@ -830,7 +830,7 @@
 
 ### 备份与提交
 - 前置备份：`H:/BP2/.workbuddy/backups/space-social-20260922/`（7 个待改文件 + 冒烟脚本 + 自检脚本 + 截图）。
-- 提交：`git commit <HASH10>`。
+- 提交：`git commit 6f8fd35`。
 - **服务需重启**：phase7 已挂载到 phase6，须重启 `backend/src/phase6/server.js`（本次已重启，`http://localhost:3400/api/phase7/health` 200）。
 
 ### 说明 / 已知边界
