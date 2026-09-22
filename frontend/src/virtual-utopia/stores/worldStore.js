@@ -146,6 +146,18 @@ export const createWorldStore = ({
       loaded: false,
       messages: [],
     },
+    // 阶段七：空间社交内容层（广场公屏 / 就近私聊 / 主页异步 / 宅院权限 / 检索）
+    space: {
+      scenes: [],
+      scenesLoaded: false,
+      publicMessages: [],
+      peers: {},
+      profile: { loaded: false, entries: [], comments: {} },
+      homeAccess: {},
+      search: { query: '', results: [], searched: false },
+      lastExport: null,
+      stats: null,
+    },
   });
 
   const dismissToast = (toastId) => {
@@ -1068,6 +1080,257 @@ export const createWorldStore = ({
     }
   };
 
+  // ==========================================================================
+  // 阶段七：空间社交内容层
+  //   广场公屏（全员可见、无人数限制）/ 就近私聊（七大场景共用）/ 主页异步交流 /
+  //   宅院三档权限（全开·仅好友·闭门）/ 关键词检索（权限隔离）/ 导出与快照
+  // 全部为新增能力，不改动既有世界场景与既有 phase6 功能。
+  // ==========================================================================
+  const requireSession = () =>
+    accessToken && ['admin', 'editor'].includes(state.permissions?.role);
+
+  const loadSpaceScenes = async () => {
+    try {
+      const payload = await persistence.listSocialScenes();
+      state.space = {
+        ...state.space,
+        scenes: Array.isArray(payload?.scenes) ? payload.scenes : [],
+        scenesLoaded: true,
+      };
+      return { ok: true, scenes: state.space.scenes };
+    } catch (error) {
+      return { ok: false, error: error.message || '场景清单加载失败' };
+    }
+  };
+
+  const loadSpacePublicMessages = async (limit = 60) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.listPublicSpaceMessages(accessToken, limit);
+      state.space = {
+        ...state.space,
+        publicMessages: Array.isArray(payload?.messages) ? payload.messages : [],
+      };
+      return { ok: true, messages: state.space.publicMessages };
+    } catch (error) {
+      return { ok: false, error: error.message || '广场公屏加载失败' };
+    }
+  };
+
+  const sendSpacePublicMessage = async ({ text, scene }) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    const message = String(text || '').trim();
+    if (!message) return { ok: false, error: '请输入内容' };
+    try {
+      const payload = await persistence.sendPublicSpaceMessage(accessToken, {
+        text: message,
+        scene,
+      });
+      if (payload?.message) {
+        state.space.publicMessages = [...state.space.publicMessages, payload.message].slice(-200);
+      }
+      return { ok: true, message: payload?.message };
+    } catch (error) {
+      return { ok: false, error: error.message || '发言失败' };
+    }
+  };
+
+  const loadSpaceConversation = async (peerId, limit = 60) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.listSpaceConversation(accessToken, peerId, limit);
+      const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+      state.space.peers = { ...state.space.peers, [peerId]: messages };
+      return { ok: true, messages, peerName: payload?.peerName };
+    } catch (error) {
+      return { ok: false, error: error.message || '私聊加载失败', messages: [] };
+    }
+  };
+
+  const sendSpaceConversationMessage = async (peerId, { text, scene, channel = 'direct' }) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    const message = String(text || '').trim();
+    if (!message) return { ok: false, error: '请输入内容' };
+    try {
+      const payload = await persistence.sendSpaceConversationMessage(accessToken, peerId, {
+        text: message,
+        scene,
+        channel,
+      });
+      if (payload?.message) {
+        const existing = state.space.peers[peerId] || [];
+        state.space.peers = {
+          ...state.space.peers,
+          [peerId]: [...existing, payload.message].slice(-200),
+        };
+      }
+      return { ok: true, message: payload?.message };
+    } catch (error) {
+      return { ok: false, error: error.message || '发送失败' };
+    }
+  };
+
+  const loadSpaceProfile = async (userId = 'me') => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.loadSpaceProfile(accessToken, userId);
+      if (userId === 'me') {
+        state.space.profile = {
+          loaded: true,
+          entries: Array.isArray(payload?.entries) ? payload.entries : [],
+          comments: payload?.comments || {},
+        };
+      }
+      return { ok: true, ...payload };
+    } catch (error) {
+      return { ok: false, error: error.message || '主页加载失败', entries: [] };
+    }
+  };
+
+  const saveSpaceProfileEntry = async ({ id, board, title, body, images, visibility }) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.saveSpaceProfileEntry(accessToken, {
+        id,
+        board,
+        title,
+        body,
+        images,
+        visibility,
+      });
+      await loadSpaceProfile('me');
+      return { ok: true, entry: payload?.entry };
+    } catch (error) {
+      return { ok: false, error: error.message || '保存失败' };
+    }
+  };
+
+  const deleteSpaceProfileEntry = async (entryId) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      await persistence.deleteSpaceProfileEntry(accessToken, entryId);
+      await loadSpaceProfile('me');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message || '删除失败' };
+    }
+  };
+
+  const loadSpaceComments = async (ownerId, entryId) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份', comments: [] };
+    try {
+      const payload = await persistence.listSpaceComments(accessToken, ownerId, entryId);
+      return { ok: true, comments: payload?.comments || [] };
+    } catch (error) {
+      return { ok: false, error: error.message || '留言加载失败', comments: [] };
+    }
+  };
+
+  const createSpaceComment = async (ownerId, entryId, text) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    const content = String(text || '').trim();
+    if (!content) return { ok: false, error: '请输入留言' };
+    try {
+      const payload = await persistence.createSpaceComment(accessToken, ownerId, entryId, {
+        text: content,
+      });
+      if (ownerId === 'me' || String(ownerId) === String(state.user?.id)) {
+        await loadSpaceProfile('me');
+      }
+      return { ok: true, comment: payload?.comment };
+    } catch (error) {
+      return { ok: false, error: error.message || '留言失败' };
+    }
+  };
+
+  const loadHomeAccess = async (plotId) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.loadHomeAccess(accessToken, plotId);
+      state.space.homeAccess = {
+        ...state.space.homeAccess,
+        [plotId]: payload?.access,
+      };
+      return { ok: true, access: payload?.access };
+    } catch (error) {
+      return { ok: false, error: error.message || '宅院权限读取失败' };
+    }
+  };
+
+  const saveHomeAccess = async (plotId, mode) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.saveHomeAccess(accessToken, plotId, mode);
+      state.space.homeAccess = {
+        ...state.space.homeAccess,
+        [plotId]: payload?.access,
+      };
+      return { ok: true, access: payload?.access };
+    } catch (error) {
+      return { ok: false, error: error.message || '宅院权限保存失败' };
+    }
+  };
+
+  const checkHomeAccess = async (plotId) => {
+    if (!requireSession()) return { ok: false, allowed: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.checkHomeAccess(accessToken, plotId);
+      return { ok: true, ...payload };
+    } catch (error) {
+      return { ok: false, allowed: false, error: error.message || '宅院权限校验失败' };
+    }
+  };
+
+  const searchSpace = async (query) => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份', results: [] };
+    const keyword = String(query || '').trim();
+    if (!keyword) {
+      state.space.search = { query: '', results: [], searched: false };
+      return { ok: true, results: [] };
+    }
+    try {
+      const payload = await persistence.searchSpace(accessToken, keyword, 30);
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      state.space.search = { query: keyword, results, searched: true };
+      return { ok: true, results };
+    } catch (error) {
+      return { ok: false, error: error.message || '检索失败', results: [] };
+    }
+  };
+
+  const exportMySpaceData = async () => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.exportMySpaceData(accessToken);
+      state.space.lastExport = payload;
+      notify(`已导出个人数据：${payload?.counts?.entries ?? 0} 条主页 · ${payload?.counts?.conversations ?? 0} 个会话`, 'success');
+      return { ok: true, ...payload };
+    } catch (error) {
+      return { ok: false, error: error.message || '导出失败' };
+    }
+  };
+
+  const loadSpaceStats = async () => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.loadSpaceStats(accessToken);
+      state.space.stats = payload?.stats || null;
+      return { ok: true, ...payload };
+    } catch (error) {
+      return { ok: false, error: error.message || '统计加载失败' };
+    }
+  };
+
+  const snapshotSpaceData = async () => {
+    if (!requireSession()) return { ok: false, error: '需原住民身份' };
+    try {
+      const payload = await persistence.snapshotSpaceData(accessToken);
+      return { ok: true, snapshot: payload?.snapshot };
+    } catch (error) {
+      return { ok: false, error: error.message || '快照失败' };
+    }
+  };
+
   const loadWorldChat = async () => {
     if (!accessToken) return;
     try {
@@ -1237,6 +1500,24 @@ export const createWorldStore = ({
     sendGroupMessage,
     loadWorldChat,
     sendWorldChat,
+    // 阶段七：空间社交内容层
+    loadSpaceScenes,
+    loadSpacePublicMessages,
+    sendSpacePublicMessage,
+    loadSpaceConversation,
+    sendSpaceConversationMessage,
+    loadSpaceProfile,
+    saveSpaceProfileEntry,
+    deleteSpaceProfileEntry,
+    loadSpaceComments,
+    createSpaceComment,
+    loadHomeAccess,
+    saveHomeAccess,
+    checkHomeAccess,
+    searchSpace,
+    exportMySpaceData,
+    loadSpaceStats,
+    snapshotSpaceData,
     sendResidentChat,
   };
 };

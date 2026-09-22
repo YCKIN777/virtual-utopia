@@ -12,6 +12,7 @@ import HomepageS2Panel from '../components/HomepageS2Panel.vue';
 import ResidentCardsPanel from '../components/ResidentCardsPanel.vue';
 import ResidentDirectoryPanel from '../components/ResidentDirectoryPanel.vue';
 import ResidentWorksPanel from '../components/ResidentWorksPanel.vue';
+import SpaceProfileBoard from '../components/SpaceProfileBoard.vue';
 import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
 
@@ -322,6 +323,9 @@ onBeforeUnmount(() => {
                 </select>
                 <small class="vu-intro__hint">更改后即时生效 · 无需刷新</small>
               </div>
+
+              <!-- 阶段十：主页四板块（公开/私密 + 留言 + 异步邀约） -->
+              <SpaceProfileBoard v-if="canSeePrivate" :owner-id="'me'" />
             </div>
 
             <!-- 作品：独立上传模块，与备忘子项完全隔离 -->

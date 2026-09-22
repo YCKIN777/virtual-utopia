@@ -46,6 +46,27 @@ const load = async () => {
 // ---- 多选 ----
 const selectedMembers = ref([]);
 const isSelf = (resident) => resident.userId === myUserId.value;
+
+// 阶段十：名录内直接标记好友（复用既有好友接口，仅新增交互）
+const isFriend = (resident) =>
+  (worldStore.state.friends || []).some(
+    (friend) => String(friend.userId ?? friend.id) === String(resident.userId),
+  );
+
+const markFriend = async (resident) => {
+  if (isFriend(resident)) {
+    worldStore.notify('你们已经是好友了', 'info');
+    return;
+  }
+  const result = await worldStore.sendFriendRequest({
+    toUserId: resident.userId,
+    toUsername: resident.username,
+    toDisplayName: resident.displayName || resident.username,
+  });
+  if (result?.ok) {
+    await worldStore.loadFriends();
+  }
+};
 const isSelected = (resident) => selectedMembers.value.includes(resident.userId);
 
 const toggleSelect = (resident) => {
@@ -233,6 +254,14 @@ onBeforeUnmount(stopPolling);
           <p class="s3-card__intro">{{ oneLineIntro(resident) }}</p>
           <div class="s3-card__foot">
             <small>@{{ resident.username }} · {{ resident.homePlotId || '未分配' }}</small>
+            <button
+              v-if="!isSelf(resident)"
+              type="button"
+              class="s3-mini"
+              @click.stop="markFriend(resident)"
+            >
+              {{ isFriend(resident) ? '已加好友' : '加好友' }}
+            </button>
             <button
               v-if="!isSelf(resident)"
               type="button"

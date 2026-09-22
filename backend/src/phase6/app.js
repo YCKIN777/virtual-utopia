@@ -22,6 +22,7 @@ import {
 } from './residentSocialStore.js';
 import { createUploadService } from './uploadService.js';
 import { createVisitorQuotaStore } from './visitorQuotaStore.js';
+import { createPhase7 } from '../phase7/index.js';
 
 const asyncHandler = (handler) => (request, response, next) =>
   Promise.resolve(handler(request, response, next)).catch(next);
@@ -1814,6 +1815,21 @@ export const createPhase6App = ({
       response.status(201).json({ message });
     }),
   );
+
+  // ==========================================================================
+  // 阶段七：空间社交内容层（JSON 文件分片存储 + 关键词检索 + 权限校验 + 导出/备份）
+  // 仅新增挂载（/api/phase7/*），不修改任何既有 phase6 路由、SQLite 数据与业务逻辑。
+  // ==========================================================================
+  const phase7 = createPhase7({
+    phase6Config: config,
+    authenticate: (authorization) => gateway.authenticate(authorization),
+    visitorQuotaStore,
+    friendStore,
+  });
+  if (phase7.enabled) {
+    app.use('/api', phase7.router);
+  }
+  app.locals.phase7 = phase7;
 
   app.use((_request, response) => {
     response.status(404).json({

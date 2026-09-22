@@ -441,6 +441,158 @@ export const createPersistenceClient = ({
       fetchImpl,
       timeoutMs,
     }),
+
+  // ==========================================================================
+  // 阶段七：空间社交内容层（JSON 分片存储 + 关键词检索 + 权限校验 + 导出/备份）
+  // ==========================================================================
+  listSocialScenes: () =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/scenes',
+      fetchImpl,
+      timeoutMs,
+    }),
+  listPublicSpaceMessages: (token, limit = 60) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/public-chat?limit=${encodeURIComponent(limit)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  sendPublicSpaceMessage: (token, { text, scene }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/public-chat',
+      method: 'POST',
+      token,
+      body: { text, scene },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listSpaceConversation: (token, peerId, limit = 60) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/direct/${encodeURIComponent(peerId)}?limit=${encodeURIComponent(limit)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  sendSpaceConversationMessage: (token, peerId, { text, scene, channel }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/direct/${encodeURIComponent(peerId)}`,
+      method: 'POST',
+      token,
+      body: { text, scene, channel },
+      fetchImpl,
+      timeoutMs,
+    }),
+  loadSpaceProfile: (token, userId = 'me') =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/profile/${encodeURIComponent(userId)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  saveSpaceProfileEntry: (token, { id, board, title, body, images, visibility }) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/profile/entries',
+      method: 'PUT',
+      token,
+      body: { id, board, title, body, images, visibility },
+      fetchImpl,
+      timeoutMs,
+    }),
+  deleteSpaceProfileEntry: (token, entryId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/profile/entries/${encodeURIComponent(entryId)}`,
+      method: 'DELETE',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listSpaceComments: (token, ownerId, entryId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/profile/${encodeURIComponent(ownerId)}/entries/${encodeURIComponent(entryId)}/comments`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createSpaceComment: (token, ownerId, entryId, { text }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/profile/${encodeURIComponent(ownerId)}/entries/${encodeURIComponent(entryId)}/comments`,
+      method: 'POST',
+      token,
+      body: { text },
+      fetchImpl,
+      timeoutMs,
+    }),
+  loadHomeAccess: (token, plotId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/home-access/${encodeURIComponent(plotId)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  saveHomeAccess: (token, plotId, mode) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/home-access/${encodeURIComponent(plotId)}`,
+      method: 'PUT',
+      token,
+      body: { mode },
+      fetchImpl,
+      timeoutMs,
+    }),
+  checkHomeAccess: (token, plotId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/home-access/${encodeURIComponent(plotId)}/check`,
+      method: 'POST',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  searchSpace: (token, query, limit = 30) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase7/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  exportMySpaceData: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/export/me',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  loadSpaceStats: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/stats',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  snapshotSpaceData: (token) =>
+    requestJson({
+      baseUrl,
+      path: '/api/phase7/backup',
+      method: 'POST',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
 });
 
 export const persistenceClient = createPersistenceClient();

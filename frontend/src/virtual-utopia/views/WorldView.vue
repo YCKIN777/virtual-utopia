@@ -9,6 +9,8 @@ import {
 } from 'vue';
 import HomePanel from '../components/HomePanel.vue';
 import ResidentChatPanel from '../components/ResidentChatPanel.vue';
+import SpaceChatPanel from '../components/SpaceChatPanel.vue';
+import SpaceSearchPanel from '../components/SpaceSearchPanel.vue';
 import WorldChatPanel from '../components/WorldChatPanel.vue';
 import { createPresenceClient } from '../services/presenceClient.js';
 import { worldStore } from '../stores/worldStore.js';
@@ -83,6 +85,87 @@ const residentChatOpen = ref(false);
 const residentChatTarget = ref(null);
 let residentSyncTimer = null;
 let residentProximityTimer = null;
+
+// —— 阶段十：空间社交（就近触发 / 七大场景 / 主页异步 / 检索）——
+const socialContext = ref(null);
+const spacePanel = reactive({
+  open: false,
+  mode: 'public',
+  peerId: '',
+  peerName: '',
+  label: '',
+  channel: 'direct',
+});
+const searchOpen = ref(false);
+let socialTimer = null;
+let residentBubbleClock = '';
+
+const isResidentUser = computed(() =>
+  ['admin', 'editor'].includes(worldStore.state.permissions?.role),
+);
+
+const socialHint = computed(() => {
+  const context = socialContext.value;
+  if (!context) return '';
+  if (context.zone === 'home_interior') return '院内私密交流 · 仅院内人员可见';
+  if (context.zone === 'home_gate') return '门口邻里交流 · 就近触发';
+  if (context.zone === 'plaza') return '公共频道 · 发言全域 50 户可见';
+  if (context.zone === 'river') return '河岸偶遇 · 边走边聊';
+  if (context.zone === 'plaza_edge') return '广场周边 · 就近轻互动';
+  return '山脚自由交流 · 无固定点位';
+});
+
+const openSpaceChat = () => {
+  if (!isResidentUser.value) {
+    worldStore.notify('访客暂无社交权限，完成入驻后即可交流', 'info');
+    return;
+  }
+  const context = socialContext.value;
+  if (!context) return;
+  const peer = context.nearestResident;
+  if (context.channel === 'public') {
+    spacePanel.mode = 'public';
+    spacePanel.peerId = '';
+    spacePanel.peerName = '';
+  } else if (peer) {
+    spacePanel.mode = 'direct';
+    spacePanel.peerId = peer.avatarId;
+    spacePanel.peerName = peer.residentName;
+  } else if (context.nearestHome) {
+    spacePanel.mode = 'direct';
+    spacePanel.peerId = '';
+    spacePanel.peerName = `${context.nearestHome.number} 号宅院`;
+  } else {
+    worldStore.notify('附近暂时没有可交流的邻居', 'info');
+    return;
+  }
+  spacePanel.label = context.label;
+  spacePanel.channel = context.channel;
+  spacePanel.open = true;
+};
+
+const handleSearchOpen = (item) => {
+  searchOpen.value = false;
+  if (item?.type === 'direct_chat' && item.ref?.peerId) {
+    spacePanel.mode = 'direct';
+    spacePanel.peerId = item.ref.peerId;
+    spacePanel.peerName = item.ownerName || '邻居';
+    spacePanel.label = '检索结果 · 私聊记录';
+    spacePanel.channel = 'direct';
+    spacePanel.open = true;
+    return;
+  }
+  if (item?.type === 'public_chat') {
+    spacePanel.mode = 'public';
+    spacePanel.peerId = '';
+    spacePanel.peerName = '';
+    spacePanel.label = '检索结果 · 广场公屏';
+    spacePanel.channel = 'public';
+    spacePanel.open = true;
+    return;
+  }
+  worldStore.notify('该结果来自主页条目，可在个人主页查看', 'info');
+};
 
 const openResidentChat = (resident) => {
   residentChatTarget.value = resident;
@@ -378,6 +461,20 @@ onMounted(async () => {
     residentProximityTimer = setInterval(() => {
       nearResidents.value = world.getResidentsNearLocal(RESIDENT_CHAT_DISTANCE);
     }, 600);
+    // 阶段十：空间社交场景判定（就近触发、远离隐藏、无固定点位）
+    socialTimer = setInterval(() => {
+      socialContext.value = world.getSocialContext();
+      const nearby = socialContext.value?.nearestResident;
+      if (nearby && residentBubbleClock !== nearby.residentName) {
+        residentBubbleClock = nearby.residentName;
+        world.showChatBubble({
+          avatarId: nearby.avatarId,
+          text: '你好呀，最近在忙什么？',
+          durationMs: 4600,
+        });
+      }
+      if (!nearby) residentBubbleClock = '';
+    }, 900);
     kinYardTimer = setInterval(updateKinYardPresence, 500);
     updateKinYardPresence();
     if (import.meta.env.DEV) {
@@ -404,6 +501,10 @@ onBeforeUnmount(() => {
   if (residentProximityTimer) {
     clearInterval(residentProximityTimer);
     residentProximityTimer = null;
+  }
+  if (socialTimer) {
+    clearInterval(socialTimer);
+    socialTimer = null;
   }
   if (import.meta.env.DEV) {
     delete window.__utopiaWorld;
@@ -729,6 +830,43 @@ watch(currentUser, () => {
       </button>
     </div>
 
+    <!-- 阶段十：空间社交 —— 就近触发入口（无常驻面板、远离自动隐藏、无人数限制） -->
+    <div v-if="isResidentUser && socialContext" class="vu-space-entry">
+      <span class="vu-space-entry__zone">{{ socialContext.label }}</span>
+      <span class="vu-space-entry__hint">{{ socialHint }}</span>
+      <div class="vu-space-entry__actions">
+        <button type="button" class="vu-space-entry__btn" @click="openSpaceChat">
+          {{
+            socialContext.channel === 'public'
+              ? '进入广场公屏'
+              : socialContext.nearestResident
+                ? `与 ${socialContext.nearestResident.residentName} 交流`
+                : '就近交流'
+          }}
+        </button>
+        <button
+          type="button"
+          class="vu-space-entry__btn vu-space-entry__btn--ghost"
+          @click="searchOpen = true"
+        >
+          检索
+        </button>
+      </div>
+    </div>
+
+    <SpaceChatPanel
+      v-if="spacePanel.open"
+      :mode="spacePanel.mode"
+      :peer-id="spacePanel.peerId"
+      :peer-name="spacePanel.peerName"
+      :scene-label="spacePanel.label"
+      :scene="socialContext ? socialContext.scene : null"
+      :channel="spacePanel.channel"
+      @close="spacePanel.open = false"
+    />
+
+    <SpaceSearchPanel v-if="searchOpen" @close="searchOpen = false" @open="handleSearchOpen" />
+
     <ResidentChatPanel
       v-if="residentChatOpen && residentChatTarget"
       :resident="residentChatTarget"
@@ -1018,5 +1156,77 @@ watch(currentUser, () => {
 .vu-resident-chat-entry button:hover {
   background: rgba(36, 80, 70, 0.96);
   color: #ffe4a3;
+}
+
+/* 阶段十：空间社交就近入口（极简轻量，远离自动隐藏） */
+.vu-space-entry {
+  position: absolute;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 16px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(47, 168, 79, 0.28);
+  box-shadow: 0 10px 26px rgba(18, 32, 26, 0.16);
+  backdrop-filter: blur(6px);
+  animation: vu-space-fade-in 0.24s ease-out;
+  pointer-events: auto;
+}
+
+.vu-space-entry__zone {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.vu-space-entry__hint {
+  font-size: 11px;
+  color: #6e6e73;
+}
+
+.vu-space-entry__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.vu-space-entry__btn {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: #2fa84f;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vu-space-entry__btn:hover {
+  background: #258a41;
+}
+
+.vu-space-entry__btn--ghost {
+  background: rgba(47, 168, 79, 0.1);
+  color: #258a41;
+}
+
+.vu-space-entry__btn--ghost:hover {
+  background: rgba(47, 168, 79, 0.18);
+}
+
+@keyframes vu-space-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 </style>

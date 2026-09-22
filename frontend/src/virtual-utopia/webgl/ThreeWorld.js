@@ -511,6 +511,8 @@ export class ThreeWorld {
     this.skyDome = null;
     this.skyUniforms = null;
     this.proximityLabels = [];
+    // 阶段十：空间社交交互层
+    this.chatBubbles = [];
   }
 
   async init() {
@@ -6823,6 +6825,7 @@ export class ThreeWorld {
     this.animateAvatars(elapsed, delta);
     this.animateFly(performance.now());
     this.updateProximityLabels();
+    this.updateChatBubbles();
 
     if (this.forestCanopyMaterial?.userData.windUniform) {
       this.forestCanopyMaterial.userData.windUniform.value =
@@ -7085,6 +7088,166 @@ export class ThreeWorld {
     this.camera.position.set(82, 82, 96);
     this.controls.target.set(0, 2, 0);
     this.controls.update();
+  }
+
+  // ==========================================================================
+  // 阶段十：空间社交交互层（只新增，不改动任何既有场景几何/地形/灯光/路网）
+  //   - getSocialContext()：按玩家实时位置判定所处交流场景（七大场景）
+  //   - showChatBubble() / updateChatBubbles()：轻量半透明聊天气泡，短暂消散
+  // ==========================================================================
+
+  /** 玩家实时位置（优先本地化身，其次镜头焦点） */
+  getPlayerPosition() {
+    const record = this.localAvatarId
+      ? this.avatarObjects.get(this.localAvatarId)
+      : null;
+    if (record?.group?.position) {
+      const { x, y, z } = record.group.position;
+      return { x, y, z };
+    }
+    const focus = this.controls ? this.controls.target : null;
+    return focus ? { x: focus.x, y: focus.y, z: focus.z } : { x: 0, y: 0, z: 0 };
+  }
+
+  /**
+   * 空间交流场景判定（就近触发，远离隐藏；无固定点位、无人数限制）。
+   * 返回：{ zone, label, channel, scene, nearestHome, nearestResident, distanceToPlaza }
+   */
+  getSocialContext() {
+    const position = this.getPlayerPosition();
+    const distanceToPlaza = Math.hypot(position.x, position.z);
+    const scene = {
+      x: Number(position.x.toFixed(2)),
+      y: Number(position.y.toFixed(2)),
+      z: Number(position.z.toFixed(2)),
+      zone: 'mountain',
+    };
+
+    // 宅院：先判定门口 / 院内（就近触发）
+    let nearestHome = null;
+    homes.forEach((home) => {
+      const distance = Math.hypot(home.x - position.x, home.z - position.z);
+      if (!nearestHome || distance < nearestHome.distance) {
+        nearestHome = {
+          id: home.id,
+          number: home.number,
+          group: home.group,
+          distance,
+        };
+      }
+    });
+
+    const streamDistance = Math.abs(position.x - getStreamX(position.z));
+
+    let zone = 'mountain';
+    let label = '山脚 · 自由交流';
+    let channel = 'local';
+
+    if (nearestHome && nearestHome.distance <= 5.6) {
+      zone = 'home_interior';
+      label = `${nearestHome.number} 号宅院 · 院内私密交流`;
+      channel = 'interior';
+    } else if (nearestHome && nearestHome.distance <= 12.5) {
+      zone = 'home_gate';
+      label = `${nearestHome.number} 号宅院 · 门口邻里交流`;
+      channel = 'direct';
+    } else if (distanceToPlaza <= 24) {
+      zone = 'plaza';
+      label = '中心广场 · 公共频道';
+      channel = 'public';
+    } else if (streamDistance <= 13) {
+      zone = 'river';
+      label = '河岸步道 · 偶遇交流';
+      channel = 'encounter';
+    } else if (distanceToPlaza <= 34) {
+      zone = 'plaza_edge';
+      label = '广场周边 · 休闲交流';
+      channel = 'local';
+    }
+
+    scene.zone = zone;
+
+    const nearestResident = this.getResidentsNearLocal(9)[0] || null;
+
+    return {
+      zone,
+      label,
+      channel,
+      scene,
+      nearestHome,
+      nearestResident,
+      distanceToPlaza: Number(distanceToPlaza.toFixed(2)),
+    };
+  }
+
+  /** 轻量气泡：半透明、短暂消散，不产生常驻 UI */
+  showChatBubble({ avatarId = null, text = '', durationMs = 5200 } = {}) {
+    const content = String(text || '').trim().slice(0, 60);
+    if (!content) return null;
+
+    const targetId = avatarId || this.localAvatarId;
+    const record = targetId ? this.avatarObjects.get(targetId) : null;
+    const position = record?.group?.position || this.getPlayerPosition();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.fillRect(6, 26, canvas.width - 12, 76);
+    context.strokeStyle = 'rgba(47, 168, 79, 0.42)';
+    context.lineWidth = 3;
+    context.strokeRect(6, 26, canvas.width - 12, 76);
+    context.fillStyle = '#1d1d1f';
+    context.font = '600 40px "PingFang SC", "Microsoft YaHei", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(content, canvas.width / 2, 65);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.96,
+      depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(7.2, 1.8, 1);
+    sprite.position.set(position.x, position.y + 3.4, position.z);
+    this.scene.add(sprite);
+
+    const bubble = {
+      sprite,
+      material,
+      texture,
+      bornAt: this.clock?.elapsedTime || 0,
+      duration: Math.max(1200, durationMs) / 1000,
+    };
+    this.chatBubbles.push(bubble);
+    return bubble;
+  }
+
+  /** 每帧更新：上浮 + 淡出 + 过期回收 */
+  updateChatBubbles() {
+    if (!this.chatBubbles.length) return;
+    const elapsed = this.clock?.elapsedTime || 0;
+    const alive = [];
+    this.chatBubbles.forEach((bubble) => {
+      const age = elapsed - bubble.bornAt;
+      if (age >= bubble.duration) {
+        this.scene.remove(bubble.sprite);
+        bubble.material.dispose();
+        bubble.texture.dispose();
+        return;
+      }
+      const progress = age / bubble.duration;
+      bubble.material.opacity = Math.max(0, 0.96 * (1 - progress * progress));
+      bubble.sprite.position.y += 0.006;
+      alive.push(bubble);
+    });
+    this.chatBubbles = alive;
   }
 
   dispose() {

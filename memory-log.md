@@ -783,3 +783,59 @@
 - 「不堆模型」：新增几何以 **InstancedMesh** 为主（路面 1388、台阶 100、门灯 50、植被 124 等），draw call 与顶点数增量可控。
 - 河道：水面形态、驳岸毛石/芦苇/苔藓（阶段六成果）保持不动；新增的仅是**跨河简易平桥**，用于连通两岸环网步道。
 - 「白天不强制显示灯具模型」：灯具组整体按 `nightBlend > 0.18` 显隐。
+
+---
+
+## 2026-09-22 阶段十：50 户原住民空间社交体系 + 个人主页联动 + JSON 分片存储 / 关键词检索
+
+> 全局约束：**仅新增**（不改 3D 场景/建筑/地形/河道/广场/植被/灯光/路网/宅院模型）。
+> 关键前置发现：社交 API **已基本存在**（phase6：广场公屏 `chat/world`、私聊 `direct-messages`、群聊 `groups`、好友 `friends`、留言 `guestbook`、名录 `resident-directory`、展示板 `resident-board`、卡片 `resident-cards` 带 permission、审批 `resident-applications`、访客配额、审计、`scripts/backup-data.mjs`），但**存储是 SQLite**，且缺「JSON 文件分片存储 / 关键词检索 / 消息场景位置 / 每户三档权限 / 就近气泡」。
+> 经用户确认四项口径：① JSON 分片作**新增内容层 + 检索层**（SQLite 主存不动）② 复用既有 + 补齐缺口一次交付 ③ 不新增账号、50 为**原住民上限**（复用 `VISITOR_QUOTA_RULES.residentLimit`）④ 允许在 3D 文件**新增**交互层（只加不改既有几何）。
+
+### 后端：新增 `backend/src/phase7/`（9 文件，挂载为 `/api/phase7/*`）
+- `config.js`：`PHASE7_LIMITS`（分片阈值 2000）、`SOCIAL_SCENES`（七大场景）、`PROFILE_BOARDS`（四板块）、`readPhase7Config`。
+- `jsonFile.js`：`ensureDirectory/readJson/**writeJson（原子写：临时文件+rename）**/listJsonFiles/safeSegment`。
+- `searchIndex.js`：`tokenize`（英文按词、中文按**单字 + 相邻双字 bigram**）+ 倒排索引 `{tokens, docs}`，`upsert/remove/query/flush/stats`，预留 `upgrade.semantic=false` 供后续语义检索升级。
+- `contentStore.js`：核心内容层，目录结构与消息字段完全按规格——
+  - `data/public/public_chat.json`（广场公屏，超 2000 条自动归档 `public_chat.archive-*.json`）
+  - `data/users/<userId>/profile.json`（四板块 + 评论留言，每条带 `visibility`）
+  - `data/users/<userId>/direct/<peerId>.json`（**双人私聊双方各存镜像**，超 2000 条自动归档）
+  - `data/homes/<plotId>.json`（宅院三档权限 open/friends/closed）
+  - 消息字段：`id / fromUserId / target / channel / text / createdAt / scene{x,y,z,zone}`
+  - 权限：`readVisibleProfile`（私密仅作者；访客零可见）、`listConversation`（仅双方）、`exportUser`
+- `searchService.js`：`canReadDocument` 严格裁剪（public_chat → 原住民；direct_chat → 仅 participants；profile_entry/comment → 本人或「公开且原住民」）+ `search()` 返回 `{docId,type,channel,ownerId,ownerName,visibility,text,snippet,at,ref}`。
+- `backupService.js`：`snapshot()` 把整个 `data` 目录快照到 `backups/<时间戳>/data` + `manifest.json`（含文件清单与字节数）；`listSnapshots()`。
+- `router.js`：**20 条端点**（health/scenes/public-chat GET+POST/direct GET+POST/profile me+byId/entries PUT+DELETE/comments GET+POST+DELETE/home-access GET+PUT+check/search/export/stats/backup）。鉴权复用 `gateway.authenticate`，`ensureResident`（`admin|editor`）与访客隔离；`ownerId` 支持 `me` 别名。
+- `index.js`：`createPhase7()` 装配入口。
+- `tests/phase7.test.js`：**9 个单测**（切词、公屏、分片归档、双人镜像、权限裁剪、留言、三档权限、检索权限隔离、导出），已登记进 `backend/package.json` 的 `test`。
+
+### 后端：最小接线（不改既有路由与数据）
+- `backend/src/phase6/app.js`：+1 import、在**404 之前**挂载 `app.use('/api', phase7.router)`、`app.locals.phase7`。共 ~14 行新增，zero 修改既有 handler。
+
+### 前端（新增为主）
+- `services/gatewayClient.js`：新增 17 个 phase7 方法（scenes/public/direct/profile/entries/comments/home-access/search/export/stats/backup）。
+- `stores/worldStore.js`：新增 `state.space`（scenes/publicMessages/peers/profile/homeAccess/search/lastExport/stats）+ 17 个 action，全部经 `requireSession()`（`admin|editor`）门禁。
+- 新增组件：`SpaceChatPanel.vue`（广场公屏 / 就近私聊，半透明轻量气泡 + 4s 轮询 + 回车发送；公屏发言同步镜像到既有 `sendWorldChat` 以兼容旧视图）、`SpaceSearchPanel.vue`（关键词检索 + 类型/私密标签 + 片段/时间 + 点击跳转）、`SpaceProfileBoard.vue`（四板块 CRUD + 公开/私密切换 + 留言 + 私信邀约）。
+- `views/WorldView.vue`：新增**就近社交入口**（`.vu-space-entry`，随 `getSocialContext()` 900ms 轮询，访客不渲染）+ 两个面板挂载 + 就近触发居民气泡；新增 CSS。
+- `webgl/ThreeWorld.js`：**只新增** `getPlayerPosition()`、`getSocialContext()`（按 r / 河道距离 / 最近宅院距离判定七大场景）、`showChatBubble()`、`updateChatBubbles()`（每帧上浮淡出回收）；构造函数 +1 字段；`animate` +1 行调用。**未改动任何既有几何/地形/灯光/路网代码**。
+- `views/ProfileView.vue`：在「简介」页签内挂载 `<SpaceProfileBoard owner-id="me">`（仅原住民可见）。
+- `components/ResidentDirectoryPanel.vue`：名录卡片新增「加好友」按钮（复用既有 `sendFriendRequest` + `loadFriends`）。
+
+### 自检
+- **单元测试**：`backend 42/42`（33 旧 + **9 新增 phase7**）、虚拟乌托邦 **13/13**、外层前端 **9/9**、BP3 **7/7** 全绿。
+- **后端端到端冒烟（30/30 通过）**（脚本 `.workbuddy/backups/space-social-20260922/smoke-phase7.mjs`）：未登录 401 隔离；广场公屏发言含 `scene.zone`；私聊双向镜像 + 场景位置；禁自发/无效对象 400/404；主页公开+私密可见性与他人隐私过滤；留言 + 空留言 400；宅院三档切换 + 非主人 403 + 闭门裁决拒绝 + 本人始终可进；检索命中含片段/时间 + 可检索本人私密 + 不越权；导出文件落盘；统计含索引；非管理员备份 403。
+- **headless 实测（playwright + Edge）**：`getSocialContext()` → `{zone:'plaza', label:'中心广场 · 公共频道', channel:'public', scene:{x,y,z,zone}}`；气泡创建并自动回收；**访客身份下入口 chip 与两个面板均不渲染**（身份隔离生效）；`homeObjects=50`、`scene.children=377`（与阶段九一致 → **3D 场景零改动**）；**console errors = []**；截图 `.workbuddy/backups/space-social-20260922/p10-world.png`。
+- 生产构建通过（`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`），WorldView chunk 25.5→33.8 kB、index 963→981 kB（新组件入包）。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/space-social-20260922/`（7 个待改文件 + 冒烟脚本 + 自检脚本 + 截图）。
+- 提交：`git commit <HASH10>`。
+- **服务需重启**：phase7 已挂载到 phase6，须重启 `backend/src/phase6/server.js`（本次已重启，`http://localhost:3400/api/phase7/health` 200）。
+
+### 说明 / 已知边界
+- 存储为**双层并存**：既有 phase6 SQLite 主存（群聊/好友/留言簿/卡片/审批等）不动；新增 phase7 JSON 分片层承载「七大场景的聊天内容 + 主页四板块 + 宅院权限 + 检索索引 + 导出/快照」。检索索引只覆盖 phase7 内容层。
+- 「50 户原住民」= **50 个可社交的宅院/居民条目，上限锁定 50**（复用既有 `residentLimit`），未预置账号。
+- 七大场景中 ④⑤⑥ 共用同一套 `direct` 双人会话（以 `channel` 区分 direct/encounter/interior/local），场景位置写入 `scene.zone`。
+- 广场公屏在 UI 上同时保留既有 `WorldChatPanel`（兼容）与新的 `SpaceChatPanel`（内容层、可检索、带场景位置）。
+- 管理员按规格**不读取私密内容**：`canReadDocument` 不给予 admin 任何额外权限。
