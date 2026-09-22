@@ -598,6 +598,47 @@
 - 前置备份：`H:/BP2/.workbuddy/backups/scene-flat-20260922/`（ThreeWorld.js / worldLayout.js / WorldView.vue / modelLoader.js + 场景截图）。
 - 提交：`git commit a79d7fb`（ThreeWorld.js + worldLayout.js + memory-log.md）。
 
+---
+
+## 2026-09-22 阶段五：生活广场整体重构（抬高木平台 + 四功能区 + 中式木构地标）
+
+> 仅改生活广场 3D 场景资产与布局（`ThreeWorld.js` / `worldLayout.js`）；未改业务代码；宅院样式/大小/碰撞盒不变。
+
+### 1 删除旧中心平台
+- 重写 `buildCentralPlaza`：移除旧中心平台（贴地铺装圆台、浅水池、低矮四柱平顶、外圈灯柱）与旧 `buildPlazaFurnishings/StoneDetails` 摆件；中心区域随新平台重建为平整空间。旧悬空桥网络已在阶段四删除（`buildPlazaConnections` 现为无调用死代码）。
+
+### 2 迁出冲突建筑
+- `worldLayout` 覆盖新增：**plot-8 → (25.55, 32.70)**（r≈41.5）移出广场；plot-4/18/19 维持阶段四位置不变。校验：50 户 / y 全 0 / **0 重叠** / 广场内(r<20) **已无宅院**。触发/碰撞/庭院小品随坐标自动同步。
+
+### 3 1 米抬高跨河木平台
+- `PLAZA_DECK_HEIGHT=1.0`、`PLAZA_RADIUS=17`。实体台体（Cylinder 高 1.0）**遮蔽下方河面**；顶面平整单一水平面；底部 8 根横向木梁体现「架于河面」；四周 48 立柱 + 2 道环形横栏（0.5m 高）护栏。
+- 新增 `plazaGroundHeight(x,z)`：平台内(r≤16.5) 返回 1.0、否则地形高度；已用于 **玩家 Y**（`updateLocalAvatarTransform`）与 **居民漫游 Y**（`addRoamingAgent/setRoamingTarget/updateRoamingAgents`），保证角色在平台行走不穿模/不下沉。
+
+### 4 四个功能区（全部贴平台表面 y=1.0）
+- ① 公共集会区：中心留空 + 边缘 6 石凳。
+- ② 闲谈茶座区：3 组圆茶桌（各 4 石凳 + 小石灯），东侧。
+- ③ 林间散坐区：西侧零散景观卧石 + 矮竹（无成套桌椅）。
+- ④ 溪畔漫步区：南侧沿边石板 + 景观石 + 矮竹。
+- 分区以矮竹/景观石/石板自然分隔（无围墙）；铺装同心环 + 放射接缝 + 连接石板。
+- 聚会点位：`this.plazaGatheringPoints`（center×1 + tea×3 + scatter×1 + view×2 = 7 点，y=1.0），经 `getPlazaGatheringPoints()` 暴露。
+
+### 5 中心中式木构地标
+- 9 根原木圆柱（直径 0.6m、高 20m）环形半径 6.2m 排布，柱础石固定于平台板面（不穿透）；柱顶榫卯环梁；上方中式攒尖木顶（9 面、开口朝下）+ 檐口 + 宝顶；**内部发光球体**（r1.5，emissive 0.85）位于顶腔，地面仰视可见；`centralCore`=发光球、`centralPointLight`=暖光（延续昼夜动画字段契约）。四周留足集会空地；场景无碰撞系统，角色不可攀爬（无高度拾取）。
+
+### 自检
+- 构建成功；单测 虚拟乌托邦 **13/13**、外层前端 **9/9**、后端 **33/33**、BP3 **7/7** 全绿；worldLayout 校验 50 户 / y 全 0 / 0 重叠 / 广场内无宅院。
+- **headless 实测（playwright + Edge）**：加载 → 50/50 庄园 → canvas WebGL → **console errors = []**；「前往生活广场」聚焦后截图确认：抬高木平台 + 9 立柱 + 攒尖顶 + 四区小品均正常渲染。截图：`.workbuddy/backups/scene-flat-20260922/phase5-overview.png`、`phase5-plaza.png`。
+- 注：`webgl/tests/world.e2e.mjs` 的历史失效断言（「切换夜晚」按钮）与本次无关，未改该测试文件（守 scope）。
+- **结论：全绿，无需回滚。**
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/plaza-20260922/`（HEAD=阶段四 state 的 ThreeWorld.js / worldLayout.js）。
+- 提交：`git commit <HASH>`（ThreeWorld.js + worldLayout.js + memory-log.md）。
+
+### 遗留/说明
+- 地标「中式攒尖顶」以 9 面锥顶近似（无雕花），符合「简约」要求；如需更精细的榫卯/举折造型可后续细化。
+- 平台护栏为全周护栏（无入口缺口）；因场景无碰撞系统，角色可正常上下（视觉护栏防跌落）。
+
 ### 遗留（待确认）
 - 除 4/18/19 外，plot-8(r=11.3)、plot-5/9/11/17/20/21 等仍落在广场范围内（用户仅点名 3 栋）；如需彻底避免重叠可再批量外移。
 - 溪流水面在平地呈色带、视觉偏「苔绿」；如需更明显的深浅水效可后续单独调水材质。

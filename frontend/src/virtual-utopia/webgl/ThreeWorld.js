@@ -50,6 +50,12 @@ const pickRoamingIdle = () =>
 const clamp = (value, minimum, maximum) =>
   Math.min(Math.max(value, minimum), maximum);
 
+// 阶段五：生活广场 1 米抬高木平台（可行走高度）
+const PLAZA_DECK_HEIGHT = 1.0;
+const PLAZA_RADIUS = 17;
+const PLAZA_WALK_RADIUS = 16.5;
+const plazaGroundHeight = (x, z) =>
+  Math.hypot(x, z) <= PLAZA_WALK_RADIUS ? PLAZA_DECK_HEIGHT : getTerrainHeight(x, z);
 const getStreamX = (z) => Math.sin(z * 0.075) * 9;
 
 const getStreamWidth = (z) =>
@@ -1928,337 +1934,244 @@ export class ThreeWorld {
     };
   }
 
-  buildPlazaFurnishings(group) {
-    const stoneMaterial = new THREE.MeshStandardMaterial({
-      color: '#8e8979',
-      roughness: 0.98,
-    });
-    const benchMaterial = createWoodMaterial('#b4824e');
-    const shelfMaterial = createWoodMaterial('#8d623c');
-    const fireMaterial = new THREE.MeshStandardMaterial({
-      color: '#ffd17d',
-      emissive: '#ff6d25',
-      emissiveIntensity: 0.35,
-      roughness: 0.35,
-    });
-    this.plazaLights.push(fireMaterial);
-
-    // 火盆（贴地）
-    const fireBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.34, 1.5, 0.28, 18),
-      stoneMaterial,
-    );
-    fireBase.position.set(-5.8, 0.5, 0);
-    fireBase.castShadow = true;
-    group.add(fireBase);
-
-    for (let index = 0; index < 6; index += 1) {
-      const angle = (index / 6) * Math.PI * 2;
-      const log = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.1, 0.12, 1.7, 6),
-        createWoodMaterial('#6b4a31'),
-      );
-      log.position.set(
-        -5.8 + Math.cos(angle) * 0.28,
-        0.74 + (index % 2) * 0.1,
-        Math.sin(angle) * 0.28,
-      );
-      log.rotation.z = Math.PI / 2;
-      log.rotation.y = angle;
-      group.add(log);
-    }
-
-    const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.58, 1.05, 8),
-      fireMaterial,
-    );
-    flame.position.set(-5.8, 1.2, 0);
-    flame.scale.z = 0.72;
-    group.add(flame);
-
-    this.plazaFireLight = new THREE.PointLight('#ff9b52', 0.5, 34, 1.75);
-    this.plazaFireLight.position.set(-5.8, 1.8, 0);
-    group.add(this.plazaFireLight);
-
-    for (let index = 0; index < 6; index += 1) {
-      const angle = (index / 6) * Math.PI * 2;
-      const radius = 2.65;
-      const seat = new THREE.Mesh(
-        new THREE.BoxGeometry(1.25, 0.18, 0.46),
-        benchMaterial,
-      );
-      seat.position.set(
-        -5.8 + Math.cos(angle) * radius,
-        0.78,
-        Math.sin(angle) * radius,
-      );
-      seat.rotation.y = -angle;
-      seat.castShadow = true;
-      group.add(seat);
-
-      const back = new THREE.Mesh(
-        new THREE.BoxGeometry(1.25, 0.52, 0.12),
-        benchMaterial,
-      );
-      back.position.set(
-        -5.8 + Math.cos(angle) * (radius + 0.18),
-        1.06,
-        Math.sin(angle) * (radius + 0.18),
-      );
-      back.rotation.y = -angle;
-      back.castShadow = true;
-      group.add(back);
-    }
-
-    const tableTop = new THREE.Mesh(
-      new THREE.BoxGeometry(3.2, 0.24, 1.0),
-      benchMaterial,
-    );
-    tableTop.position.set(6.2, 0.94, 0);
-    tableTop.castShadow = true;
-    group.add(tableTop);
-
-    [-1.2, 1.2].forEach((offset) => {
-      const leg = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 1.2, 0.62),
-        shelfMaterial,
-      );
-      leg.position.set(6.2 + offset, 0.44, 0);
-      leg.castShadow = true;
-      group.add(leg);
-    });
-
-    const storageRack = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 1.45, 0.45),
-      shelfMaterial,
-    );
-    storageRack.position.set(8.4, 0.95, 3.9);
-    storageRack.rotation.y = -0.48;
-    storageRack.castShadow = true;
-    group.add(storageRack);
-
-    const displayBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.75, 0.9, 0.42, 12),
-      stoneMaterial,
-    );
-    displayBase.position.set(7.4, 0.5, -4.2);
-    displayBase.castShadow = true;
-    group.add(displayBase);
-
-    const displayTop = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.42, 0.48, 0.92, 10),
-      benchMaterial,
-    );
-    displayTop.position.set(7.4, 1.15, -4.2);
-    displayTop.castShadow = true;
-    group.add(displayTop);
-
-    [-0.85, 0.85].forEach((offset) => {
-      const post = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 2.5, 0.14),
-        shelfMaterial,
-      );
-      post.position.set(offset, 1.25, -7.2);
-      post.castShadow = true;
-      group.add(post);
-    });
-    const noticeBoard = new THREE.Mesh(
-      new THREE.BoxGeometry(2.1, 1.35, 0.18),
-      createWoodMaterial('#c89b61'),
-    );
-    noticeBoard.position.set(0, 1.9, -7.2);
-    noticeBoard.castShadow = true;
-    group.add(noticeBoard);
-
-    for (let index = 0; index < 4; index += 1) {
-      const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.08, 3.2, 6),
-        shelfMaterial,
-      );
-      pole.position.set(Math.cos(angle) * 9.6, 1.6, Math.sin(angle) * 9.6);
-      pole.castShadow = true;
-      group.add(pole);
-
-      const flag = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.15, 0.72, 1, 2),
-        new THREE.MeshStandardMaterial({
-          color: index % 2 === 0 ? '#a84f3f' : '#e0b46b',
-          side: THREE.DoubleSide,
-          roughness: 0.88,
-        }),
-      );
-      flag.position.set(pole.position.x + 0.66, 2.7, pole.position.z);
-      flag.rotation.y = -angle + Math.PI / 2;
-      group.add(flag);
-    }
-
-    for (let index = 0; index < 4; index += 1) {
-      const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
-      const torch = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.07, 0.1, 2.0, 6),
-        createWoodMaterial('#67472e'),
-      );
-      torch.position.set(Math.cos(angle) * 11.4, 1.0, Math.sin(angle) * 11.4);
-      torch.castShadow = true;
-      group.add(torch);
-
-      const torchGlow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.18, 8, 6),
-        fireMaterial,
-      );
-      torchGlow.position.copy(torch.position);
-      torchGlow.position.y += 1.18;
-      group.add(torchGlow);
-    }
-
-    for (let index = 0; index < 3; index += 1) {
-      const chime = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.025, 0.72, 5),
-        new THREE.MeshStandardMaterial({
-          color: '#d7c28c',
-          metalness: 0.25,
-          roughness: 0.55,
-        }),
-      );
-      chime.position.set(-1.3 + index * 0.34, 2.1, 7.5);
-      group.add(chime);
-    }
-  }
-
-  buildPlazaStoneDetails(group) {
+  buildPlazaFurnishings(group, zones) {
     const stoneMaterial = new THREE.MeshStandardMaterial({
       color: '#9f978a',
       roughness: 0.95,
       metalness: 0.02,
     });
-    const darkStoneMaterial = new THREE.MeshStandardMaterial({
-      color: '#71695e',
-      roughness: 0.98,
+    const stoneDarkMaterial = new THREE.MeshStandardMaterial({
+      color: '#7d7466',
+      roughness: 0.97,
     });
+    const tableMaterial = createWoodMaterial('#b1844f');
+    const lampMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffe1a4',
+      emissive: '#ffb85c',
+      emissiveIntensity: 0.1,
+      roughness: 0.25,
+    });
+    this.plazaLights.push(lampMaterial);
+
+    const deckY = PLAZA_DECK_HEIGHT;
+    const point = (angle, radius, lift = 0) =>
+      new THREE.Vector3(
+        Math.cos(angle) * radius,
+        deckY + lift,
+        Math.sin(angle) * radius,
+      );
+
+    // ① 公共集会区：中心留空，边缘少量石凳
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (index / 6) * Math.PI * 2 + Math.PI / 12;
+      const pos = point(angle, 10.6);
+      const stool = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.36, 0.42, 10),
+        stoneMaterial,
+      );
+      stool.position.set(pos.x, deckY + 0.21, pos.z);
+      stool.castShadow = true;
+      stool.receiveShadow = true;
+      group.add(stool);
+    }
+
+    // ② 闲谈茶座区：3 组圆茶桌 + 每组 4 石凳 + 小石灯 + 矮竹
+    zones.tea.forEach((zone) => {
+      const center = point(zone.angle, zone.radius);
+
+      const tableBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.22, 0.6, 8),
+        stoneDarkMaterial,
+      );
+      tableBase.position.set(center.x, deckY + 0.3, center.z);
+      tableBase.castShadow = true;
+      group.add(tableBase);
+
+      const tableTop = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.72, 0.72, 0.1, 20),
+        tableMaterial,
+      );
+      tableTop.position.set(center.x, deckY + 0.65, center.z);
+      tableTop.castShadow = true;
+      tableTop.receiveShadow = true;
+      group.add(tableTop);
+
+      for (let seat = 0; seat < 4; seat += 1) {
+        const seatAngle = (seat / 4) * Math.PI * 2 + Math.PI / 4;
+        const sx = center.x + Math.cos(seatAngle) * 1.35;
+        const sz = center.z + Math.sin(seatAngle) * 1.35;
+        const stool = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.28, 0.32, 0.4, 10),
+          stoneMaterial,
+        );
+        stool.position.set(sx, deckY + 0.2, sz);
+        stool.castShadow = true;
+        stool.receiveShadow = true;
+        group.add(stool);
+      }
+
+      // 小石灯
+      const lampPost = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.72, 0.18),
+        stoneDarkMaterial,
+      );
+      lampPost.position.set(
+        center.x + Math.cos(zone.angle + 0.9) * 2.0,
+        deckY + 0.36,
+        center.z + Math.sin(zone.angle + 0.9) * 2.0,
+      );
+      lampPost.castShadow = true;
+      group.add(lampPost);
+
+      const lampHead = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.26, 0.3),
+        lampMaterial,
+      );
+      lampHead.position.set(lampPost.position.x, deckY + 0.85, lampPost.position.z);
+      group.add(lampHead);
+    });
+
+    // ③ 林间散坐区：零散景观卧石 + 矮竹（无成套桌椅）
+    zones.scattered.forEach((zone) => {
+      const center = point(zone.angle, zone.radius);
+      for (let index = 0; index < 3; index += 1) {
+        const a = zone.angle + (index - 1) * 0.5;
+        const r = zone.radius + (index - 1) * 0.9;
+        const rockPos = point(a, r);
+        const rock = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5 + index * 0.1, 8, 6),
+          stoneMaterial,
+        );
+        rock.scale.set(1.3, 0.55, 1.1);
+        rock.position.set(rockPos.x, deckY + 0.18, rockPos.z);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        group.add(rock);
+      }
+    });
+
+    // ④ 溪畔漫步区：沿外侧边缘布置石板 + 景观石 + 矮竹
+    zones.streamside.forEach((zone) => {
+      for (let index = 0; index < 4; index += 1) {
+        const a = zone.angle + (index - 1.5) * 0.22;
+        const pos = point(a, PLAZA_RADIUS - 1.6);
+        const slab = new THREE.Mesh(
+          new THREE.BoxGeometry(1.5, 0.1, 2.1),
+          stoneMaterial,
+        );
+        slab.position.set(pos.x, deckY + 0.05, pos.z);
+        slab.rotation.y = -a;
+        slab.receiveShadow = true;
+        group.add(slab);
+      }
+    });
+  }
+
+  buildPlazaStoneDetails(group, zones) {
     const groutMaterial = new THREE.MeshStandardMaterial({
       color: '#837b6e',
       roughness: 1,
     });
+    const stoneMaterial = new THREE.MeshStandardMaterial({
+      color: '#a39a83',
+      roughness: 0.96,
+    });
+    const rockMaterial = new THREE.MeshStandardMaterial({
+      color: '#6f6a5c',
+      roughness: 0.98,
+    });
+    const deckY = PLAZA_DECK_HEIGHT;
 
-    // 石板纹路：同心环 + 放射接缝（贴于铺装面）
-    [4.4, 8.4, 12.4].forEach((radius) => {
+    // 平台铺装纹路：同心环 + 放射接缝（贴平台表面）
+    [5.2, 8.6, 12.2, 15.4].forEach((radius) => {
       const seam = new THREE.Mesh(
-        new THREE.TorusGeometry(radius, 0.07, 6, 56),
+        new THREE.TorusGeometry(radius, 0.06, 6, 72),
         groutMaterial,
       );
       seam.rotation.x = Math.PI / 2;
-      seam.position.y = 0.37;
+      seam.position.y = deckY + 0.01;
       group.add(seam);
     });
-
-    for (let index = 0; index < 12; index += 1) {
-      const angle = (index / 12) * Math.PI * 2;
+    for (let index = 0; index < 16; index += 1) {
+      const angle = (index / 16) * Math.PI * 2;
       const seam = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.02, 15.2),
+        new THREE.BoxGeometry(0.07, 0.02, 16.2),
         groutMaterial,
       );
-      seam.position.set(Math.cos(angle) * 7.6, 0.37, Math.sin(angle) * 7.6);
+      seam.position.set(Math.cos(angle) * 8.1, deckY + 0.01, Math.sin(angle) * 8.1);
       seam.rotation.y = -angle;
       group.add(seam);
     }
 
-    // 石质长凳
-    for (let index = 0; index < 4; index += 1) {
-      const angle = (index / 4) * Math.PI * 2 + Math.PI / 4;
-      const x = Math.cos(angle) * 13.1;
-      const z = Math.sin(angle) * 13.1;
-      const seat = new THREE.Mesh(
-        new THREE.BoxGeometry(2.5, 0.24, 0.7),
+    // 分区矮竹（自然分隔）
+    const bambooTrunkMaterial = createWoodMaterial('#6f8a3a');
+    const bambooLeafMaterial = new THREE.MeshStandardMaterial({
+      color: '#4b8a57',
+      roughness: 0.9,
+    });
+    const bambooSpots = [0.5, 1.6, 2.4, 3.6, 4.7, 5.6, 0.9, 4.0];
+    bambooSpots.forEach((angle, cluster) => {
+      const radius = 9.8 + (cluster % 2) * 1.1;
+      const cx = Math.cos(angle) * radius;
+      const cz = Math.sin(angle) * radius;
+      for (let stalk = 0; stalk < 3; stalk += 1) {
+        const ox = (stalk - 1) * 0.22;
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.07, 2.3, 6),
+          bambooTrunkMaterial,
+        );
+        trunk.position.set(cx + ox, deckY + 1.15, cz + ox * 0.4);
+        trunk.castShadow = true;
+        group.add(trunk);
+        const leaf = new THREE.Mesh(
+          new THREE.ConeGeometry(0.34, 0.95, 6),
+          bambooLeafMaterial,
+        );
+        leaf.position.set(cx + ox, deckY + 2.6, cz + ox * 0.4);
+        group.add(leaf);
+      }
+    });
+
+    // 景观石（分隔 + 点缀）
+    const rockSpots = [
+      [1.05, 13.4],
+      [2.95, 13.2],
+      [4.25, 12.6],
+      [5.9, 12.4],
+      [0.15, 14.6],
+    ];
+    rockSpots.forEach(([angle, radius], index) => {
+      const rock = new THREE.Mesh(
+        new THREE.SphereGeometry(0.62 + (index % 3) * 0.16, 8, 6),
+        rockMaterial,
+      );
+      rock.scale.set(1.35, 0.6, 1.05);
+      rock.rotation.y = angle;
+      rock.position.set(
+        Math.cos(angle) * radius,
+        deckY + 0.2,
+        Math.sin(angle) * radius,
+      );
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      group.add(rock);
+    });
+
+    // 石板步道（连接各区的浅色石板）
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (index / 6) * Math.PI * 2 + 0.4;
+      const slab = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.08, 1.6),
         stoneMaterial,
       );
-      seat.position.set(x, 0.78, z);
-      seat.rotation.y = -angle;
-      seat.castShadow = true;
-      seat.receiveShadow = true;
-      group.add(seat);
-
-      [-0.95, 0.95].forEach((offset) => {
-        const leg = new THREE.Mesh(
-          new THREE.BoxGeometry(0.4, 0.46, 0.44),
-          darkStoneMaterial,
-        );
-        leg.position.set(
-          x + Math.sin(angle) * offset,
-          0.55,
-          z - Math.cos(angle) * offset,
-        );
-        leg.rotation.y = -angle;
-        leg.castShadow = true;
-        group.add(leg);
-      });
-    }
-
-    // 小型花坛
-    const flowerPalette = [
-      '#e06a6a',
-      '#e8a34e',
-      '#c86fd0',
-      '#e8d04e',
-      '#e67a8a',
-    ];
-    for (let index = 0; index < 4; index += 1) {
-      const angle = (index / 4) * Math.PI * 2;
-      const x = Math.cos(angle) * 11.3;
-      const z = Math.sin(angle) * 11.3;
-      const bed = new THREE.Mesh(
-        new THREE.TorusGeometry(1.05, 0.22, 8, 24),
-        darkStoneMaterial,
+      slab.position.set(
+        Math.cos(angle) * 7.2,
+        deckY + 0.04,
+        Math.sin(angle) * 7.2,
       );
-      bed.rotation.x = Math.PI / 2;
-      bed.position.set(x, 0.42, z);
-      bed.castShadow = true;
-      bed.receiveShadow = true;
-      group.add(bed);
-
-      for (let flower = 0; flower < 5; flower += 1) {
-        const flowerAngle = (flower / 5) * Math.PI * 2;
-        const bloom = new THREE.Mesh(
-          new THREE.SphereGeometry(0.2, 8, 6),
-          new THREE.MeshStandardMaterial({
-            color: flowerPalette[flower],
-            roughness: 0.6,
-          }),
-        );
-        bloom.position.set(
-          x + Math.cos(flowerAngle) * 0.46,
-          0.66,
-          z + Math.sin(flowerAngle) * 0.46,
-        );
-        group.add(bloom);
-      }
-    }
-
-    // 景观小树（绕广场外缘）
-    for (let index = 0; index < 6; index += 1) {
-      const angle = (index / 6) * Math.PI * 2 + 0.32;
-      const x = Math.cos(angle) * 14.5;
-      const z = Math.sin(angle) * 14.5;
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.13, 0.21, 1.7, 6),
-        createWoodMaterial('#6b4a31'),
-      );
-      trunk.position.set(x, 1.15, z);
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
-      group.add(trunk);
-
-      const canopy = new THREE.Mesh(
-        new THREE.ConeGeometry(0.82, 1.9, 7),
-        new THREE.MeshStandardMaterial({
-          color: index % 2 === 0 ? '#3c7a4f' : '#4b8a57',
-          roughness: 0.9,
-        }),
-      );
-      canopy.position.set(x, 2.35, z);
-      canopy.castShadow = true;
-      canopy.receiveShadow = true;
-      group.add(canopy);
+      slab.rotation.y = -angle;
+      slab.receiveShadow = true;
+      group.add(slab);
     }
   }
 
@@ -2267,106 +2180,116 @@ export class ThreeWorld {
     group.name = 'life-plaza';
 
     const deckMaterial = new THREE.MeshStandardMaterial({
-      color: '#a49d8f',
-      roughness: 0.94,
+      color: '#b1844f',
+      roughness: 0.85,
       metalness: 0.02,
     });
     this.plazaDeckMaterial = deckMaterial;
+    const beamMaterial = createWoodMaterial('#6a4a30');
+    const railMaterial = createWoodMaterial(WOOD_DARK);
+    const deckY = PLAZA_DECK_HEIGHT;
 
-    // 贴地铺装圆台（无高差，单一水平面）
+    // 3-1：约 1 米抬高整体木平台（实体台体，遮蔽下方河面）
+    const plinth = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLAZA_RADIUS - 0.3, PLAZA_RADIUS + 0.3, deckY, 72),
+      beamMaterial,
+    );
+    plinth.position.y = deckY / 2;
+    plinth.receiveShadow = true;
+    plinth.castShadow = true;
+    plinth.userData.plazaSelectable = true;
+    group.add(plinth);
+
     const deck = new THREE.Mesh(
-      new THREE.CylinderGeometry(16, 17, 0.36, 48),
+      new THREE.CylinderGeometry(PLAZA_RADIUS, PLAZA_RADIUS, 0.12, 72),
       deckMaterial,
     );
-    deck.position.y = 0.18;
+    deck.position.y = deckY - 0.06;
     deck.receiveShadow = true;
+    deck.userData.plazaSelectable = true;
     group.add(deck);
+    this.plazaDeckSurface = deck;
 
-    // 边缘收边木环
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(16.2, 0.16, 8, 64),
-      createWoodMaterial(WOOD_DARK),
-    );
-    rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.36;
-    rim.castShadow = true;
-    group.add(rim);
-
-    // 中央浅水池（与地面同层）
-    const pool = new THREE.Mesh(
-      new THREE.CylinderGeometry(3.6, 3.6, 0.16, 32),
-      new THREE.MeshPhysicalMaterial({
-        color: '#78d0c1',
-        transparent: true,
-        opacity: 0.82,
-        roughness: 0.12,
-      }),
-    );
-    pool.position.y = 0.4;
-    group.add(pool);
-
-    // 中央低矮景观构架：4 柱 + 平顶（不再使用多层高台/棚顶）
-    const canopyPostGeometry = new THREE.CylinderGeometry(0.16, 0.2, 1.9, 8);
-    [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]].forEach(([px, pz]) => {
-      const post = new THREE.Mesh(canopyPostGeometry, createWoodMaterial(WOOD_DARK));
-      post.position.set(px, 1.35, pz);
-      post.castShadow = true;
-      group.add(post);
-    });
-    const canopy = new THREE.Mesh(
-      new THREE.BoxGeometry(4.4, 0.22, 4.4),
-      createWoodMaterial(WOOD),
-    );
-    canopy.position.y = 2.4;
-    canopy.castShadow = true;
-    group.add(canopy);
-
-    const core = new THREE.Mesh(
-      new THREE.SphereGeometry(0.9, 20, 14),
-      new THREE.MeshStandardMaterial({
-        color: '#e4f6ec',
-        emissive: '#bfe8d2',
-        emissiveIntensity: 0.32,
-        roughness: 0.2,
-      }),
-    );
-    core.position.y = 1.45;
-    group.add(core);
-    this.centralCore = core;
-
-    this.centralPointLight = new THREE.PointLight('#ffe6cc', 1.1, 40, 1.6);
-    this.centralPointLight.position.set(0, 3, 0);
-    group.add(this.centralPointLight);
-
-    // 外圈低灯柱（景观构架，贴地）
-    const lampMaterial = new THREE.MeshStandardMaterial({
-      color: '#ffe1a4',
-      emissive: '#ffb85c',
-      emissiveIntensity: 0.08,
-      roughness: 0.25,
-    });
-    this.plazaLights.push(lampMaterial);
-    const lampGeometry = new THREE.SphereGeometry(0.18, 8, 6);
-    const lampPostGeometry = new THREE.CylinderGeometry(0.08, 0.1, 1.1, 6);
-    for (let index = 0; index < 12; index += 1) {
-      const angle = (index / 12) * Math.PI * 2;
-      const x = Math.cos(angle) * 14.6;
-      const z = Math.sin(angle) * 14.6;
-      const post = new THREE.Mesh(lampPostGeometry, createWoodMaterial(WOOD_DARK));
-      post.position.set(x, 0.55, z);
-      post.castShadow = true;
-      group.add(post);
-
-      const lamp = new THREE.Mesh(lampGeometry, lampMaterial);
-      lamp.position.set(x, 1.22, z);
-      group.add(lamp);
+    // 底部横向木梁（体现架于河面质感）
+    for (let index = 0; index < 8; index += 1) {
+      const beam = new THREE.Mesh(
+        new THREE.BoxGeometry(PLAZA_RADIUS * 2 + 0.6, 0.32, 0.48),
+        beamMaterial,
+      );
+      beam.position.set(0, 0.34, 0);
+      beam.rotation.y = (index / 8) * Math.PI;
+      beam.castShadow = true;
+      group.add(beam);
     }
 
-    this.buildPlazaFurnishings(group);
-    this.buildPlazaStoneDetails(group);
+    // 四周木护栏（0.5m 高，全周）
+    const railPostGeometry = new THREE.CylinderGeometry(0.09, 0.11, 0.5, 6);
+    for (let index = 0; index < 48; index += 1) {
+      const angle = (index / 48) * Math.PI * 2;
+      const post = new THREE.Mesh(railPostGeometry, railMaterial);
+      post.position.set(
+        Math.cos(angle) * (PLAZA_RADIUS - 0.4),
+        deckY + 0.25,
+        Math.sin(angle) * (PLAZA_RADIUS - 0.4),
+      );
+      post.castShadow = true;
+      group.add(post);
+    }
+    [deckY + 0.46, deckY + 0.24].forEach((y) => {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(PLAZA_RADIUS - 0.4, 0.055, 6, 96),
+        railMaterial,
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      ring.castShadow = true;
+      group.add(ring);
+    });
+
+    // 3-4：四个功能区（全部小品贴平台表面）
+    const zones = {
+      tea: [
+        { angle: -0.62, radius: 12.3 },
+        { angle: 0, radius: 12.7 },
+        { angle: 0.62, radius: 12.3 },
+      ],
+      scattered: [{ angle: 2.7, radius: 13.9 }],
+      streamside: [
+        { angle: 1.28, radius: 15.4 },
+        { angle: 1.92, radius: 15.4 },
+      ],
+    };
+    this.buildPlazaFurnishings(group, zones);
+    this.buildPlazaStoneDetails(group, zones);
+
+    // 3-5：集会区中心中式木构地标
+    this.buildPlazaLandmark(group);
+
+    // 全部聚会点位（坐标落在平台平面 y = deckY）
+    this.plazaGatheringPoints = [
+      { id: 'plaza-center', label: '公共集会区', x: 0, z: 0 },
+      ...zones.tea.map((zone, index) => ({
+        id: `plaza-tea-${index + 1}`,
+        label: `闲谈茶座·${index + 1}`,
+        x: Math.cos(zone.angle) * zone.radius,
+        z: Math.sin(zone.angle) * zone.radius,
+      })),
+      ...zones.scattered.map((zone, index) => ({
+        id: `plaza-scatter-${index + 1}`,
+        label: `林间散坐·${index + 1}`,
+        x: Math.cos(zone.angle) * zone.radius,
+        z: Math.sin(zone.angle) * zone.radius,
+      })),
+      ...zones.streamside.map((zone, index) => ({
+        id: `plaza-view-${index + 1}`,
+        label: `溪畔观景·${index + 1}`,
+        x: Math.cos(zone.angle) * zone.radius,
+        z: Math.sin(zone.angle) * zone.radius,
+      })),
+    ].map((point) => ({ ...point, y: deckY }));
 
     group.traverse((child) => {
-      if (child.isMesh) {
+      if (child.isMesh && child.userData.plazaSelectable) {
         child.userData.selectionType = 'center';
         this.clickableMeshes.push(child);
       }
@@ -2375,7 +2298,113 @@ export class ThreeWorld {
     this.centralGroup = group;
   }
 
-  // 阶段四：平地版本小桥（贴地、低矮、无高差悬空），跨越浅溪流
+  // 3-5：集会区中心中式木构地标（9 根原木圆柱 + 中式攒尖木顶 + 内部发光球）
+  buildPlazaLandmark(group) {
+    const columnMaterial = createWoodMaterial('#8a5f38');
+    const roofMaterial = createWoodMaterial('#7a5330');
+    const stoneMaterial = new THREE.MeshStandardMaterial({
+      color: '#9f978a',
+      roughness: 0.95,
+    });
+    const deckY = PLAZA_DECK_HEIGHT;
+    const columnRadius = 0.3; // 直径 60cm
+    const columnHeight = 20;
+    const ringRadius = 6.2;
+    const columnCount = 9;
+    const topY = deckY + columnHeight;
+
+    for (let index = 0; index < columnCount; index += 1) {
+      const angle = (index / columnCount) * Math.PI * 2;
+      const x = Math.cos(angle) * ringRadius;
+      const z = Math.sin(angle) * ringRadius;
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.52, 0.6, 0.22, 12),
+        stoneMaterial,
+      );
+      base.position.set(x, deckY + 0.11, z);
+      base.receiveShadow = true;
+      group.add(base);
+
+      const column = new THREE.Mesh(
+        new THREE.CylinderGeometry(columnRadius, columnRadius, columnHeight, 12),
+        columnMaterial,
+      );
+      column.position.set(x, deckY + columnHeight / 2, z);
+      column.castShadow = true;
+      column.userData.plazaSelectable = true;
+      group.add(column);
+    }
+
+    // 榫卯环梁
+    const ringBeam = new THREE.Mesh(
+      new THREE.TorusGeometry(ringRadius, 0.26, 6, 40),
+      roofMaterial,
+    );
+    ringBeam.rotation.x = Math.PI / 2;
+    ringBeam.position.y = topY - 0.45;
+    ringBeam.castShadow = true;
+    group.add(ringBeam);
+
+    // 中式攒尖木顶（9 面，指向天空；开口朝下便于仰视见球）
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(ringRadius + 1.5, 3.8, 9, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: '#6d4a2b',
+        roughness: 0.88,
+        side: THREE.DoubleSide,
+      }),
+    );
+    roof.position.y = topY + 1.7;
+    roof.castShadow = true;
+    roof.userData.plazaSelectable = true;
+    group.add(roof);
+
+    const eave = new THREE.Mesh(
+      new THREE.TorusGeometry(ringRadius + 1.42, 0.12, 6, 40),
+      roofMaterial,
+    );
+    eave.rotation.x = Math.PI / 2;
+    eave.position.y = topY + 1.7 - 1.9;
+    group.add(eave);
+
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.34, 0.6, 8),
+      roofMaterial,
+    );
+    cap.position.y = topY + 3.75;
+    group.add(cap);
+
+    // 内部发光球体（地面上仰可见）
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 24, 18),
+      new THREE.MeshStandardMaterial({
+        color: '#eafaf1',
+        emissive: '#8fe6c0',
+        emissiveIntensity: 0.85,
+        roughness: 0.25,
+      }),
+    );
+    core.position.y = topY - 0.6;
+    group.add(core);
+    this.centralCore = core;
+
+    const hanger = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6),
+      roofMaterial,
+    );
+    hanger.position.y = topY + 0.4;
+    group.add(hanger);
+
+    this.centralPointLight = new THREE.PointLight('#ffe6cc', 2.2, 64, 1.7);
+    this.centralPointLight.position.set(0, topY - 0.6, 0);
+    group.add(this.centralPointLight);
+  }
+
+  getPlazaGatheringPoints() {
+    return this.plazaGatheringPoints || [];
+  }
+
   buildFlatBridges() {
     const group = new THREE.Group();
     group.name = 'flat-bridges';
@@ -4567,7 +4596,7 @@ export class ThreeWorld {
     this.camera.getWorldDirection(direction);
     const x = this.controls.target.x;
     const z = this.controls.target.z;
-    const y = getTerrainHeight(x, z);
+    const y = plazaGroundHeight(x, z);
     const moved = Math.hypot(
       x - record.targetPosition.x,
       z - record.targetPosition.z,
@@ -4659,7 +4688,7 @@ export class ThreeWorld {
         displayName: name,
         appearance: { bodyColor, hairColor },
         x: start.x,
-        y: getTerrainHeight(start.x, start.z),
+        y: plazaGroundHeight(start.x, start.z),
         z: start.z,
         rotation: 0,
         animationState: 'idle',
@@ -4675,7 +4704,7 @@ export class ThreeWorld {
     };
     record.group.position.set(
       start.x,
-      getTerrainHeight(start.x, start.z),
+      plazaGroundHeight(start.x, start.z),
       start.z,
     );
     if (homeId) {
@@ -4775,7 +4804,7 @@ export class ThreeWorld {
   }
 
   setRoamingTarget(record, x, z, { atHome = false } = {}) {
-    record.targetPosition.set(x, getTerrainHeight(x, z), z);
+    record.targetPosition.set(x, plazaGroundHeight(x, z), z);
     record.targetRotation = Math.atan2(
       x - record.group.position.x,
       z - record.group.position.z,
@@ -4816,7 +4845,7 @@ export class ThreeWorld {
         // 停留期间把目标锁在脚下，配合 animateAvatars 的不位移，彻底杜绝"静立滑行"。
         record.targetPosition.set(
           record.group.position.x,
-          getTerrainHeight(record.group.position.x, record.group.position.z),
+          plazaGroundHeight(record.group.position.x, record.group.position.z),
           record.group.position.z,
         );
 
@@ -4839,7 +4868,7 @@ export class ThreeWorld {
           roaming.idleTimer = 1.2 + Math.random() * 1.5;
           record.targetPosition.set(
             record.group.position.x,
-            getTerrainHeight(record.group.position.x, record.group.position.z),
+            plazaGroundHeight(record.group.position.x, record.group.position.z),
             record.group.position.z,
           );
           continue;
