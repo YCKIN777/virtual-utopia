@@ -712,6 +712,38 @@
 ### 取舍说明（几何互斥）
 - 规格「立柱总高 30m」与「Φ4m 球坐落在**顶部**中心木环内、离地 26–28m」在几何上互斥（若立柱 30m，穹顶与顶环位于 31m 以上，球体只能落回柱廊内）。本实现按**参考图效果优先**：立柱 24m、穹顶/顶环至 ≈30m、球心 27.5m 位于穹顶内部并被放射梁框住。如需立柱本体 30m，可改（球体将下移至柱廊内、不再处于穹顶内）。
 
-### 遗留（待确认）
-- 除 4/18/19 外，plot-8(r=11.3)、plot-5/9/11/17/20/21 等仍落在广场范围内（用户仅点名 3 栋）；如需彻底避免重叠可再批量外移。
+### 遗留（已由阶段八解决）
+- ~~除 4/18/19 外，plot-8 等仍落在广场范围内~~ → **阶段八已全部移出**：广场留空半径 ≥34m，广场内已无宅院。
 - 溪流水面在平地呈色带、视觉偏「苔绿」；如需更明显的深浅水效可后续单独调水材质。
+
+---
+
+## 2026-09-22 阶段八：50 栋宅院重排为「依山散落的山居聚落」
+
+> 仅改宅院坐标与类型归属（`worldLayout.js`）；中心广场木构穹顶 / 麻石地面 / 河道清理成果 / 1m 跨河木平台 / 四区 / 护栏 / 小品 / 宅院模型本体与内部功能 / 派生碰撞盒 / 业务代码 全部未动。
+
+### 口径（经用户确认）
+- 原 4 类模型 13/12/13/12；新分配 **台地 12 / 临溪 18 / 崖边 20**。
+- 山边缓坡区 20 栋 = **崖边模型 12 + 森林模型 8** 混排 —— 4 种既有模型资产全部保留使用，不新建/不改造模型。
+
+### 实现
+- 重写 `worldLayout.js`：删除旧 `groupDefinitions` / `createCandidate` / `isValidCandidate` 与阶段四·五的 `PLAZA_RELOCATIONS` 覆盖，改为**分区表 `ZONE_DEFS` + 拒绝采样**一次性生成 50 户完整排布（编号仍 plot-1..50）。
+- 分区与约束（米）：
+  - **广场近区 · 台地宅院 12**：环带 r∈[36,58]，距主河道中线 ≥9；同区最小间距 ≥10。
+  - **河道沿岸区 · 临溪宅院 18**：主河道两岸 z∈±[34,94]，距中线 ∈[水面半宽+2.2, 18.5]（**退水岸 ≥2m**）；同区最小间距 ≥8。
+  - **山边缓坡区 · 崖边宅院 20（cliff 12 + forest 8）**：r∈[66,132]（山脚缓冲带 70~148 内），距主河道中线 ≥14，避让次级溪流；同区最小间距 ≥12。
+  - 全局：不越 `WORLD_LIMIT=140`；避让次级溪流（x≈-72±9 / 76±8）；跨区最小间距 ≥8。
+- 枢纽 `groupCenters`：台地→广场中心、临溪→河道中线、森林/崖边→各自山脚方位（供房门朝向、入户石板/花架落点、镜头飞入、植被避让）。
+- `validateHomeLayout()` 扩展（保留 `valid` / `minimumDistance` 契约）：新增 `homeCount` / `zoneCounts` / `riverViolations` / `plazaViolations` / `outOfBounds`，并按**分区最小间距**（10/8/12）判定重叠。
+
+### 自检
+- Node 校验：**50 户**；groupCounts = terrace 12 / stream 18 / forest 8 / cliff 12；zoneCounts = plaza 12 / stream 18 / mountain 20；`valid=true`，overlaps 0 / riverViol 0 / plazaViol 0 / oob 0。
+- 分区最小间距：广场 10.03 / 临溪 8.36 / 山边 12.83（均达标）；临溪**最小退水岸 4.38m**；距次级溪流最小 6.14m；宅院半径 35.1~131.2m → 广场留空 ≥34m，**中心地标视线通廊无遮挡**。
+- 构建成功（`cd frontend && npx vite build --config src/virtual-utopia/vite.config.js`）；单测：虚拟乌托邦 **13/13**、外层前端 **9/9**、后端 **33/33**、BP3 **7/7** 全绿。
+- **headless 实测（playwright + Edge）**：`window.__utopiaWorld.homeObjects.size === 50`（50 栋全部建成）、`scene.children 299`、HUD「50 户布局校验通过 · 最小间距 8.4」、**console errors = []**。
+  - 注：headless 软件渲染（swiftshader）帧率极低（≈4 帧/30s），而 `onStats` 每 24 帧才刷新 → HUD 的 `0/50 庄园` 属**帧计数未达阈值**，非构建失败；改用 `homeObjects.size` 作就绪判据。
+  - 截图：`.workbuddy/backups/homes-relayout-20260922/p8-*.png`（全景 / 斜视 / 广场穹顶 / 山脚）。
+
+### 备份与提交
+- 前置备份：`H:/BP2/.workbuddy/backups/homes-relayout-20260922/`（HEAD 版 + 改写前 worldLayout.js + 截图）。
+- 提交：`git commit <HASH8>`（worldLayout.js + memory-log.md）。

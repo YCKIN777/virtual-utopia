@@ -7,38 +7,79 @@ export const getTerrainHeight = () => 0;
 
 const getStreamX = (z) => Math.sin(z * 0.075) * 9;
 
-const groupDefinitions = [
+const getStreamWidth = (z) =>
+  1.45 +
+  (0.5 + 0.5 * Math.sin(z * 0.087)) * 1.2 +
+  (0.5 + 0.5 * Math.sin(z * 0.021 + 1.7)) * 0.85;
+
+// ============================================================================
+// 阶段八：50 栋宅院按「依山散落的山居聚落」三区重排
+//   ① 广场近区 · 台地宅院  12 栋
+//   ② 河道沿岸区 · 临溪宅院 18 栋
+//   ③ 山边缓坡区 · 崖边宅院 20 栋（= 崖边模型 12 + 森林模型 8，两种既有山居
+//      外观混排，4 种宅院模型资产全部保留使用）
+// 仅调整坐标 + 类型归属：宅院模型 / 内部功能 / 派生碰撞盒逻辑一概不改。
+// ============================================================================
+const ZONE_DEFS = [
   {
     id: 'terrace',
-    label: '台地组团',
-    count: 13,
+    label: '台地宅院',
+    zone: 'plaza',
+    count: 12,
+    minSpacing: 10,
     view: 'plaza',
-    minDistance: 15,
+    variant: 2,
   },
   {
     id: 'stream',
-    label: '临溪组团',
-    count: 12,
+    label: '临溪宅院',
+    zone: 'stream',
+    count: 18,
+    minSpacing: 8,
     view: 'stream',
-    minDistance: 15,
+    variant: 3,
   },
   {
     id: 'forest',
-    label: '森林组团',
-    count: 13,
+    label: '崖边宅院',
+    zone: 'mountain',
+    count: 8,
+    minSpacing: 12,
     view: 'forest',
-    minDistance: 15,
+    variant: 1,
   },
   {
     id: 'cliff',
-    label: '悬崖组团',
+    label: '崖边宅院',
+    zone: 'mountain',
     count: 12,
+    minSpacing: 12,
     view: 'cliff',
-    minDistance: 15,
+    variant: 0,
   },
 ];
 
-const createRandom = (seed = 86173) => {
+// —— 规划约束（全部为米）——
+const PLAZA_CLEAR_RADIUS = 34; // 广场 + 环形林间留白（保证中心木构穹顶地标的主视线通廊）
+const PLAZA_RADIUS_MIN = 36; // 台地宅院环带内半径
+const PLAZA_RADIUS_MAX = 58; // 台地宅院环带外半径
+const RIVER_CLEAR_TERRACE = 9; // 台地宅院距主河道中线最小距离
+const STREAM_BANK_MIN = 6.8; // 临溪宅院距河道中线最小（≈退水岸 2.6m）
+const STREAM_BANK_MAX = 17; // 临溪宅院距河道中线最大（仍在岸线内）
+const STREAM_Z_MIN = 34; // 沿河起止（避开广场跨河平台段）
+const STREAM_Z_MAX = 94;
+const MOUNTAIN_MIN_RADIUS = 66; // 山边缓坡区内半径
+const MOUNTAIN_MAX_RADIUS = 132; // 山边缓坡区外半径（山脚缓冲带 70~148 之内）
+const MOUNTAIN_RIVER_CLEAR = 14; // 山边宅院距主河道中线
+const WORLD_LIMIT = 140; // 不越过山脚缓冲带外沿
+
+// 次级溪流（thin rivulets）：河道清理后仍保留的两条溪线，宅院需避让。
+const SECONDARY_STREAM_X = [
+  (z) => -72 + Math.sin(z * 0.04) * 9,
+  (z) => 76 + Math.cos(z * 0.035) * 8,
+];
+
+const createRandom = (seed = 20260922) => {
   let value = seed >>> 0;
   return () => {
     value = (value * 1664525 + 1013904223) >>> 0;
@@ -46,23 +87,21 @@ const createRandom = (seed = 86173) => {
   };
 };
 
-const createCandidate = (group, random, number) => {
-  if (group.id === 'stream') {
-    const side = number % 2 === 0 ? -1 : 1;
-    const pairIndex = Math.floor(number / 2);
-    const z = -75 + pairIndex * 29 + side * 6 + (random() - 0.5) * 2.4;
-    const offset = 7.2 + random() * 3.8;
-    const x = getStreamX(z) + side * offset;
-    return {
-      x,
-      z,
-      angle: Math.atan2(-side, 0),
-    };
-  }
+const distanceToMainStream = (x, z) => Math.abs(x - getStreamX(z));
 
-  if (group.id === 'forest') {
-    const angle = Math.PI * (0.62 + random() * 0.78);
-    const radius = 34 + random() * 32;
+const nearSecondaryStream = (x, z, margin) =>
+  SECONDARY_STREAM_X.some((fn) => Math.abs(x - fn(z)) < margin);
+
+const zoneOf = (groupId) =>
+  ZONE_DEFS.find((def) => def.id === groupId)?.zone || 'other';
+
+const minSpacingOf = (groupId) =>
+  ZONE_DEFS.find((def) => def.id === groupId)?.minSpacing || 8;
+
+const randomPointInZone = (def, random) => {
+  if (def.zone === 'plaza') {
+    const angle = random() * Math.PI * 2;
+    const radius = PLAZA_RADIUS_MIN + random() * (PLAZA_RADIUS_MAX - PLAZA_RADIUS_MIN);
     return {
       x: Math.cos(angle) * radius,
       z: Math.sin(angle) * radius,
@@ -70,51 +109,65 @@ const createCandidate = (group, random, number) => {
     };
   }
 
-  if (group.id === 'cliff') {
-    const column = number % 4;
-    const row = Math.floor(number / 4);
+  if (def.zone === 'stream') {
+    const side = random() < 0.5 ? -1 : 1;
+    const direction = random() < 0.5 ? -1 : 1;
+    const z =
+      direction * (STREAM_Z_MIN + random() * (STREAM_Z_MAX - STREAM_Z_MIN));
+    const offset = STREAM_BANK_MIN + random() * (STREAM_BANK_MAX - STREAM_BANK_MIN);
     return {
-      x: 38 + column * 16.5 + (random() - 0.5) * 4,
-      z: -48 + row * 24 + (random() - 0.5) * 5,
-      angle: -Math.PI / 2,
+      x: getStreamX(z) + side * offset,
+      z,
+      angle: Math.atan2(-side, 0),
     };
   }
 
-  const column = number % 4;
-  const row = Math.floor(number / 4) % 4;
+  // 山边缓坡区：沿山脚环形散落
+  const angle = random() * Math.PI * 2;
+  const radius =
+    MOUNTAIN_MIN_RADIUS +
+    Math.pow(random(), 0.8) * (MOUNTAIN_MAX_RADIUS - MOUNTAIN_MIN_RADIUS);
   return {
-    x: 11 + column * 17 + (random() - 0.5) * 3,
-    z: -34 + row * 17 + (random() - 0.5) * 3,
-    angle: Math.PI,
+    x: Math.cos(angle) * radius,
+    z: Math.sin(angle) * radius,
+    angle: angle + Math.PI,
   };
 };
 
-const isValidCandidate = (candidate, group, existing) => {
-  const distanceToStream = Math.abs(candidate.x - getStreamX(candidate.z));
+const isValidCandidate = (candidate, def, existing) => {
+  const { x, z } = candidate;
+  const distanceToCenter = Math.hypot(x, z);
 
+  // 地形范围内 + 不占用广场核心区（保地标视线通廊）
+  if (distanceToCenter > WORLD_LIMIT) return false;
+  if (distanceToCenter < PLAZA_CLEAR_RADIUS) return false;
+
+  const streamDistance = distanceToMainStream(x, z);
+  const streamHalfWidth = getStreamWidth(z); // 水面半宽（含波动）
+
+  if (def.zone === 'plaza' && streamDistance < RIVER_CLEAR_TERRACE) return false;
   if (
-    group.id === 'stream' &&
-    (distanceToStream < 5.6 || distanceToStream > 12.5)
+    def.zone === 'stream' &&
+    (streamDistance < streamHalfWidth + 2.2 || // 退水岸 ≥ 2m
+      streamDistance > STREAM_BANK_MAX + 1.5)
   ) {
     return false;
   }
-
-  if (group.id === 'terrace' && distanceToStream < 8) {
+  if (def.zone === 'mountain' && streamDistance < MOUNTAIN_RIVER_CLEAR) {
     return false;
   }
 
-  if (!['stream', 'terrace'].includes(group.id) && distanceToStream < 13) {
-    return false;
-  }
+  // 避让次级溪流
+  if (nearSecondaryStream(x, z, def.zone === 'mountain' ? 6 : 4.5)) return false;
+
+  const zone = def.zone;
 
   return existing.every((home) => {
-    const distance = Math.hypot(home.x - candidate.x, home.z - candidate.z);
-
-    if (home.group === group.id) {
-      return distance >= group.minDistance;
+    const spacing = Math.hypot(home.x - x, home.z - z);
+    if (zoneOf(home.group) === zone) {
+      return spacing >= Math.max(def.minSpacing, minSpacingOf(home.group));
     }
-
-    return distance >= 4;
+    return spacing >= 8;
   });
 };
 
@@ -123,94 +176,78 @@ const createHomes = () => {
   const homes = [];
   let number = 1;
 
-  groupDefinitions.forEach((group) => {
+  ZONE_DEFS.forEach((def) => {
     let placed = 0;
     let attempts = 0;
 
-    while (placed < group.count && attempts < 6000) {
+    while (placed < def.count && attempts < 40000) {
       attempts += 1;
-      const candidate = createCandidate(group, random, attempts);
+      const candidate = randomPointInZone(def, random);
 
-      if (!isValidCandidate(candidate, group, homes)) {
+      if (!isValidCandidate(candidate, def, homes)) {
         continue;
       }
 
-      const variantByGroup = {
-        cliff: 0,
-        forest: 1,
-        terrace: 2,
-        stream: 3,
-      };
       homes.push({
         id: `plot-${number}`,
         number,
-        group: group.id,
-        groupLabel: group.label,
+        group: def.id,
+        groupLabel: def.label,
+        zone: def.zone,
         x: candidate.x,
         z: candidate.z,
         y: getTerrainHeight(candidate.x, candidate.z),
-        scale: 0.92 + (number % 5) * 0.045 + (group.id === 'cliff' ? 0.08 : 0),
-        variant: variantByGroup[group.id],
-        view: group.view,
+        scale:
+          0.92 + (number % 5) * 0.045 + (def.zone === 'mountain' ? 0.08 : 0),
+        variant: def.variant,
+        view: def.view,
         rotation: candidate.angle,
         isUserHome: number === 1,
       });
+
       placed += 1;
       number += 1;
     }
 
-    if (placed < group.count) {
+    if (placed < def.count) {
       throw new Error(
-        `Unable to place ${group.label}: ${placed}/${group.count}`,
+        `无法完成宅院排布：${def.label}(${def.id}) ${placed}/${def.count}`,
       );
     }
   });
+
+  if (homes.length !== HOME_COUNT) {
+    throw new Error(`宅院总数异常：${homes.length}/${HOME_COUNT}`);
+  }
 
   return homes;
 };
 
 export const homes = createHomes();
 
-// 阶段四/五：将原先落在生活广场内部的 8 / 4 / 18 / 19 号宅院整体平移到广场外侧草地边缘。
-// 仅调整坐标（x/z）；宅院样式、大小、朝向沿用原定义不变，平面地形下 y 统一为 0。
-// 触发范围 / 碰撞盒 / 庭院小品均由 home.x·z 派生，会随新坐标自动同步。
-const PLAZA_RELOCATIONS = {
-  'plot-8': { x: 25.55, z: 32.7 },
-  'plot-4': { x: -40.41, z: -14.71 },
-  'plot-18': { x: -40.61, z: 15.59 },
-  'plot-19': { x: 39.46, z: 9.11 },
-};
-
-homes.forEach((home) => {
-  const target = PLAZA_RELOCATIONS[home.id];
-  if (!target) return;
-  home.x = target.x;
-  home.z = target.z;
-  home.y = getTerrainHeight(target.x, target.z);
-});
-
+// 组团枢纽（用于房门朝向、入户石板/花架落点、镜头飞入与植被避让）
 const groupCenters = {
-  stream: { x: getStreamX(0) + 9, z: 0 },
-  forest: { x: -36, z: 42 },
-  cliff: { x: 55, z: -10 },
-  terrace: { x: 22, z: -17 },
+  terrace: { x: 0, z: 0 }, // 台地宅院朝向广场
+  stream: { x: getStreamX(0), z: 0 }, // 临溪宅院朝向河道
+  forest: { x: -78, z: -78 },
+  cliff: { x: 92, z: 0 },
 };
 
-export const bridgeNetwork = groupDefinitions.map((group) => ({
-  id: `group-${group.id}`,
-  group: group.id,
+export const bridgeNetwork = ZONE_DEFS.map((def) => ({
+  id: `group-${def.id}`,
+  group: def.id,
   hub: {
-    x: groupCenters[group.id].x,
-    y: getTerrainHeight(groupCenters[group.id].x, groupCenters[group.id].z),
-    z: groupCenters[group.id].z,
+    x: groupCenters[def.id].x,
+    y: getTerrainHeight(groupCenters[def.id].x, groupCenters[def.id].z),
+    z: groupCenters[def.id].z,
   },
 }));
 
 export const crossGroupBridges = [
   {
     id: 'stream-bridge-north',
-    from: { x: 17, z: -48 },
-    to: { x: -18, z: -48 },
+    from: { x: 18, z: -46 },
+    to: { x: -18, z: -46 },
   },
   {
     id: 'stream-bridge-center',
@@ -219,8 +256,8 @@ export const crossGroupBridges = [
   },
   {
     id: 'stream-bridge-south',
-    from: { x: 14, z: 54 },
-    to: { x: -17, z: 58 },
+    from: { x: 16, z: 52 },
+    to: { x: -17, z: 56 },
   },
 ];
 
@@ -246,23 +283,41 @@ export const getNearestHub = (home) => {
 
 export const validateHomeLayout = () => {
   const overlapping = [];
+  const riverViolations = [];
+  const plazaViolations = [];
+  const outOfBounds = [];
   let minimumDistance = Number.POSITIVE_INFINITY;
   let minimumCrossGroupDistance = Number.POSITIVE_INFINITY;
+
+  homes.forEach((home) => {
+    const distanceToCenter = Math.hypot(home.x, home.z);
+
+    if (!Number.isFinite(home.x) || !Number.isFinite(home.z)) {
+      outOfBounds.push(home.id);
+    }
+    if (distanceToCenter > WORLD_LIMIT) outOfBounds.push(home.id);
+    if (distanceToMainStream(home.x, home.z) < 4.5) riverViolations.push(home.id);
+    if (distanceToCenter < PLAZA_CLEAR_RADIUS) plazaViolations.push(home.id);
+  });
 
   homes.forEach((home, index) => {
     homes.slice(index + 1).forEach((other) => {
       const distance = Math.hypot(home.x - other.x, home.z - other.z);
-      if (home.group === other.group) {
-        minimumDistance = Math.min(minimumDistance, distance);
+      const sameZone = zoneOf(home.group) === zoneOf(other.group);
 
-        if (distance < 15) {
-          overlapping.push([home.id, other.id]);
-        }
+      if (sameZone) {
+        minimumDistance = Math.min(minimumDistance, distance);
+        const required = Math.max(
+          minSpacingOf(home.group),
+          minSpacingOf(other.group),
+        );
+        if (distance < required) overlapping.push([home.id, other.id]);
       } else {
         minimumCrossGroupDistance = Math.min(
           minimumCrossGroupDistance,
           distance,
         );
+        if (distance < 8 - 1e-6) overlapping.push([home.id, other.id]);
       }
     });
   });
@@ -272,11 +327,25 @@ export const validateHomeLayout = () => {
     return counts;
   }, {});
 
+  const zoneCounts = homes.reduce((counts, home) => {
+    counts[home.zone] = (counts[home.zone] || 0) + 1;
+    return counts;
+  }, {});
+
   return {
-    valid: overlapping.length === 0,
+    valid:
+      overlapping.length === 0 &&
+      riverViolations.length === 0 &&
+      plazaViolations.length === 0 &&
+      outOfBounds.length === 0,
+    homeCount: homes.length,
     overlapping,
+    riverViolations,
+    plazaViolations,
+    outOfBounds,
     minimumDistance,
     minimumCrossGroupDistance,
     groupCounts,
+    zoneCounts,
   };
 };
