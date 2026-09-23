@@ -1027,3 +1027,68 @@
 
 ### 提交
 - `git commit f9173c1`（config.js + app.js + worldStore.js + memory-log.md）。
+
+---
+
+## 2026-09-23 对话无响应 + 管理后台数据为空 — 实测根因诊断与最小必要修复
+
+### 自检 — 现象对照
+
+#### 问题 1：3D 世界"对话/聊天功能无法使用"
+- **真实浏览器排查（playwright+Edge）**：
+  - 后端 `GET/POST /api/phase7/public-chat` curl 直连：200 / 201；`POST /api/phase6/chat/world`：201。
+  - traveler 在广场中心（avatar.position=(0,0.98,0)）→ `getSocialContext()` 返回 `{zone:'plaza', channel:'public'}` → 入口按钮 `进入广场公屏` enabled → 点击后 overlay 打开、列表加载历史消息、POST 201 成功 → 气泡显示「traveler...11:23 · plaza」。
+  - 化身移动到 home_gate/river/mountain 等**无在线居民**的场景：`channel='local'/'direct'/'encounter'` → 按钮文案 `就近交流` → **点开后生成 peerId='' 的空面板** → 用户输入发送 → 后端 `/api/phase7/direct/(空)` → 404 `对方不是有效原住民` → 前端 `.err` 静默吞掉（仅 console.error） → 用户视角是「无响应」。
+- **真实根因**：`WorldView.openSpaceChat()` 在 `channel !== 'public'` 且无 `nearestResident` 时，硬打开 `peerId=''` 的对话面板——后端 404 把所有"无邻居场景"伪装成了"功能无响应"。
+- **设计意图**：home_gate 是"凑过去邻居到位"才私聊——本来就不该在没邻居时强行打开面板。
+
+#### 问题 2：管理后台"待审批列表、账号申请等管理数据页面为空"
+- **真实浏览器排查**：
+  - KIN 登录 `http://localhost:5174/#/applications` → 数据正常显示：2 条 pending（ui_zzzz / momomm），下方有「批准入驻 / 驳回申请」按钮。
+  - admin 账号同样可看到全部数据（visitor-quota / plots / sessions 也都正常）。
+  - 唯一会让用户"看不到数据"的路径：在 **5199 主世界登录后再开 5174 新标签**，因 admin 用 sessionStorage 而主世界用 localStorage、又是不同 origin（5199 vs 5174），sessionStorage **不互通** → 新标签页 `ensureSession()` 返回 false → 被 `router.beforeEach` 重定向到 `/#/login?redirect=/applications` → 用户看到登录页 → 以为"数据为空"。
+- **真实根因**：管理台与主世界使用**独立登录会话**（不同 origin 不能跨页共享 sessionStorage）——这是安全边界，不是 bug。但缺少清晰的提示，让用户误以为"刚登过又被请登录 = 数据丢了"。
+
+### 修复（不修改 3D 场景/不破坏既有业务逻辑）
+
+| 问题 | 修复点 | 行为变化 |
+|---|---|---|
+| 1 | `WorldView.openSpaceChat` 移除"home 时硬开空面板"分支 | channel≠public 且无 nearestResident → 直接 `notify('附近暂无在线居民，请走近一位邻居或返回广场中心')`，**不打开面板** |
+| 1 | 新增 `spaceEntryEnabled` 计算属性 + 按钮 `:disabled` 绑定 | 按钮文案改为「走近居民后可私聊」、禁用态（灰色 `cursor: not-allowed`），广场公屏永远可用 |
+| 1 | `.vu-space-entry__btn--disabled` CSS | 视觉禁用样式 |
+| 2 | `AppHeader.vue` 新增「管理后台」入口 | 仅 admin 角色显示；新标签打开 `http://localhost:5174/#/applications`；提示"独立登录会话" |
+| 2 | `vite.config.js` 新增 `VITE_MAIN_WORLD_PORT` / `VITE_ADMIN_PORT` define | 端口变化时（如 vite 顺延到 5199/5176）入口仍指向正确地址 |
+| 2 | `phase6/LoginView.vue` 新增「管理台与主世界使用独立登录会话」提示 | 减少"为什么刚登过又要登录"的困惑 |
+| 2 | `phase6/styles.css` 新增 `.phase6-login-hint` 样式 | 浅绿底胶囊提示 |
+
+### 浏览器实测验证（playwright + Edge，无 headless）
+
+| 场景 | 验证点 | 结果 |
+|---|---|---|
+| **广场中心** | 按钮 `进入广场公屏` enabled / 点开 overlay / 输入发送 | ✅ 201 写入，「traveler修复验证消息」气泡出现 |
+| **远山脚（无邻居）** | 按钮 `走近居民后可私聊` disabled=true，灰色 `cursor: not-allowed` | ✅ |
+| **河岸步道（有邻居"林涧"）** | 按钮 `与 林涧 交流` enabled | ✅ |
+| **KIN 登录主世界** | 顶部导航出现 `管理后台` 链接 → `http://localhost:5174/#/applications` target=_blank | ✅ |
+| **5174 login 页** | 顶部出现浅绿底提示「管理台与主世界（localhost:5199）使用独立登录会话，请用管理员账号（KIN / admin）登录。」 | ✅ |
+| **KIN 登录 5174** | 「入驻申请」可见 2 条 pending + 「批准/驳回」按钮 | ✅ |
+| 控制台 | 0 错误 | ✅ |
+
+### 回归单测（全绿）
+- 虚拟乌托邦 13/13 / 外层前端 9/9 / backend 42/42 / BP3 7/7。
+
+### 改动文件（git status --short）
+- `frontend/src/virtual-utopia/views/WorldView.vue` — openSpaceChat / spaceEntryEnabled / 按钮禁用绑定 / CSS
+- `frontend/src/virtual-utopia/components/AppHeader.vue` — 管理后台链接（admin 角色可见）
+- `frontend/src/virtual-utopia/vite.config.js` — VITE_MAIN_WORLD_PORT / VITE_ADMIN_PORT define
+- `frontend/src/virtual-utopia/styles.css` — `.vu-nav__link--admin` + `.vu-space-entry__btn--disabled`
+- `frontend/src/phase6/views/LoginView.vue` — 登录提示
+- `frontend/src/phase6/styles.css` — `.phase6-login-hint` 样式
+
+### 经验（强化 skill `virtual-utopia-safe-iteration`）
+- **空场景要"显式拒绝"而非"显示空面板"**：当 UI 入口被设计成「凑近才能用」，在边界条件（无邻居、无 owner）下应直接 toast 提示并阻止操作，而不是打开空壳让用户走死路。
+- **跨 origin 的会话不互通是设计而非 bug**：要在入口处明示（"独立登录会话"提示 + 跳转按钮），不要让用户以为"我明明登过"。
+- **「对话无响应」要按三层排查**：① 后端 API 是否 200/201；② 前端 store 是否被静默吞错（`try/catch` 无 notify）；③ UI 是否在错误状态下打开空面板。三层同时断才能让用户"看到无响应"。
+- **跨端口 admin 入口通过 `import.meta.env` 注入端口**：避免硬编码 "5174" 在 vite 顺延后失联。
+
+### 提交
+- `git commit <HASH>`（上述 6 文件 + memory-log.md）。

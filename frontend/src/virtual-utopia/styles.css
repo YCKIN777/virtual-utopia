@@ -152,6 +152,18 @@ a {
   background: var(--vu-muted-surface);
 }
 
+.vu-nav__link--admin {
+  color: var(--vu-brand-deep, #1f6f3f);
+  border: 1px solid rgba(47, 168, 79, 0.32);
+  border-radius: 999px;
+  padding: 0 14px;
+}
+
+.vu-nav__link--admin:hover {
+  background: rgba(47, 168, 79, 0.12);
+  color: var(--vu-brand-deep, #1f6f3f);
+}
+
 .vu-header__account {
   display: flex;
   align-items: center;

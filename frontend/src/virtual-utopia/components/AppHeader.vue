@@ -6,11 +6,17 @@ import { worldStore } from '../stores/worldStore.js';
 const router = useRouter();
 const user = computed(() => worldStore.state.user);
 const isLoggedIn = computed(() => Boolean(user.value));
+const isAdmin = computed(() => user.value?.role === 'admin');
 
 const logout = () => {
   worldStore.logout();
   router.push({ name: 'home' });
 };
+
+// 管理后台端口来自 vite 注入；缺省 5174（与 frontend/src/phase6/vite.config.js 对齐）。
+const adminPort =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ADMIN_PORT) || '5174';
+const adminUrl = computed(() => `http://localhost:${adminPort}/#/applications`);
 </script>
 
 <template>
@@ -35,6 +41,16 @@ const logout = () => {
         <RouterLink :to="{ name: 'profile' }" class="vu-nav__link">
           个人中心
         </RouterLink>
+        <a
+          v-if="isAdmin"
+          :href="adminUrl"
+          class="vu-nav__link vu-nav__link--admin"
+          target="_blank"
+          rel="noopener"
+          title="管理台与主世界使用独立登录会话；新标签打开"
+        >
+          管理后台
+        </a>
       </nav>
 
       <div class="vu-header__account">

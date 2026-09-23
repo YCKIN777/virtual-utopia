@@ -115,13 +115,24 @@ const socialHint = computed(() => {
   return '山脚自由交流 · 无固定点位';
 });
 
+// 就近入口按钮是否可点击：广场公屏永远可用；其它场景需就近有居民。
+const spaceEntryEnabled = computed(() => {
+  const context = socialContext.value;
+  if (!context) return false;
+  if (context.channel === 'public') return true;
+  return Boolean(context.nearestResident);
+});
+
 const openSpaceChat = () => {
   if (!isResidentUser.value) {
     worldStore.notify('访客暂无社交权限，完成入驻后即可交流', 'info');
     return;
   }
   const context = socialContext.value;
-  if (!context) return;
+  if (!context) {
+    worldStore.notify('正在定位你的场景…稍后再试', 'info');
+    return;
+  }
   const peer = context.nearestResident;
   if (context.channel === 'public') {
     spacePanel.mode = 'public';
@@ -131,12 +142,11 @@ const openSpaceChat = () => {
     spacePanel.mode = 'direct';
     spacePanel.peerId = peer.avatarId;
     spacePanel.peerName = peer.residentName;
-  } else if (context.nearestHome) {
-    spacePanel.mode = 'direct';
-    spacePanel.peerId = '';
-    spacePanel.peerName = `${context.nearestHome.number} 号宅院`;
   } else {
-    worldStore.notify('附近暂时没有可交流的邻居', 'info');
+    // 修复：原先在 home_gate/river/mountain 等场景下，硬打开 peerId='' 的面板
+    // 会导致发送时后端 404（"对方不是有效原住民"），用户看到的是"无响应"。
+    // 现在直接提示用户走近居民，避免空对话死路。
+    worldStore.notify('附近暂无在线居民，请走近一位邻居或返回广场中心', 'info');
     return;
   }
   spacePanel.label = context.label;
@@ -835,13 +845,19 @@ watch(currentUser, () => {
       <span class="vu-space-entry__zone">{{ socialContext.label }}</span>
       <span class="vu-space-entry__hint">{{ socialHint }}</span>
       <div class="vu-space-entry__actions">
-        <button type="button" class="vu-space-entry__btn" @click="openSpaceChat">
+        <button
+          type="button"
+          class="vu-space-entry__btn"
+          :class="{ 'vu-space-entry__btn--disabled': !spaceEntryEnabled }"
+          :disabled="!spaceEntryEnabled"
+          @click="openSpaceChat"
+        >
           {{
             socialContext.channel === 'public'
               ? '进入广场公屏'
               : socialContext.nearestResident
                 ? `与 ${socialContext.nearestResident.residentName} 交流`
-                : '就近交流'
+                : '走近居民后可私聊'
           }}
         </button>
         <button
@@ -1217,6 +1233,19 @@ watch(currentUser, () => {
 
 .vu-space-entry__btn--ghost:hover {
   background: rgba(47, 168, 79, 0.18);
+}
+
+.vu-space-entry__btn--disabled,
+.vu-space-entry__btn[disabled] {
+  background: rgba(150, 165, 158, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: not-allowed;
+}
+
+.vu-space-entry__btn--ghost[disabled],
+.vu-space-entry__btn--ghost.vu-space-entry__btn--disabled {
+  background: rgba(47, 168, 79, 0.08);
+  color: rgba(37, 138, 65, 0.55);
 }
 
 @keyframes vu-space-fade-in {

@@ -5,10 +5,19 @@ import vue from '@vitejs/plugin-vue';
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 
+// 默认端口（启动时被占用会顺延；可通过 VITE_MAIN_WORLD_PORT / VITE_ADMIN_PORT 环境变量覆盖）
+const DEFAULT_MAIN_WORLD_PORT = process.env.VITE_MAIN_WORLD_PORT || '5199';
+const DEFAULT_ADMIN_PORT = process.env.VITE_ADMIN_PORT || '5174';
+
 export default defineConfig({
   root: rootDirectory,
   base: './',
   plugins: [vue()],
+  // 通过 define 把端口常量直接替换到 import.meta.env；与官方 .env 行为对齐。
+  define: {
+    'import.meta.env.VITE_MAIN_WORLD_PORT': JSON.stringify(DEFAULT_MAIN_WORLD_PORT),
+    'import.meta.env.VITE_ADMIN_PORT': JSON.stringify(DEFAULT_ADMIN_PORT),
+  },
   server: {
     host: '0.0.0.0',
     port: 5175,

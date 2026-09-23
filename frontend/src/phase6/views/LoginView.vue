@@ -11,6 +11,15 @@ const form = reactive({
 });
 const loading = ref(false);
 const errorMessage = ref('');
+// 主世界端口提示：管理台与主世界是同源后端、不同前端 origin，会话不互通
+const portHint = (() => {
+  try {
+    const mainWorldPort = (import.meta.env?.VITE_MAIN_WORLD_PORT) || '5199';
+    return `localhost:${mainWorldPort}`;
+  } catch {
+    return '主世界';
+  }
+})();
 
 const sha256Hex = async (value) => {
   const text = String(value ?? '');
@@ -69,6 +78,10 @@ const submit = async () => {
           <h1>管理台登录</h1>
         </div>
       </div>
+
+      <p class="phase6-login-hint">
+        管理台与主世界（{{ portHint }}）使用独立登录会话，请用管理员账号（KIN / admin）登录。
+      </p>
 
       <form class="phase6-form" @submit.prevent="submit">
         <label class="phase6-field">
