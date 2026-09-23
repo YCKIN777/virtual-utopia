@@ -1091,4 +1091,4 @@
 - **跨端口 admin 入口通过 `import.meta.env` 注入端口**：避免硬编码 "5174" 在 vite 顺延后失联。
 
 ### 提交
-- `git commit <HASH>`（上述 6 文件 + memory-log.md）。
+- `git commit 8349ae4`（上述 6 文件 + memory-log.md）。
