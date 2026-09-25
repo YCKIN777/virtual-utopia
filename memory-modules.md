@@ -142,6 +142,12 @@
 - `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。
 - 详细 13 条坑（惰性实例化 / response_format / 节点名撞字段 / thread_id 语义 / SSE 断线 / interrupt 约束 / 工具消息累积等）见 memory-log.md 2026-09-25 条目。
 
+### 审批清单扩展（2026-09-26 落地）
+- 默认 `AI_APPROVAL_TOOLS=guestbook_write,query_friends`（写入类 + 隐私查询类；其余 3 查询工具低敏不审批）。
+- 审批判定为配置驱动：`routeAfterBranch` 检查 `env.ai.approvalTools.includes(call.name)`（已 export 供单测）；新增敏感工具仅改配置，零代码。
+- 验证：`tests/approvalRouting.test.js` 7/7（无工具→finalize / 敏感→approval / 非敏感→execute_tools / 混合→approval / 多值解析）。
+- 局限：审批粒度工具级（整轮暂停），无参数级审批；居民查「自己的好友列表」也需 KIN 确认（宁可多批）。
+
 ### 外层壳注册 + 图形验证码（2026-09-26 落地）
 - 验证码：`src/services/captchaService.js`（4 位数字 SVG + 干扰线；内存 Map 5 分钟过期、一次性、上限 1000 自动清理）+ `GET /api/scene/route/captcha`（公开）。
 - 注册代理：`src/routes/register.js`（`POST /api/scene/route/register`：镜像 phase5 入参校验 → 验证码校验（403 CAPTCHA_INVALID）→ 转发 phase5 `/api/phase5/auth/register`（**phase5 零改动**）→ 201 pending；phase5 错误透传、不可达 503）。`env.js` 增 `phase5.baseUrl`（PHASE5_BASE_URL）。

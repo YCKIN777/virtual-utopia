@@ -87,12 +87,13 @@ export const env = Object.freeze({
     langsmithTracing: toBoolean(process.env.LANGSMITH_TRACING),
     useLanggraph: process.env.USE_LANGGRAPH !== '0',
     // P4: HITL（KIN 审批）—— 命中敏感工具时 interrupt 暂停等审批。
-    // 可关：AI_HITL_ENABLED=false；敏感工具清单：AI_APPROVAL_TOOLS=guestbook_write,...
+    // 可关：AI_HITL_ENABLED=false；敏感工具清单：AI_APPROVAL_TOOLS=guestbook_write,query_friends
+    // 待办④（2026-09-26）：默认清单扩展 —— guestbook_write（写入）+ query_friends（他人隐私/待处理申请）。
     hitlEnabled: process.env.AI_HITL_ENABLED !== 'false',
     // 待办③：工具轮调试日志门控（nodes.js 5 处 [debug-branch] 日志）。
     // 默认关（生产无噪音）；排查工具轮时开：AI_TOOLS_DEBUG=true
     toolsDebug: toBoolean(process.env.AI_TOOLS_DEBUG, false),
-    approvalTools: (process.env.AI_APPROVAL_TOOLS || 'guestbook_write')
+    approvalTools: (process.env.AI_APPROVAL_TOOLS || 'guestbook_write,query_friends')
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean),

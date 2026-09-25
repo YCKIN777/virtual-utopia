@@ -1433,3 +1433,34 @@
 - 验证码为内存存储（单实例内存态，重启即清；多实例部署需换 Redis 等共享存储）；captchaService 上限清理为惰性（仅在 create 时 sweep）。
 - 注册代理仅透传 phase5 校验错误，不缓存/不幂等（重复提交会得到 phase5 的「用户名已被占用」——符合预期）。
 - 冒烟在 phase5 库留下 `smoke_*` pending 用户（无权限，不影响业务；如需清理需 admin 流程删除）。
+
+---
+
+## 2026-09-26 待办④ 扩展审批工具清单（AI_APPROVAL_TOOLS）
+
+> 背景：默认审批清单仅 `guestbook_write`（写入类）；verify-hitl 冒烟曾用 `quota_overview,guestbook_write` 演示审批链路。
+> 决策：将**隐私查询类** `query_friends`（好友列表 + 待处理好友申请，涉及他人社交关系隐私）纳入默认审批；
+> 其余查询工具（plot_lookup / quota_overview / resident_card_lookup）为公开/低敏信息，不审批（避免居民对话频繁卡审批）。
+
+### 改动文件
+- `backend/src/config/env.js`：`approvalTools` 默认值 `'guestbook_write,query_friends'`（注释更新）。
+- `backend/.env.example`：`AI_APPROVAL_TOOLS=guestbook_write,query_friends`。
+- `backend/.env`：显式追加 `AI_HITL_ENABLED=true` + `AI_APPROVAL_TOOLS=guestbook_write,query_friends`（.env 不入库）。
+- `backend/src/ai/graph/graphOrchestrator.js`：`routeAfterBranch` 加 `export`（供单测；审批判定为配置驱动 `env.ai.approvalTools.includes(call.name)`）。
+- `backend/tests/approvalRouting.test.js`（新）：routeAfterBranch 四态（无工具→finalize / 敏感→approval / 非敏感→execute_tools / 混合含敏感→approval）+ env 多值解析规则（trim/过滤空项）+ 默认清单断言，共 7 用例。
+- `backend/tests/registerRoute.test.js`：**修复路径同步 bug**——上轮把路由内路径改为 `/scene/route/register`（修 app.js 双前缀 404）后，本测试仍请求 `/api/scene/route/register`，全量回归时 404（单独跑时路径恰好匹配旧路由，未暴露）；改为 `/scene/route/register`。
+
+### 测试结果
+- 后端全量 **72/72**（65 旧 + approvalRouting 7）；前端 19/19 不受影响（本轮无前端改动）。
+- env 解析实测：`.env` 注入后 `approvalTools = ["guestbook_write","query_friends"]`、`hitlEnabled = true`。
+
+### 自检清单
+- [x] 默认审批清单扩展（env.js + .env.example + .env）
+- [x] routeAfterBranch 导出 + 四态单测 7/7
+- [x] registerRoute 测试路径同步修复
+- [x] 后端 72/72 无回归
+- [x] 记忆三件套同步（本条 + memory-core 第八节待办④ ✅）
+
+### 已知局限
+- 审批粒度是**工具级**（命中工具名即整轮暂停），无字段/参数级审批——query_friends 全量审批后，居民查「自己的好友列表」也需 KIN 确认（当前设计取向：宁可多批不可漏批；若觉扰民可改参数级或在 prompt 层引导）。
+- 新增敏感工具时只需改 `AI_APPROVAL_TOOLS` 配置，无需改代码（配置驱动已验证）。

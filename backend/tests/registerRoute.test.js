@@ -56,7 +56,7 @@ const runRegister = async ({
   const base = `http://127.0.0.1:${port}`;
 
   try {
-    const response = await fetch(`${base}/api/scene/route/register`, {
+    const response = await fetch(`${base}/scene/route/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -146,7 +146,7 @@ test('register：入参校验失败 → 400 VALIDATION_ERROR（不经过验证�
 
   try {
     const response = await fetch(
-      `http://127.0.0.1:${port}/api/scene/route/register`,
+      `http://127.0.0.1:${port}/scene/route/register`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

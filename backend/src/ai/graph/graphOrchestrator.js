@@ -36,7 +36,8 @@ const routeBranch = (state) => {
 
 // P4：branch 之后 —— 有工具调用则进 execute_tools 节点；若含敏感工具且 HITL 开启，
 // 先进 approval 节点等 KIN 审批。
-const routeAfterBranch = (state) => {
+// 待办④：导出供单测（approvalRouting.test.js）—— 审批清单为配置驱动（env.ai.approvalTools）。
+export const routeAfterBranch = (state) => {
   if (state.toolCalls.length === 0) {
     return 'finalize';
   }
