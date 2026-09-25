@@ -1467,6 +1467,35 @@
 
 ---
 
+## 2026-09-26 预览运行（全服务 E2E）
+
+> 背景：P4 六项闭环后首次完整预览运行（phase5/phase6/chroma/scene/frontend 五服务）。
+
+### 服务启动方式（实测可复现）
+- phase5(3300)：`node --env-file=backend\.env backend\src\phase5\server.js` + 注入 `PHASE5_AUTH_SECRET=changeme`、`PHASE5_BOOTSTRAP_ADMIN_PASSWORD=utopia2026`（.env.example 默认值，本地预览可用；生产须强随机）。
+- phase6(3400)：`node --env-file=backend\.env backend\src\phase6\server.js`（只须 PHASE5_SERVICE_TOKEN，backend/.env 已有）。
+- chroma(8000)：`node scripts/chroma.mjs start`（venv + 治理后数据；心跳 /api/v2/heartbeat）。
+- scene(3000)：**必须 `node --env-file=backend\.env backend\src\server.js`** —— 后台进程 cwd 不保证为 backend，`dotenv.config()` 默认读 cwd/.env 会读到 root .env（缺 backend 的 PHASE5_SERVICE_TOKEN 等），导致 `DEEPSEEK_CONFIGURATION_ERROR` 503。start-all.mjs 的 spawn 未注入 env，同样踩此坑。
+- frontend(5173)：`cd frontend; node H:\BP2\node_modules\vite\bin\vite.js --host 0.0.0.0`（vite dev）。
+
+### 验证结果
+- verify-auth.mjs 7/7：登录、游客对话 200、游客 resume 403（待办⑥生效）、无效 token 401、流式 200、完整回复（replyLen=83）、真实工具 plot_lookup（chunkLen=152）。
+- verify-hitl.mjs A/B 全 PASS：query_friends 触发 approval_pending → resume(true) 真实数据「目前没有待处理的好友申请」；resume(false) 拒绝「未获批准，我没有执行」。
+- 后端 83/83 单测（本轮无回归）。
+
+### 本轮发现的坑（已入此条目）
+- **scene 启动 env 注入**：后台进程 cwd 漂移 → dotenv 读错 .env → 503 DEEPSEEK_CONFIGURATION_ERROR；修复=`--env-file` 显式注入（见上）。
+- **verify-hitl.mjs 过时**：场景 A/B 期望 quota_overview 触发审批，但待办④后该工具已移出审批清单 → ASSERT FAILED。已对齐为 query_friends，提问「请帮我看看我还有没有待处理的好友申请」实测稳定触发工具调用（已提交）。
+
+### 自检清单
+- [x] 五服务全部健康（200）
+- [x] 真实登录 + 对话 + 工具调用全链路
+- [x] HITL 审批 approve/deny 双路径 + resume 归属校验
+- [x] 发现的两个坑已修复/对齐并提交
+- [x] 本条 memory-log 同步
+
+---
+
 ## 2026-09-26 待办⑥ resume conversationId → owner 归属校验
 
 > 背景：resume 端点此前仅校验「role=admin」（KIN 审批），任意 conversationId 只要 admin 就能恢复；
