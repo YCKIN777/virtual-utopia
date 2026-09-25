@@ -1,4 +1,4 @@
-// P4 验证：SSE 流式对话 + 长记忆写入。
+// P4 验证：SSE 流式对话 + 长记忆写入（真实认证模式：phase6 登录 → Bearer token）。
 // 用法：node scripts/verify-stream.mjs
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,24 @@ const backendRoot = path.resolve(currentDir, '..');
 dotenv.config({ path: path.join(backendRoot, '.env') });
 
 const BASE = 'http://localhost:3000';
+const PHASE6_BASE = 'http://localhost:3400';
+const USERNAME = process.env.AUTH_USERNAME || 'admin';
+const PASSWORD = process.env.AUTH_PASSWORD || 'utopia2026';
+
+const login = async () => {
+  const response = await fetch(`${PHASE6_BASE}/api/phase6/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.token) {
+    throw new Error(`login failed: ${response.status} ${JSON.stringify(payload)}`);
+  }
+
+  return payload.token;
+};
 
 const parseSse = async (response, handlers) => {
   if (!response.body) throw new Error('no response body');
@@ -43,18 +61,23 @@ const parseSse = async (response, handlers) => {
 };
 
 const run = async () => {
+  const token = await login();
   const conversationId = `stream-verify-${Date.now()}`;
   const body = {
     conversationId,
     sceneId: 'yard',
-    input: { content: '帮我看看现在乌托邦的访客名额是什么情况？' },
-    user: { userId: 901, username: 'stream-user', role: 'editor' },
+    // 用不命中审批的查询工具（plot_lookup）验证完整流式 + 长记忆落库；
+    // 命中审批的问题会停在 approval_pending（见 verify-hitl.mjs）。
+    input: { content: '帮我查一下 39 号宅院现在是哪位居民在住，风格是什么样的？' },
   };
 
   const events = [];
   const response = await fetch(`${BASE}/api/scene/route/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify(body),
   });
 

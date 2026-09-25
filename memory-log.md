@@ -1247,3 +1247,67 @@
 - `USE_LANGGRAPH=1`（0 回退旧静态 if/else 编排）
 - `AI_MEMORY_ENABLED`（默认开，'false' 关长记忆）
 - `AI_HITL_ENABLED`（默认开）+ `AI_APPROVAL_TOOLS=guestbook_write`（逗号分隔可扩展）
+
+---
+
+## 2026-09-26 场景服务真实认证（替换 body.user 直传信任 + 前端登录）
+
+> 决策：按 memory-core 待办①落地「前端默认身份接真实认证」。后端废弃 body.user 直传（可伪造身份），
+> AI 请求带 Bearer token 经 phase6 /auth/me 解析真实身份；无 token=游客（写操作按角色矩阵拒绝）；
+> resume（审批恢复）仅 KIN（admin）可调用。前端外层壳新增登录（复用 phase6 账号体系）。
+
+### 改动文件
+- **后端**：
+  - `src/middleware/sceneAuth.js`（新）：Bearer → phase6 `/api/phase6/auth/me` → `{userId:user.id, role, username}` 注入 `request.userContext`；无 token→游客(null)；无效→401；认证服务不可达→503（不静默降级）。
+  - `src/config/env.js`：新增 `phase6.baseUrl`（`PHASE6_BASE_URL || http://localhost:3400`，去尾斜杠）。
+  - `src/app.js`：`app.use('/api/scene/route', sceneAuth)` 前缀挂载（覆盖 route/stream/resume 三个端点）。
+  - `src/routes/scene.js` / `stream.js`：把 `request.userContext` 透传给 orchestrator.handle/handleStream。
+  - `src/routes/resume.js`：审批恢复增加「仅 admin」校验（游客/editor → 403 FORBIDDEN）。
+  - `src/services/sessionBoundary.js`：handle 增加 `{ userContext }` 参数透传。
+  - `src/ai/graph/graphOrchestrator.js`：`buildInput`/`persistMemory` 改用 userContext 参数，**body.user 直传废弃**（spoof 无效）。
+  - `tests/sceneAuth.test.js`（新，9 用例）：无 token/有效 token（id→userId 归一化）/viewer/401/503 + resume admin/游客/editor 三态。
+  - `scripts/verify-auth.mjs`（新）：真实认证全链路冒烟；`verify-stream.mjs`/`verify-hitl.mjs` 适配真实登录（移除 body.user）。
+- **前端**：
+  - `src/services/authService.js`（新）：login（密码前端 sha256，同主世界链路）/me/logout/token 存取（key `scene-app.phase5.token`，独立于 virtual-utopia）。
+  - `src/stores/authStore.js`（新）：reactive 身份状态（unknown/guest/authenticated）+ ensureSession/login/logout + isAdmin/roleLabel。
+  - `src/services/sceneApi.js`：三个方法（sendMessage/sendMessageStream/resumeApproval）自动带 `Authorization: Bearer`（getToken 注入，默认读外层 localStorage）；移除 body user 透传。
+  - `src/stores/conversationStore.js`：删除 `DEFAULT_USER` 与 user 透传；注释改为真实认证说明。
+  - `src/components/scene/ScenePageShell.vue`：身份栏（游客模式 badge + 登录/退出）+ 登录弹窗（Teleport + 用户名/密码，复用 BaseInput/BaseButton/useToast）。
+  - `vite.config.js`：新增 `/phase6-api` proxy → `http://localhost:3400`。
+  - `tests/authService.test.js`（新，6 用例）+ `tests/sceneApi.test.js`（token 头断言 + 无 token 无头）。
+- **配置**：`backend/.env.example`（补 `PHASE6_BASE_URL` 注释段）、`frontend/package.json`（test 脚本并入 authService.test.js）。
+
+### 关键实现
+- **身份链路**：前端登录（phase6 login）→ token 存外层 localStorage → sceneApi 请求带 Bearer → sceneAuth 中间件调 phase6 `/auth/me` 解析 → `request.userContext` → graph `state.userContext` → execute_tools 前写入 AsyncLocalStorage（tools/context.js）→ 工具按角色矩阵鉴权。
+- **归一化**：phase5 `/auth/me` 返回 `{ id, username, role, displayName }`（字段是 `id`）→ sceneAuth 归一化为 `{ userId, role, username }`（AI 工具层约定）。
+- **resume 鉴权**：审批恢复 = 敏感操作，仅 admin（403 提示「仅 KIN（管理员）可执行审批操作」）；身份仍由中间件解析注入。
+- **游客路径向后兼容**：无 token 请求继续放行（可对话/查询），仅写类工具（guestbook_write 等）与 resume 被拒——演示体验不中断。
+
+### 测试结果
+- 后端全量回归：**54/54 全绿**（45 旧 + sceneAuth 9）。
+- 前端：**16/16**（原 9 + authService 6 + sceneApi token 断言）＋ `npm run build` 通过（54 modules）。
+- verify-auth.mjs（真实冒烟，admin/utopia2026 bootstrap 默认）：登录 PASS、游客对话放行 PASS、游客 resume 403 PASS、无效 token 401 PASS、真实 token 流式触发 plot_lookup 返回真实数据（body.user spoof 被忽略）PASS。
+- verify-hitl.mjs（AI_APPROVAL_TOOLS=quota_overview,guestbook_write 启动）：场景 A admin 查询命中审批 → resume 批准 → 真实名额数据（无 fallback）；场景 B 拒绝 → 「未获批准，我没有执行」。
+- verify-stream.mjs：完整流式 79 reply_chunk + plot_lookup 真实数据（39 号宅院空置）+ 记忆落库。
+
+### 坑（追加）
+1. **phase5 服务不读 .env**（config 只读 process.env）：启动须 `node --env-file=.env src/phase5/server.js` 或显式注入 `PHASE5_AUTH_SECRET`/`PHASE5_SERVICE_TOKEN`/`PHASE5_BOOTSTRAP_ADMIN_USERNAME`/`PHASE5_BOOTSTRAP_ADMIN_PASSWORD`；phase6 自读 .env —— 两服务环境加载行为不一致（历史遗留）。bootstrap admin 默认 `admin/utopia2026`（.env.example 同款，冒烟可用）。
+2. **verify 脚本「问名额」撞扩展审批清单**：scene 以 `AI_APPROVAL_TOOLS=quota_overview,guestbook_write` 启动时 quota_overview 命中审批 → 流式停在 approval_pending 无完整回复 → 完整流式验证（verify-stream/verify-auth）改用 plot_lookup（不命中审批）。
+3. **register 用户不可直接登录**：phase5 注册默认 `role=editor, status=pending` → 登录被拒（需 admin 审批激活）→ 冒烟用 bootstrap admin。
+4. **authService 测试注入 storage 须实现 localStorage 接口**（getItem/setItem/removeItem），不能传裸 Map（`storage?.setItem is not a function`）。
+
+### 自检清单
+- [x] 后端 sceneAuth 9 用例 + 全量 54/54
+- [x] 前端 authService 6 + sceneApi token 断言 + 16/16 + build
+- [x] verify-auth 6 PASS（游客/401/403/有效 token 真实工具）
+- [x] verify-hitl 场景 A/B（真实认证 + 扩展审批清单）
+- [x] verify-stream 完整流式 + 记忆落库
+- [x] body.user 直传确认废弃（spoof 用例验证身份由 token 决定）
+- [x] 记忆三件套同步（memory-modules 第 10 章真实认证小节、memory-core 第七/八节）
+- [x] 冒烟服务已停止（phase5/phase6/scene 后台进程）
+
+### 已知局限
+- 外层壳登录为最小实现：无注册入口/无验证码；游客文案提示「登录后可执行写入操作」。
+- resume 审批人校验仅限「admin 角色」，未做 conversationId→owner 归属校验（后续可加：审批人须为该会话授权人）。
+- sceneAuth 调 phase6 无超时重试（fetch 直连，网络错误即 503）；跨服务调用可后续加超时与重试。
+- 前端登录 token 存外层 localStorage（key `scene-app.phase5.token`），与主世界（virtual-utopia.phase5.token）相互独立——跨应用同源共享待定。

@@ -8,19 +8,13 @@ const toHistory = (messages) =>
     content,
   }));
 
-// P4: 试点默认身份（HTTP 层 body.user 透传）。演示系统前端可见数据；
-// 生产环境应接入真实认证，这里仅作为试点默认值。
-const DEFAULT_USER = Object.freeze({
-  userId: 1,
-  username: 'resident',
-  role: 'editor',
-});
-
+// P4 收尾：身份由外层壳真实登录提供 —— sceneApi 自动携带 Bearer token（authService），
+// 后端经 phase6 解析注入 userContext；未登录=游客（写类工具按角色矩阵拒绝）。
+// 前端默认身份（body.user 直传）已废弃。
 export const createConversationStore = ({
   requestMessage = (payload) => sceneApi.sendMessage(payload),
   requestMessageStream = (payload) => sceneApi.sendMessageStream(payload),
   requestResume = (payload) => sceneApi.resumeApproval(payload),
-  defaultUser = DEFAULT_USER,
   createId = () => crypto.randomUUID(),
 } = {}) => {
   const conversations = reactive(new Map());
@@ -121,7 +115,7 @@ export const createConversationStore = ({
 
   // P4: 流式发送 —— 占位 assistant 消息实时追加 token（打字机），
   // 阶段状态（思考/工具调用）写入 conversation.status。
-  const sendMessageStream = async (sceneId, content, { user = defaultUser } = {}) => {
+  const sendMessageStream = async (sceneId, content) => {
     const normalizedContent = validate(sceneId, content);
     const conversation = getConversation(sceneId);
     conversation.error = '';
@@ -142,7 +136,6 @@ export const createConversationStore = ({
           content: normalizedContent,
         },
         history,
-        ...(user ? { user } : {}),
         onStatus: (status) => {
           conversation.status = status.phase;
 
@@ -241,8 +234,8 @@ export const useSceneConversation = (sceneId) => {
     conversation,
     sendMessage: (content) =>
       conversationStore.sendMessage(sceneId.value, content),
-    sendMessageStream: (content, options) =>
-      conversationStore.sendMessageStream(sceneId.value, content, options),
+    sendMessageStream: (content) =>
+      conversationStore.sendMessageStream(sceneId.value, content),
     resolveApproval: (options) =>
       conversationStore.resolveApproval(sceneId.value, options),
   };

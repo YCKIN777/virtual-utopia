@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/sceneCatalog.test.js tests/sceneApi.test.js tests/conversationStore.test.js"
+    "test": "node --test tests/sceneCatalog.test.js tests/sceneApi.test.js tests/conversationStore.test.js tests/authService.test.js"
   },
   "dependencies": {
     "three": "^0.181.2",

@@ -11,6 +11,7 @@ import { createSessionBoundary } from './services/sessionBoundary.js';
 import { createSessionStore } from './services/sessionStore.js';
 import { createStreamRouter } from './routes/stream.js';
 import { createResumeRouter } from './routes/resume.js';
+import { createSceneAuthMiddleware } from './middleware/sceneAuth.js';
 
 export const createApp = ({
   modelClient = createModelClient(),
@@ -34,6 +35,11 @@ export const createApp = ({
     orchestrator: sceneOrchestrator,
     sessionStore,
   });
+  // P4 收尾：真实认证 —— 所有 /api/scene/route* 请求经 phase6 解析身份，
+  // 注入 request.userContext（游客=null），供 orchestrator 做工具权限与记忆归属。
+  const sceneAuth = createSceneAuthMiddleware({
+    phase6BaseUrl: env.phase6.baseUrl,
+  });
 
   sessionStore.startCleanup(env.session.cleanupIntervalMs);
 
@@ -46,6 +52,7 @@ export const createApp = ({
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/api', apiRouter);
+  app.use('/api/scene/route', sceneAuth);
   app.use('/api', createSceneRouter({ orchestrator: sessionBoundary }));
   app.use('/api', createStreamRouter({ orchestrator: sceneOrchestrator }));
   app.use('/api', createResumeRouter({ orchestrator: sceneOrchestrator }));

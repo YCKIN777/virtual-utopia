@@ -1,5 +1,6 @@
 import { runtimeConfig } from '../config/runtime.js';
 import { isKnownScene, isSceneAgentEnabled } from '../config/scenes.js';
+import { SCENE_AUTH_TOKEN_KEY } from './authService.js';
 
 export class SceneApiError extends Error {
   constructor(message, options = {}) {
@@ -39,10 +40,25 @@ const getErrorMessage = (code) => {
   return FRIENDLY_ERROR_MESSAGES[code] || '请求处理失败';
 };
 
+// P4 收尾：请求自动携带登录 token（真实认证）。默认从外层壳 localStorage 读取，
+// 与 virtual-utopia 主世界 token（独立 key）互不干扰；未登录=游客，后端按角色矩阵拒绝写操作。
+const defaultGetToken = () =>
+  typeof localStorage !== 'undefined'
+    ? localStorage.getItem(SCENE_AUTH_TOKEN_KEY) || ''
+    : '';
+
 export const createSceneApi = ({
   baseUrl = runtimeConfig.apiBaseUrl,
   fetchImpl = globalThis.fetch,
-} = {}) => ({
+  getToken = defaultGetToken,
+} = {}) => {
+  const authHeaders = () => {
+    const token = getToken();
+
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  return {
   async sendMessage({ sceneId, sessionId, input, history = [] }) {
     if (!isKnownScene(sceneId)) {
       throw new SceneApiError('未知场景', {
@@ -65,6 +81,7 @@ export const createSceneApi = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders(),
         },
         body: JSON.stringify({
           sceneId,
@@ -109,7 +126,6 @@ export const createSceneApi = ({
     sessionId,
     input,
     history = [],
-    user,
     onStatus,
     onToken,
     onDone,
@@ -135,13 +151,13 @@ export const createSceneApi = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders(),
         },
         body: JSON.stringify({
           sceneId,
           sessionId,
           input,
           history,
-          ...(user ? { user } : {}),
         }),
       });
     } catch (error) {
@@ -240,6 +256,7 @@ export const createSceneApi = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders(),
         },
         body: JSON.stringify({
           conversationId,
@@ -273,6 +290,7 @@ export const createSceneApi = ({
 
     return payload;
   },
-});
+  };
+};
 
 export const sceneApi = createSceneApi();

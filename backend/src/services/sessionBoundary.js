@@ -6,7 +6,7 @@ const getSessionType = (sceneId) =>
   sceneId === 'cabin' ? 'private' : 'public';
 
 export const createSessionBoundary = ({ orchestrator, sessionStore }) => ({
-  async handle(body) {
+  async handle(body, { userContext } = {}) {
     const sceneId = body?.sceneId;
 
     if (!Object.hasOwn(SCENE_DEFINITIONS, sceneId)) {
@@ -48,11 +48,14 @@ export const createSessionBoundary = ({ orchestrator, sessionStore }) => ({
       });
     }
 
-    const response = await orchestrator.handle({
-      ...body,
-      sessionId: session.id,
-      history: session.messages,
-    });
+    const response = await orchestrator.handle(
+      {
+        ...body,
+        sessionId: session.id,
+        history: session.messages,
+      },
+      { userContext },
+    );
     const userContent = body.input?.content?.trim();
 
     sessionStore.appendMessages(session.id, [

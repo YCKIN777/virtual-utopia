@@ -127,7 +127,17 @@
 - 后端回归 **45/45**（42 旧 + toolAuth 3）、前端 9/9、vite build 通过。
 - 冒烟：verify-llm.mjs 真实流式 10 chunks；verify-stream.mjs 202 chunks 全通过；verify-hitl.mjs 批准/拒绝双路径；RAG E2E 双引擎（自研 vs LangChain）结果逐位一致；HTTP E2E viewer 问名额返回真实 14 项数据；记忆落库验证通过。
 
+### 真实认证（2026-09-26 落地）
+- 后端废弃 `body.user` 直传（可伪造身份）；新增 `src/middleware/sceneAuth.js`：请求带 `Authorization: Bearer` 时调 phase6 `/api/phase6/auth/me` 解析 `{id, username, role, displayName}` 并归一化为 `{userId, role, username}` 注入 `request.userContext`；无 token=游客（role=null，写工具/审批被拒）；无效 token→401；认证服务不可达→503。
+- `src/app.js` 以 `/api/scene/route` 前缀挂载（route/stream/resume 三端点统一鉴权）；`src/routes/resume.js` 追加「仅 admin 可审批」（游客/editor→403）。
+- `src/ai/graph/graphOrchestrator.js`：`buildInput`/`persistMemory` 改收 `userContext` 参数，body.user 不再信任。
+- 前端：`services/authService.js`（phase6 登录/me/logout + sha256 密码链路 + localStorage key `scene-app.phase5.token`）、`stores/authStore.js`（unknown/guest/authenticated 三态 + ensureSession/login/logout）、`sceneApi.js` 三方法自动带 Bearer、`conversationStore.js` 删除 DEFAULT_USER、`ScenePageShell.vue` 身份栏 + 登录弹窗、`vite.config.js` 加 `/phase6-api` proxy。
+- 配置：`PHASE6_BASE_URL`（默认 http://localhost:3400）。
+- 启动：phase5 不读 .env，须 `node --env-file=.env src/phase5/server.js` 或注入 `PHASE5_AUTH_SECRET/SERVICE_TOKEN/BOOTSTRAP_ADMIN_PASSWORD`（bootstrap 默认 admin/utopia2026）。
+
 ### 已知局限
+- 外层壳登录为最小实现（无注册入口/验证码）；resume 审批人校验仅限 admin 角色（conversationId→owner 归属校验待加）；sceneAuth 调 phase6 无超时重试；前端登录 token 与主世界各自独立存储（跨应用同源共享待定）。
+- 前端默认身份 DEFAULT_USER（userId:1, resident/editor）已废弃（2026-09-26 真实认证落地后删除）。
 - 前端默认身份 DEFAULT_USER（userId:1, resident/editor）为试点值，生产应接真实认证。
 - Chroma 本机无 Docker 用 venv（`.venv-chroma` / `.chroma-data`），collection `virtual_utopia_rag` E2E 后已清空；生产部署方式待定。
 - `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。

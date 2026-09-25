@@ -1,10 +1,11 @@
 // scripts/verify-hitl.mjs
-// P4 HITL（KIN 审批）E2E 验证 —— 依赖运行中的 phase4 服务（3000 端口）。
-// 前置：服务器需以 AI_APPROVAL_TOOLS=quota_overview,guestbook_write 启动（框架验证用查询类工具
-// 触发 interrupt，避免依赖模型对写入类工具的谨慎行为）。
-// 场景 A：editor 查询名额（quota_overview 命中审批）→ pending_approval → resume(approved:true) → 真实数据。
+// P4 HITL（KIN 审批）E2E 验证 —— 真实认证模式（phase6 登录 → Bearer token）。
+// 依赖运行中的 phase5(3300)/phase6(3400)/scene(3000) 服务。
+// 前置：scene 服务需以 AI_APPROVAL_TOOLS=quota_overview,guestbook_write 启动
+//       （框架验证用查询类工具触发 interrupt，避免依赖模型对写入类工具的谨慎行为）。
+// 场景 A：admin 查询名额（quota_overview 命中审批）→ pending_approval → resume(approved:true) → 真实数据。
 // 场景 B：新 thread → resume(approved:false) → 拒绝回复且不执行。
-// 场景 C（行为记录，不硬断言）：editor 授权写留言簿 —— 记录模型是否发起 guestbook_write。
+// 场景 C（行为记录，不硬断言）：admin 授权写留言簿 —— 记录模型是否发起 guestbook_write。
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -14,11 +15,36 @@ const backendRoot = path.resolve(currentDir, '..');
 dotenv.config({ path: path.join(backendRoot, '.env') });
 
 const BASE_URL = 'http://localhost:3000';
+const PHASE6_BASE = 'http://localhost:3400';
+const USERNAME = process.env.AUTH_USERNAME || 'admin';
+const PASSWORD = process.env.AUTH_PASSWORD || 'utopia2026';
+
+let TOKEN = '';
+
+const login = async () => {
+  const response = await fetch(`${PHASE6_BASE}/api/phase6/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.token) {
+    throw new Error(`login failed: ${response.status} ${JSON.stringify(payload)}`);
+  }
+
+  TOKEN = payload.token;
+};
+
+const authHeaders = () => ({
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${TOKEN}`,
+});
 
 const postJson = async (url, body) => {
   const response = await fetch(`${BASE_URL}${url}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -34,7 +60,7 @@ const postJson = async (url, body) => {
 const readSse = async (body) => {
   const response = await fetch(`${BASE_URL}/api/scene/route/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -76,14 +102,15 @@ const assert = (condition, message) => {
   console.log(`  ✓ ${message}`);
 };
 
-console.log('场景 A：editor 查询名额 → pending_approval → resume(approved:true) → 真实数据');
+await login();
+
+console.log('场景 A：admin 查询名额 → pending_approval → resume(approved:true) → 真实数据');
 {
   const conversationId = `hitl-verify-${Date.now()}`;
   const events = await readSse({
     sceneId: 'yard',
     conversationId,
     input: { content: '帮我查一下现在乌托邦的访客名额还剩多少？' },
-    user: { userId: 901, username: 'resident', role: 'editor' },
   });
 
   const pending = events.find(
@@ -139,7 +166,6 @@ console.log('场景 B：新 thread → resume(approved:false) → 拒绝回复�
       sceneId: 'yard',
       conversationId: conversationIdB,
       input: { content: '帮我查一下现在乌托邦的访客名额还剩多少？' },
-      user: { userId: 902, username: 'resident', role: 'editor' },
     });
 
     if (
@@ -166,14 +192,13 @@ console.log('场景 B：新 thread → resume(approved:false) → 拒绝回复�
   console.log(`  reply: ${resume.result.reply.slice(0, 80)}…`);
 }
 
-console.log('场景 C（行为记录）：editor 授权写留言簿 —— 记录模型是否发起 guestbook_write');
+console.log('场景 C（行为记录）：admin 授权写留言簿 —— 记录模型是否发起 guestbook_write');
 {
   const conversationIdC = `hitl-verify-c-${Date.now()}`;
   const events = await readSse({
     sceneId: 'yard',
     conversationId: conversationIdC,
     input: { content: '我现在确认并授权：请直接帮我在留言簿上写下这句话——今天乌托邦阳光很好。' },
-    user: { userId: 901, username: 'resident', role: 'editor' },
   });
 
   const phases = events

@@ -17,7 +17,9 @@ export const createSceneRouter = ({ orchestrator }) => {
 
   router.post('/scene/route', async (request, response, next) => {
     try {
-      const result = await orchestrator.handle(request.body);
+      const result = await orchestrator.handle(request.body, {
+        userContext: request.userContext,
+      });
       response.json(result);
     } catch (error) {
       next(error);

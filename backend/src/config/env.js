@@ -66,6 +66,14 @@ export const env = Object.freeze({
     ),
     maxCount: toInteger(process.env.SESSION_MAX_COUNT, 1000, 1),
   }),
+  phase6: Object.freeze({
+    // P4 收尾：场景服务真实认证 —— AI 对话请求经 Bearer token 调 phase6 /auth/me
+    // 解析身份（替换前端 body.user 直传信任）。生产指向 phase6 网关地址。
+    baseUrl: (process.env.PHASE6_BASE_URL || 'http://localhost:3400').replace(
+      /\/+$/,
+      '',
+    ),
+  }),
   ai: Object.freeze({
     llmBackend: process.env.AI_LLM_BACKEND || 'langchain',
     ragBackend: process.env.AI_RAG_BACKEND || 'langchain',

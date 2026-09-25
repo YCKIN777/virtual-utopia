@@ -125,7 +125,7 @@ export const createSceneGraphOrchestrator = ({
     memoryGateway,
   });
 
-  const buildInput = (body, request) => {
+  const buildInput = (body, request, userContext) => {
     const input = {
       sceneId: request.sceneId,
       sceneName: request.sceneName,
@@ -137,19 +137,20 @@ export const createSceneGraphOrchestrator = ({
       input.tools = tools;
     }
 
-    // P4: 请求级用户上下文（{ userId, role, username }），由 HTTP 层从 body.user 透传，
-    // execute_tools 节点执行工具前写入 AsyncLocalStorage，供 ToolAuth 与工具读取。
-    if (body.user) {
-      input.userContext = body.user;
+    // P4 收尾：请求级用户上下文由 HTTP 层真实认证注入（sceneAuth 中间件经 phase6
+    // /auth/me 解析 Bearer token → { userId, role, username }）。不再接受 body.user
+    // 直传（可伪造身份）；无 token 时 userContext=null（游客，工具按角色矩阵拒绝）。
+    if (userContext) {
+      input.userContext = userContext;
     }
 
     return input;
   };
 
-  const persistMemory = (body, request, finalState) => {
-    if (memoryGateway && body.user?.userId && finalState?.reply) {
+  const persistMemory = (body, request, finalState, userContext) => {
+    if (memoryGateway && userContext?.userId && finalState?.reply) {
       memoryGateway.after({
-        userId: body.user.userId,
+        userId: userContext.userId,
         conversationId: body.conversationId,
         sceneId: request.sceneId,
         userContent: request.input.content,
@@ -180,33 +181,12 @@ export const createSceneGraphOrchestrator = ({
   };
 
   return Object.freeze({
-    async handle(body) {
+    async handle(body, { userContext } = {}) {
       const request = normalizeSceneRequest(body);
       const threadId = body.conversationId ?? `ephemeral-${randomUUID()}`;
-      const finalState = await invokeGraph(buildInput(body, request), threadId);
-
-      if (isInterrupted(finalState)) {
-        const pending = toPendingApproval(finalState);
-        pending.conversationId = body.conversationId || threadId;
-
-        return pending;
-      }
-
-      persistMemory(body, request, finalState);
-
-      return finalState.finalResponse;
-    },
-
-    // P4: 流式入口 —— 在 AsyncLocalStorage 中提供 { onStatus, onToken }，
-    // branch 最终轮经模型 .stream 推 token、工具轮推阶段事件。
-    // 若图在 approval 节点暂停，同样返回 pending_approval 载荷（SSE 层发 approval_pending 事件）。
-    async handleStream(body, { onStatus, onToken } = {}) {
-      const request = normalizeSceneRequest(body);
-      const threadId = body.conversationId ?? `ephemeral-${randomUUID()}`;
-      const streamContext = { onStatus, onToken };
-      const finalState = await streamingContextStorage.run(
-        streamContext,
-        () => invokeGraph(buildInput(body, request), threadId),
+      const finalState = await invokeGraph(
+        buildInput(body, request, userContext),
+        threadId,
       );
 
       if (isInterrupted(finalState)) {
@@ -216,7 +196,31 @@ export const createSceneGraphOrchestrator = ({
         return pending;
       }
 
-      persistMemory(body, request, finalState);
+      persistMemory(body, request, finalState, userContext);
+
+      return finalState.finalResponse;
+    },
+
+    // P4: 流式入口 —— 在 AsyncLocalStorage 中提供 { onStatus, onToken }，
+    // branch 最终轮经模型 .stream 推 token、工具轮推阶段事件。
+    // 若图在 approval 节点暂停，同样返回 pending_approval 载荷（SSE 层发 approval_pending 事件）。
+    async handleStream(body, { onStatus, onToken, userContext } = {}) {
+      const request = normalizeSceneRequest(body);
+      const threadId = body.conversationId ?? `ephemeral-${randomUUID()}`;
+      const streamContext = { onStatus, onToken };
+      const finalState = await streamingContextStorage.run(
+        streamContext,
+        () => invokeGraph(buildInput(body, request, userContext), threadId),
+      );
+
+      if (isInterrupted(finalState)) {
+        const pending = toPendingApproval(finalState);
+        pending.conversationId = body.conversationId || threadId;
+
+        return pending;
+      }
+
+      persistMemory(body, request, finalState, userContext);
 
       return finalState.finalResponse;
     },

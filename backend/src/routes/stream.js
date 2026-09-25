@@ -66,6 +66,7 @@ export const createStreamRouter = ({ orchestrator }) => {
       const payload = await handleStream(request.body, {
         onStatus: (status) => send('status', status),
         onToken: (token) => send('reply_chunk', { token }),
+        userContext: request.userContext,
       });
 
       // P4 HITL：图在 approval 节点暂停 → 发 approval_pending 事件，前端据此渲染审批卡片。

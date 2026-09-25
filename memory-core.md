@@ -70,11 +70,12 @@
 - 运行中 phase5/phase6 若改端点需重启加载。
 - phase5 users 表 status 已扩展为 `('active','disabled','pending','moved_out')`，并有 FK 修复逻辑（见 database.js）。
 - AI 编排 env 开关（backend/.env + .env.example，2026-09-25）：`AI_LLM_BACKEND=langchain`（legacy 回退旧 deepSeekClient）、`AI_RAG_BACKEND=langchain`（回退自研 RAG）、`USE_LANGGRAPH=1`（0 回退旧静态 if/else 编排）、`AI_MEMORY_ENABLED`（默认开，'false' 关）、`AI_HITL_ENABLED`（默认开）、`AI_APPROVAL_TOOLS=guestbook_write`（逗号分隔可扩展）；DeepSeek：`DEEPSEEK_BASE_URL=https://api.deepseek.com`、model `deepseek-chat`。
+- 真实认证（2026-09-26）：`PHASE6_BASE_URL=http://localhost:3400`（sceneAuth 调 phase6 /auth/me）；无 token=游客；resume 仅 admin。**phase5 不读 .env**，启动须 `node --env-file=.env src/phase5/server.js` 或注入 `PHASE5_AUTH_SECRET`/`PHASE5_SERVICE_TOKEN`/`PHASE5_BOOTSTRAP_ADMIN_PASSWORD`（bootstrap 默认 admin/utopia2026）；phase6 自读 .env。
 - 本机 Node 服务绑定 IPv6 → 验证用 `localhost` 而非 `127.0.0.1`；Chroma 启动命令：`& 'H:\BP2\.venv-chroma\Scripts\chroma.exe' run --path 'H:\BP2\.chroma-data' --host 127.0.0.1 --port 8000`。
 
 ## 八、当前交接点（上下文快满 / 新窗口 / 换智能体时从这里接）
 > 每次收工前更新本节；新窗口/换智能体第一句让其读本文件，按本节继续，不要重新讨论方向。
-- 当前进度（截至 2026-09-25）：**LangGraph 重构 P0–P4 全部落地并验证**（自研 AI 编排 → LangChain.js + LangGraph.js；业务层 phase5/6/7 与 8 个 SQLite 库零改动）。
+- 当前进度（截至 2026-09-26）：**LangGraph 重构 P0–P4 全部落地并验证**（自研 AI 编排 → LangChain.js + LangGraph.js；业务层 phase5/6/7 与 8 个 SQLite 库零改动）+ **P4 收尾三项（HITL/prompt 改句/工具剪枝）+ 场景服务真实认证落地**。
   - P0 基座：6 个 @langchain 包 + zod 4.6.5 锁版本（--save-exact）；基线 42/42 全绿。
   - P1 模型层：`langchainModelClient.js` 惰性实例化（ChatDeepSeek 构造即校 key）；AI_LLM_BACKEND 择 langchain/legacy，三处装配点注入；verify-llm 真实流式 10 chunks。
   - P2 RAG 组件化 + Chroma：`@langchain/chroma` 包不存在（404），集成在 `@langchain/community`（须 `--legacy-peer-deps`）；本机无 Docker → venv 跑 Chroma；E2E 双引擎结果逐位一致。
@@ -83,8 +84,9 @@
   - P4b 真实 HTTP：context.js（AsyncLocalStorage 承载 userContext）+ factory.js（与 phase6 同库业务工具集）；toolAuth.test.js 无身份全拒绝；HTTP E2E viewer 问名额返回真实 14 项数据；回归 42→45。
   - P4c 流式 + 长记忆：`createStructuredResponseStream` + SSE 路由 `POST /api/scene/route/stream`（断线判定 `response.on('close')` + writableEnded，勿用 request.on('close')）；verify-stream 202 chunks 通过；memoryGateway before 召回/after 落库（AI_MEMORY_ENABLED）。
   - P4 收尾三项：① HITL（KIN 审批）interrupt/Command({resume})/isInterrupted() + resume 路由 + 前端审批卡片（verify-hitl 批准执行/拒绝不执行）；② prompt 矛盾句（createBranchAgent.js 第 40 行改「允许工具+写入须确认/审批」）；③ 工具历史剪枝 pruneToolMessages；另修前端 SSE done 双包装解包 bug。
-  - 验证：后端 45/45（42 旧 + toolAuth 3）、前端 9/9、vite build 通过；规划文档 `F:\2026\KIN\虚拟乌托邦·LangGraph重构整体架构规划.md` 已交付（P0–P4 全部 ✅、P4 收尾 ✅、LangSmith 定价、决策点状态）。
-- 下一步待办：① 前端默认身份接真实认证（DEFAULT_USER 现为 userId:1 resident/editor 试点值）；② Chroma 数据治理与生产部署方式（当前 collection 已清空）；③ AI_TOOLS_DEBUG 等调试开关补全；④ 扩展审批工具清单 AI_APPROVAL_TOOLS（现仅 guestbook_write）。
-- 相关文件：backend/src/ai/**（modelClientFactory / graph / tools / memory / rag）、backend/src/routes/{stream,resume}.js、backend/src/app.js、backend/src/config/env.js、backend/src/agents/branches/createBranchAgent.js（第 40 行）、frontend/src/{services/sceneApi.js, stores/conversationStore.js, components/scene/SceneConversationPanel.vue}、backend/.env(.example)、backend/scripts/verify-*.mjs
-- 运行状态：AI_LLM_BACKEND=langchain、AI_RAG_BACKEND=langchain、USE_LANGGRAPH=1、AI_MEMORY_ENABLED、AI_HITL_ENABLED、AI_APPROVAL_TOOLS=guestbook_write（backend/.env）；回退=对应开关置 legacy/0/'false'。
-- 坑备忘：本机 Node 绑定 IPv6 → 验证用 `localhost` 而非 `127.0.0.1`；Chroma 启动 `& 'H:\BP2\.venv-chroma\Scripts\chroma.exe' run --path 'H:\BP2\.chroma-data' --host 127.0.0.1 --port 8000`；13 条完整坑见 memory-log.md 2026-09-25 条目。
+  - **真实认证（2026-09-26）**：`src/middleware/sceneAuth.js` Bearer→phase6 /auth/me 解析身份注入 request.userContext；无 token=游客（写工具/审批被拒）；无效 token 401；认证服务不可达 503；**body.user 直传废弃**；resume 仅 admin（403）；前端外层壳新增 authService/authStore + ScenePageShell 身份栏/登录弹窗；sceneApi 三方法自动带 Bearer（key `scene-app.phase5.token`）；PHASE6_BASE_URL 配置；vite `/phase6-api` proxy。
+  - 验证：后端 **54/54**（45 + sceneAuth 9）、前端 **16/16**（9 + authService 6 + token 断言）、vite build（54 modules）；verify-auth 6 PASS、verify-hitl 场景 A/B、verify-stream 完整流式 79 chunks + 记忆落库；规划文档 `F:\2026\KIN\虚拟乌托邦·LangGraph重构整体架构规划.md` 已交付（P0–P4 ✅、P4 收尾 ✅、真实认证 ✅、LangSmith 定价、决策点状态）。
+- 下一步待办：① ~~前端默认身份接真实认证~~ ✅（2026-09-26 完成）；② Chroma 数据治理与生产部署方式（当前 collection 已清空）；③ AI_TOOLS_DEBUG 等调试开关补全；④ 扩展审批工具清单 AI_APPROVAL_TOOLS（现仅 guestbook_write，verify-hitl 用 quota_overview,guestbook_write 启动）；⑤ 外层壳登录补齐注册入口/验证码；⑥ resume 增加 conversationId→owner 归属校验（当前仅 admin 角色校验）。
+- 相关文件：backend/src/ai/**（modelClientFactory / graph / tools / memory / rag）、backend/src/middleware/sceneAuth.js、backend/src/routes/{stream,resume}.js、backend/src/app.js、backend/src/config/env.js、backend/src/agents/branches/createBranchAgent.js（第 40 行）、frontend/src/{services/{sceneApi,authService}.js, stores/{conversationStore,authStore}.js, components/scene/{ScenePageShell,SceneConversationPanel}.vue}、backend/.env(.example)、backend/scripts/verify-*.mjs
+- 运行状态：AI_LLM_BACKEND=langchain、AI_RAG_BACKEND=langchain、USE_LANGGRAPH=1、AI_MEMORY_ENABLED、AI_HITL_ENABLED、AI_APPROVAL_TOOLS=guestbook_write、PHASE6_BASE_URL=http://localhost:3400（backend/.env）；回退=对应开关置 legacy/0/'false'。
+- 坑备忘：本机 Node 绑定 IPv6 → 验证用 `localhost` 而非 `127.0.0.1`；**phase5 不读 .env，启动须 `node --env-file=.env src/phase5/server.js` 或注入 PHASE5_AUTH_SECRET/SERVICE_TOKEN/BOOTSTRAP_ADMIN_PASSWORD（bootstrap 默认 admin/utopia2026）**；Chroma 启动 `& 'H:\BP2\.venv-chroma\Scripts\chroma.exe' run --path 'H:\BP2\.chroma-data' --host 127.0.0.1 --port 8000`；13 条坑见 memory-log.md 2026-09-25 条目、4 条新增见 2026-09-26 条目。
