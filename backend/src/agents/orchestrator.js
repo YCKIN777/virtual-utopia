@@ -129,11 +129,13 @@ export const createSceneOrchestrator = ({
   tools = null,
   checkpointer,
   memoryGateway = null,
+  conversationRegistry = null,
   now = Date.now,
 } = {}) => {
   // P3: USE_LANGGRAPH=1（默认）走 LangGraph StateGraph 编排（居民 AI 对话试点），
   // =0 回退旧 orchestrator（静态 if/else 路由）。接口与 meta/result 结构完全一致。
   // P4: tools（createToolSet 产物）经此透传给图，供 ReAct 工具调用；memoryGateway 供长记忆注入。
+  // 待办⑥: conversationRegistry 透传给图（conversationId → owner 归属，resume 校验用）。
   // legacy 路径无工具/记忆。
   if (env.ai.useLanggraph) {
     return createSceneGraphOrchestrator({
@@ -141,6 +143,7 @@ export const createSceneOrchestrator = ({
       tools,
       checkpointer,
       memoryGateway,
+      conversationRegistry,
     });
   }
 

@@ -14,6 +14,7 @@ import { createResumeRouter } from './routes/resume.js';
 import { createCaptchaRouter } from './routes/captcha.js';
 import { createRegisterRouter } from './routes/register.js';
 import { captchaService } from './services/captchaService.js';
+import { createConversationRegistry } from './services/conversationRegistry.js';
 import { createSceneAuthMiddleware } from './middleware/sceneAuth.js';
 
 export const createApp = ({
@@ -25,6 +26,7 @@ export const createApp = ({
     ttlMs: env.session.ttlMs,
     maxCount: env.session.maxCount,
   }),
+  conversationRegistry = createConversationRegistry(),
 } = {}) => {
   const app = express();
   const sceneOrchestrator =
@@ -33,6 +35,7 @@ export const createApp = ({
       modelClient,
       tools,
       memoryGateway,
+      conversationRegistry,
     });
   const sessionBoundary = createSessionBoundary({
     orchestrator: sceneOrchestrator,
@@ -58,7 +61,13 @@ export const createApp = ({
   app.use('/api/scene/route', sceneAuth);
   app.use('/api', createSceneRouter({ orchestrator: sessionBoundary }));
   app.use('/api', createStreamRouter({ orchestrator: sceneOrchestrator }));
-  app.use('/api', createResumeRouter({ orchestrator: sceneOrchestrator }));
+  app.use(
+    '/api',
+    createResumeRouter({
+      orchestrator: sceneOrchestrator,
+      conversationRegistry,
+    }),
+  );
   // 待办⑤：外层壳注册 + 验证码（公开端点；sceneAuth 对无 token 游客放行）。
   // 验证码校验通过后转发 phase5 注册，phase5 零改动。
   app.use('/api', createCaptchaRouter({ service: captchaService }));

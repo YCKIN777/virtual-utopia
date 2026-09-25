@@ -142,6 +142,12 @@
 - `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。
 - 详细 13 条坑（惰性实例化 / response_format / 节点名撞字段 / thread_id 语义 / SSE 断线 / interrupt 约束 / 工具消息累积等）见 memory-log.md 2026-09-25 条目。
 
+### resume 会话归属校验（2026-09-26 落地）
+- `conversationRegistry`（`src/services/conversationRegistry.js`）：内存 Map `conversationId → owner{userId,role,username}`；`handle`/`handleStream` 持久会话（带 conversationId）注册（游客不注册）。
+- resume 三层校验：游客 403 → admin 放行（KIN 审批）→ 非 admin 须 `userId===owner`（无记录/不匹配 403；防 conversationId 伪造越权恢复）。
+- 验证：`tests/conversationRegistry.test.js`（5）+ `tests/resumeRoute.test.js`（6）；后端 83/83。
+- 局限：registry 内存态（重启即失，非 admin 恢复需重新 handle）；owner 恢复=本人确认（KIN 审批仍 admin 优先）。
+
 ### 审批清单扩展（2026-09-26 落地）
 - 默认 `AI_APPROVAL_TOOLS=guestbook_write,query_friends`（写入类 + 隐私查询类；其余 3 查询工具低敏不审批）。
 - 审批判定为配置驱动：`routeAfterBranch` 检查 `env.ai.approvalTools.includes(call.name)`（已 export 供单测）；新增敏感工具仅改配置，零代码。

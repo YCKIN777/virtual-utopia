@@ -1464,3 +1464,37 @@
 ### 已知局限
 - 审批粒度是**工具级**（命中工具名即整轮暂停），无字段/参数级审批——query_friends 全量审批后，居民查「自己的好友列表」也需 KIN 确认（当前设计取向：宁可多批不可漏批；若觉扰民可改参数级或在 prompt 层引导）。
 - 新增敏感工具时只需改 `AI_APPROVAL_TOOLS` 配置，无需改代码（配置驱动已验证）。
+
+---
+
+## 2026-09-26 待办⑥ resume conversationId → owner 归属校验
+
+> 背景：resume 端点此前仅校验「role=admin」（KIN 审批），任意 conversationId 只要 admin 就能恢复；
+> 非 admin 一律 403，无法恢复自己的会话，也无从防 conversationId 伪造。
+> 目标：建立 conversationId→owner 归属，resume 升级为「admin 任意 + owner 放行 + 无记录/不匹配 403」。
+
+### 改动文件
+- `backend/src/services/conversationRegistry.js`（新）：内存 Map 注册表 `conversationId → {userId, role, username, createdAt, updatedAt}`；
+  `register`（幂等 upsert，createdAt 保留首次）/ `getOwner` / `isOwner`；maxEntries 上限 FIFO 清理（默认 2000）。与 sessionStore 同为内存态。
+- `backend/src/ai/graph/graphOrchestrator.js`：构造参数 `conversationRegistry`（默认新建实例）；`handle`/`handleStream` 在 `body.conversationId` 存在且 userContext 有 userId 时 `registerOwner`（游客不注册）。
+- `backend/src/agents/orchestrator.js`：`conversationRegistry` 透传至 graph。
+- `backend/src/app.js`：`createApp` 构造参数新增 `conversationRegistry`（默认实例），传入 `createSceneOrchestrator` 与 `createResumeRouter`。
+- `backend/src/routes/resume.js`：`assertResumePermission` 三层校验——① 游客 403；② admin 放行（KIN 管理通道）；③ 非 admin：registry 无记录→403「会话归属未登记」/ 记录 userId 不匹配→403「该会话不属于当前用户」/ 匹配→放行；缺 conversationId→400。
+
+### 测试结果
+- 新增 11/11：conversationRegistry 5（注册/游客不注册/isOwner/upsert 保留 createdAt/FIFO 清理）+ resumeRoute 6（admin 任意 / owner 放行 / 非 owner 403 / 无记录 403 / 游客 403 / 缺 id 400）。
+- 后端全量 **83/83**（72 + 11）；前端 19/19 不受影响。
+- app 级真实 HTTP 冒烟（smoke-owner-resume.mjs）3/3：游客 403 FORBIDDEN、缺 conversationId 400、无效 token 503（sceneAuth 认证服务不可达，装配正确非 404）。
+
+### 自检清单
+- [x] conversationRegistry 注册表（注册/查询/校验/清理）
+- [x] handle/handleStream 持久会话注册 owner（游客不注册）
+- [x] resume 三层权限校验（admin / owner / 403 兜底）
+- [x] app.js 装配链路（registry 注入 resume 路由）冒烟验证
+- [x] 后端 83/83 无回归
+- [x] 记忆三件套同步（本条 + memory-core 第八节六项全 ✅）
+
+### 已知局限
+- conversationRegistry 为内存态（重启即失）——重启后旧 conversationId 归属丢失，非 admin 恢复被拒（admin 不受影响）；如需跨重启持久可落 SQLite（后续项）。
+- owner 恢复自己的会话 = 本人确认（HITL 审批通道对 owner 开放）；KIN 审批仍优先 admin 通道（权限矩阵不变，admin 可审批任意会话）。
+- 归属注册仅在 handle/handleStream 的持久会话路径（带 conversationId）发生；ephemeral 会话（无 conversationId）本就不可恢复，不注册。

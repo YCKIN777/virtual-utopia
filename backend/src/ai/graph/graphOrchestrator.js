@@ -25,6 +25,7 @@ import {
   finalizeNode,
 } from './nodes.js';
 import { streamingContextStorage } from '../tools/context.js';
+import { createConversationRegistry } from '../../services/conversationRegistry.js';
 
 const routeBranch = (state) => {
   if (state.risk === 'high') {
@@ -118,6 +119,8 @@ export const createSceneGraphOrchestrator = ({
   checkpointer,
   tools = null,
   memoryGateway = null,
+  // 待办⑥：conversationId → owner 归属注册表（resume 归属校验用）。
+  conversationRegistry = createConversationRegistry(),
 } = {}) => {
   const graph = buildSceneGraph({
     modelClient,
@@ -160,6 +163,13 @@ export const createSceneGraphOrchestrator = ({
     }
   };
 
+  // 待办⑥：持久会话（带 conversationId）注册 owner 归属，供 resume 校验。
+  const registerOwner = (body, userContext) => {
+    if (body.conversationId) {
+      conversationRegistry.register(body.conversationId, userContext);
+    }
+  };
+
   const invokeGraph = (input, threadId) => {
     const config = { configurable: { thread_id: threadId } };
 
@@ -185,6 +195,10 @@ export const createSceneGraphOrchestrator = ({
     async handle(body, { userContext } = {}) {
       const request = normalizeSceneRequest(body);
       const threadId = body.conversationId ?? `ephemeral-${randomUUID()}`;
+
+      // 待办⑥：持久会话注册 owner 归属（游客不注册 —— userContext=null）
+      registerOwner(body, userContext);
+
       const finalState = await invokeGraph(
         buildInput(body, request, userContext),
         threadId,
@@ -208,6 +222,10 @@ export const createSceneGraphOrchestrator = ({
     async handleStream(body, { onStatus, onToken, userContext } = {}) {
       const request = normalizeSceneRequest(body);
       const threadId = body.conversationId ?? `ephemeral-${randomUUID()}`;
+
+      // 待办⑥：持久会话注册 owner 归属
+      registerOwner(body, userContext);
+
       const streamContext = { onStatus, onToken };
       const finalState = await streamingContextStorage.run(
         streamContext,
