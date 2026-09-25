@@ -5,6 +5,7 @@
 // validateModelResult 语义保持一致（sceneId 匹配 + action 词表校验）。
 import { AIMessage, ToolMessage } from '@langchain/core/messages';
 import { interrupt } from '@langchain/langgraph';
+import { env } from '../../config/env.js';
 import { assessInputRisk, classifyIntent } from '../../agents/intentPolicy.js';
 import { getBranchAgentForScene } from '../../agents/registry.js';
 import { SceneRequestError } from '../../services/sceneRouter.js';
@@ -187,7 +188,7 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
         messages,
         tools: state.tools,
       });
-      if (process.env.AI_TOOLS_DEBUG) {
+      if (env.ai.toolsDebug) {
         console.error(
           `[debug-branch] tool round: toolCalls=${toolResponse.toolCalls.length} contentLen=${toolResponse.content.length}`,
         );
@@ -228,7 +229,7 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
           sceneModelResponseSchema,
         );
         const result = validateModelResult(data, request, branchAgent);
-        if (process.env.AI_TOOLS_DEBUG) {
+        if (env.ai.toolsDebug) {
           console.error('[debug-branch] no-tool path: parsed directly');
         }
 
@@ -250,7 +251,7 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
           messages,
           responseSchema: sceneModelResponseSchema,
         });
-        if (process.env.AI_TOOLS_DEBUG) {
+        if (env.ai.toolsDebug) {
           console.error('[debug-branch] no-tool path: re-called structured');
         }
         const result = validateModelResult(response.data, request, branchAgent);
@@ -285,7 +286,7 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
             messages,
             responseSchema: sceneModelResponseSchema,
           });
-    if (process.env.AI_TOOLS_DEBUG) {
+    if (env.ai.toolsDebug) {
       console.error('[debug-branch] structured path (no tools / final round)');
     }
     const result = validateModelResult(response.data, request, branchAgent);
@@ -304,7 +305,7 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
       messages: [{ role: 'assistant', content: result.reply }],
     };
   } catch (error) {
-    if (process.env.AI_TOOLS_DEBUG) {
+    if (env.ai.toolsDebug) {
       console.error(
         `[debug-branch] caught: code=${error.code} msg=${String(error.message).slice(0, 200)} cause=${String(error.cause?.message ?? error.cause).slice(0, 200)}`,
       );

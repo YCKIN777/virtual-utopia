@@ -1361,3 +1361,33 @@
 - 本机无 Docker，`deploy/chroma.docker-compose.yml` 未实测（生产部署需在目标环境验证）。
 - chroma.mjs 的 `reset`/`reset-data` 假定默认 tenant/database（`default_tenant`/`default_database`）；自定义租户需扩展。
 - start-all 集成后 chroma 日志走 stdio inherit（随编排终端），独立 `chroma.mjs start` 才写 chroma.out/err.log。
+
+---
+
+## 2026-09-26 待办③ AI_TOOLS_DEBUG 门控调试日志规范化
+
+> 决策：P4a 加的 5 处 `[debug-branch]` 调试日志**保留**（排查工具轮价值高），从「直读 process.env」规范为「env.js 单一配置源」：
+> 新增 `ai.toolsDebug`（默认 false，生产无噪音；排查工具轮时 `AI_TOOLS_DEBUG=true`）。
+
+### 改动文件
+- `backend/src/config/env.js`：ai 块新增 `toolsDebug: toBoolean(process.env.AI_TOOLS_DEBUG, false)`（含注释）。
+- `backend/src/ai/graph/nodes.js`：import `env`；5 处 `if (process.env.AI_TOOLS_DEBUG)` → `if (env.ai.toolsDebug)`。
+- `backend/.env.example`：`AI_HITL_ENABLED`/`AI_APPROVAL_TOOLS` 后补 `AI_TOOLS_DEBUG=false` 注释段。
+
+### 关键实现
+- 门控日志盘点（src/ai 全量 console.*）：`nodes.js` 5 处 debug 日志（tool round / no-tool parsed / re-called / structured path / caught）——均入 `env.ai.toolsDebug`；`memoryGateway.js` 2 处 `console.error`（记忆提炼/写入失败）为**错误日志**，保持常开不入门控；tools 目录无日志。
+- 默认关闭语义：生产环境零噪音；开启后输出 `[debug-branch]` 前缀关键指标（toolCalls 数 / contentLen / 路径分支 / 错误 code+cause）。
+
+### 测试结果
+- 后端全量回归 **54/54 全绿**（8 测试文件 fail 0）。
+- env 解析验证：默认 `toolsDebug=false`；注入 `AI_TOOLS_DEBUG=true` → `true`。
+
+### 自检清单
+- [x] env.js 单一配置源（默认 false）
+- [x] nodes.js 5 处全部接入（Grep 确认无残留 process.env 直读）
+- [x] .env.example 注释段同步
+- [x] 后端 54/54 无回归 + env 解析双态验证
+- [x] 记忆三件套同步（本条 + memory-core 第八节待办③ ✅）
+
+### 已知局限
+- 门控日志仅覆盖 branch 节点（工具首轮/结构化路径）；tools 节点执行细节（每工具 args/输出）未加日志——需时可在 tools 节点补 `[debug-tools]` 门控。

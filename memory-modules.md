@@ -122,6 +122,7 @@
 - **HITL（KIN 审批）**：LangGraph 原生 `interrupt`/`Command({resume})`/`isInterrupted()`（`__interrupt__` 键）；approval 节点 + resume 路由 `POST /api/scene/route/resume` + 前端审批卡片；verify-hitl.mjs 批准路径真实执行、拒绝路径不执行。
 - **流式 SSE**：`createStructuredResponseStream`（.stream + json_object + onToken）+ `POST /api/scene/route/stream`；断线判定用 `response.on('close')` + `writableEnded`（勿用 request.on('close')）。
 - **prompt 改句**：`createBranchAgent.js` 第 40 行改为「允许使用工具 + 写入须确认/审批」（一处改 5 分支）；`pruneToolMessages` 剪枝断点续跑工具历史（AI tool_calls + ToolMessage）。
+- **工具调试门控（2026-09-26）**：`AI_TOOLS_DEBUG`（`env.ai.toolsDebug`，默认 false）控制 nodes.js 5 处 `[debug-branch]` 日志（toolCalls 数/路径分支/错误 code+cause）；memoryGateway 2 处错误日志常开不入门控。
 
 ### 验收状态
 - 后端回归 **45/45**（42 旧 + toolAuth 3）、前端 9/9、vite build 通过。
