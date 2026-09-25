@@ -30,3 +30,7 @@ deliverables/memory-agent-v1.0.1/
 *.bak2
 vu_screens/
 release/
+
+# LangGraph 重构运行产物（2026-09-25）
+.chroma-data/
+.workbuddy/
