@@ -37,7 +37,7 @@ export const createBranchAgent = ({
         '允许使用的 actions：',
         formatList(actionVocabulary),
         '只处理当前场景，不得跨场景角色扮演或替其他分支作答。',
-        '不得调用工具、外部知识检索、跨会话记忆或数据持久化能力。',
+        '可使用系统提供的工具查询大院实时数据；涉及写入或影响他人权益的操作，须先获得成员确认或管理方审批。系统注入的长期记忆仅作参考，不得主动调用外部知识检索或写入持久化存储。',
         '仅返回合法 JSON，不得返回 Markdown 或额外说明。',
         `JSON 结构：${JSON.stringify(
           {

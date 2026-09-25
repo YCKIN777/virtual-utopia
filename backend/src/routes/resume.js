@@ -1,0 +1,27 @@
+// backend/src/routes/resume.js
+// P4: HITL 恢复端点 —— POST /api/scene/route/resume
+// body: { conversationId, decision: { approved: boolean, reason?: string } }
+// 对同一 thread 以 Command({ resume }) 继续图执行（approval 节点 interrupt 的恢复）。
+// 返回与 /scene/route 相同的完整响应结构。
+import { Router } from 'express';
+
+export const createResumeRouter = ({ orchestrator }) => {
+  const router = Router();
+
+  router.post('/scene/route/resume', async (request, response) => {
+    try {
+      const payload = await orchestrator.resume(request.body);
+
+      response.json(payload);
+    } catch (error) {
+      const statusCode = error.statusCode || 400;
+
+      response.status(statusCode).json({
+        error: error.code || 'RESUME_ERROR',
+        message: error.message || '恢复请求失败',
+      });
+    }
+  });
+
+  return router;
+};

@@ -10,10 +10,16 @@
     "test": "node --test tests/deepSeekClient.test.js tests/orchestrator.test.js tests/branchAgents.test.js tests/sessionIsolation.test.js tests/sceneRoute.test.js src/phase7/tests/phase7.test.js"
   },
   "dependencies": {
+    "@langchain/community": "1.1.28",
+    "@langchain/core": "1.2.12",
+    "@langchain/deepseek": "1.1.13",
+    "@langchain/langgraph": "1.4.17",
+    "@langchain/langgraph-checkpoint-sqlite": "1.0.4",
     "chromadb": "^3.5.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

@@ -2,7 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { createApp } from '../app.js';
-import { createDeepSeekClient } from '../services/deepSeekClient.js';
+import { createModelClient } from '../ai/modelClientFactory.js';
+import { createBusinessToolSet } from '../ai/tools/factory.js';
+import { createConfiguredMemoryGateway } from '../ai/memory/memoryGateway.js';
 import { readPhase4Config } from './config.js';
 import { createRagClient } from './ragClient.js';
 import { createRagEnhancedModelClient } from './ragEnhancedModelClient.js';
@@ -17,7 +19,7 @@ dotenv.config({
 });
 
 const config = readPhase4Config();
-const baseModelClient = createDeepSeekClient({
+const baseModelClient = createModelClient({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseUrl: process.env.DEEPSEEK_BASE_URL,
   model: process.env.DEEPSEEK_MODEL,
@@ -33,7 +35,11 @@ const modelClient = createRagEnhancedModelClient({
   ragClient,
   enabled: config.enabled,
 });
-const app = createApp({ modelClient });
+const app = createApp({
+  modelClient,
+  tools: createBusinessToolSet(),
+  memoryGateway: createConfiguredMemoryGateway(),
+});
 const server = app.listen(config.port, 'localhost', () => {
   console.log(
     JSON.stringify({

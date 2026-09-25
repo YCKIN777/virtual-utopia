@@ -75,10 +75,8 @@ test('builds isolated prompts for every branch', () => {
     assert.match(prompt, new RegExp(agent.name));
     assert.match(prompt, new RegExp(sceneName));
     assert.match(prompt, /不得跨场景角色扮演/);
-    assert.match(
-      prompt,
-      /不得调用工具、外部知识检索、跨会话记忆或数据持久化能力/,
-    );
+    assert.match(prompt, /可使用系统提供的工具查询大院实时数据/);
+    assert.match(prompt, /须先获得成员确认或管理方审批/);
   }
 });
 

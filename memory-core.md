@@ -13,6 +13,7 @@
 - 后端：`backend/src/`
   - `phase5/` 主服务（HTTP API + SQLite，端口 3300，账号/鉴权/会话/文档）
   - `phase6/` 网关服务（端口 3400，聚合 phase5 + 各业务模块）
+  - `ai/`（LangGraph 重构层，2026-09-25：langchainModelClient / graph / tools / memory / rag）
   - `memory/`、`rag/`、`agents/`、`services/`、`config/`、`runtime/`
 - 前端：`frontend/src/virtual-utopia/`
   - `webgl/ThreeWorld.js`（3D 场景渲染、漫游、Avatar）
@@ -28,6 +29,7 @@
   - `phase6_guestbook.sqlite` 邻里留言簿（S2）
   - `phase6_resident_social.sqlite` 名录私聊群组（S3）
   - `virtual_utopia_memory.sqlite` 记忆
+  - `backend/data/langgraph.sqlite` LangGraph 图检查点（thread_id=conversationId 断点续跑，2026-09-25）
 
 ## 三、运行环境
 - phase5（3300）：`PHASE5_AUTH_SECRET=changeme`、`PHASE5_SERVICE_TOKEN=changeme`、`PHASE5_BOOTSTRAP_ADMIN_PASSWORD=utopia2026`、`PHASE5_DB_PATH=H:\BP2\data\virtual_utopia_phase5.sqlite`
@@ -67,14 +69,22 @@
 ## 七、待办 / 注意
 - 运行中 phase5/phase6 若改端点需重启加载。
 - phase5 users 表 status 已扩展为 `('active','disabled','pending','moved_out')`，并有 FK 修复逻辑（见 database.js）。
+- AI 编排 env 开关（backend/.env + .env.example，2026-09-25）：`AI_LLM_BACKEND=langchain`（legacy 回退旧 deepSeekClient）、`AI_RAG_BACKEND=langchain`（回退自研 RAG）、`USE_LANGGRAPH=1`（0 回退旧静态 if/else 编排）、`AI_MEMORY_ENABLED`（默认开，'false' 关）、`AI_HITL_ENABLED`（默认开）、`AI_APPROVAL_TOOLS=guestbook_write`（逗号分隔可扩展）；DeepSeek：`DEEPSEEK_BASE_URL=https://api.deepseek.com`、model `deepseek-chat`。
+- 本机 Node 服务绑定 IPv6 → 验证用 `localhost` 而非 `127.0.0.1`；Chroma 启动命令：`& 'H:\BP2\.venv-chroma\Scripts\chroma.exe' run --path 'H:\BP2\.chroma-data' --host 127.0.0.1 --port 8000`。
 
 ## 八、当前交接点（上下文快满 / 新窗口 / 换智能体时从这里接）
 > 每次收工前更新本节；新窗口/换智能体第一句让其读本文件，按本节继续，不要重新讨论方向。
-- 当前进度（截至 2026-09-22）：居民UI第二轮真实前端改版 **v4 已完成并提交** —— `git commit 85a3879`（仅 ProfileView.vue + styles.css 两文件，未带入无关改动）。
-  - 改动：styles.css `:root` 主题改为苹果绿 `#2fa84f`（hover `#258a41`）+ 白底 `#fbfbfd` + 浅灰分隔 `#f1f1f4`/`#e3e3e8` + 深灰文字，移除原红棕 `#dc6f55`/深绿 `#1d4d40` 主色；ProfileView.vue 新增 `panels` 折叠态（默认全收起），5 个长模块（已解锁场景 / 我的任务记录 / 修改密码 / 我的主页卡片 / 展示板与留言簿）默认折叠带展开收起开关，**仅顶部个人信息 + 原住民名录常显**。
-  - 零改动范围：全部原有字段/表单/按钮/列表/子面板（ResidentCardsPanel 五卡片、HomepageS2Panel 展示板+留言簿、ResidentDirectoryPanel 名录+私聊+建群）逻辑不变；未动 3D 场景/地形/碰撞/居民漫游/注册审批/聊天后端内核/已验收资产。
-  - 自检：前端 `vite build` 通过（52 modules）；前端单测 9/9 ✅、后端单测 33/33 ✅、BP3 单测 7/7 ✅；场景流 E2E ❌ 仅因环境缺 `DEEPSEEK_API_KEY`（后端编排器调 LLM 报 500），与本 UI 改动无关，需配密钥后重跑确认全绿。
-  - 归档：memory-log.md 已追加「2026-09-22 个人中心改版」条目；备份位于 `.workbuddy/backups/profile-ui-20260922/`。
-- 下一步待办：① 在配好 `DEEPSEEK_API_KEY` 的环境重跑 E2E 确认全绿；② 等用户对 v4 苹果绿改版验收/纠偏（是否保留苹果绿配色、折叠默认项是否调整）；③ 后续 3D 遗留：stream-manor 变体新增、stone/bamboo 材质新模型激活（毛石地基/竹篱）、移动端 `MANOR_TEXTURE_SIZE=512` 并关 roughnessMap。
-- 相关文件：frontend/src/virtual-utopia/views/ProfileView.vue、frontend/src/virtual-utopia/styles.css
-- 运行状态：phase5:3300 / phase6:3400（新窗口接手先确认服务是否在跑；E2E 需 DEEPSEEK_API_KEY）
+- 当前进度（截至 2026-09-25）：**LangGraph 重构 P0–P4 全部落地并验证**（自研 AI 编排 → LangChain.js + LangGraph.js；业务层 phase5/6/7 与 8 个 SQLite 库零改动）。
+  - P0 基座：6 个 @langchain 包 + zod 4.6.5 锁版本（--save-exact）；基线 42/42 全绿。
+  - P1 模型层：`langchainModelClient.js` 惰性实例化（ChatDeepSeek 构造即校 key）；AI_LLM_BACKEND 择 langchain/legacy，三处装配点注入；verify-llm 真实流式 10 chunks。
+  - P2 RAG 组件化 + Chroma：`@langchain/chroma` 包不存在（404），集成在 `@langchain/community`（须 `--legacy-peer-deps`）；本机无 Docker → venv 跑 Chroma；E2E 双引擎结果逐位一致。
+  - P3 图编排：`src/ai/graph/`（Annotation.Root + SqliteSaver + 5 分支节点 + finalize）；节点名不撞 state 字段（intent→route）；thread_id=conversationId 断点续跑 / 不带则 ephemeral 临时线程。
+  - P4a 5 工具全开：`src/ai/tools/`（auth 角色矩阵 + index 5 工具）；ChatDeepSeek 无 .bind → `response_format:{type:'json_object'}`（工具轮不加）。
+  - P4b 真实 HTTP：context.js（AsyncLocalStorage 承载 userContext）+ factory.js（与 phase6 同库业务工具集）；toolAuth.test.js 无身份全拒绝；HTTP E2E viewer 问名额返回真实 14 项数据；回归 42→45。
+  - P4c 流式 + 长记忆：`createStructuredResponseStream` + SSE 路由 `POST /api/scene/route/stream`（断线判定 `response.on('close')` + writableEnded，勿用 request.on('close')）；verify-stream 202 chunks 通过；memoryGateway before 召回/after 落库（AI_MEMORY_ENABLED）。
+  - P4 收尾三项：① HITL（KIN 审批）interrupt/Command({resume})/isInterrupted() + resume 路由 + 前端审批卡片（verify-hitl 批准执行/拒绝不执行）；② prompt 矛盾句（createBranchAgent.js 第 40 行改「允许工具+写入须确认/审批」）；③ 工具历史剪枝 pruneToolMessages；另修前端 SSE done 双包装解包 bug。
+  - 验证：后端 45/45（42 旧 + toolAuth 3）、前端 9/9、vite build 通过；规划文档 `F:\2026\KIN\虚拟乌托邦·LangGraph重构整体架构规划.md` 已交付（P0–P4 全部 ✅、P4 收尾 ✅、LangSmith 定价、决策点状态）。
+- 下一步待办：① 前端默认身份接真实认证（DEFAULT_USER 现为 userId:1 resident/editor 试点值）；② Chroma 数据治理与生产部署方式（当前 collection 已清空）；③ AI_TOOLS_DEBUG 等调试开关补全；④ 扩展审批工具清单 AI_APPROVAL_TOOLS（现仅 guestbook_write）。
+- 相关文件：backend/src/ai/**（modelClientFactory / graph / tools / memory / rag）、backend/src/routes/{stream,resume}.js、backend/src/app.js、backend/src/config/env.js、backend/src/agents/branches/createBranchAgent.js（第 40 行）、frontend/src/{services/sceneApi.js, stores/conversationStore.js, components/scene/SceneConversationPanel.vue}、backend/.env(.example)、backend/scripts/verify-*.mjs
+- 运行状态：AI_LLM_BACKEND=langchain、AI_RAG_BACKEND=langchain、USE_LANGGRAPH=1、AI_MEMORY_ENABLED、AI_HITL_ENABLED、AI_APPROVAL_TOOLS=guestbook_write（backend/.env）；回退=对应开关置 legacy/0/'false'。
+- 坑备忘：本机 Node 绑定 IPv6 → 验证用 `localhost` 而非 `127.0.0.1`；Chroma 启动 `& 'H:\BP2\.venv-chroma\Scripts\chroma.exe' run --path 'H:\BP2\.chroma-data' --host 127.0.0.1 --port 8000`；13 条完整坑见 memory-log.md 2026-09-25 条目。

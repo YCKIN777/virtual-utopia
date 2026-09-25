@@ -4,13 +4,19 @@ import { env } from './config/env.js';
 import { createSceneOrchestrator } from './agents/orchestrator.js';
 import apiRouter from './routes/index.js';
 import { createSceneRouter } from './routes/scene.js';
-import { createDeepSeekClient } from './services/deepSeekClient.js';
+import { createModelClient } from './ai/modelClientFactory.js';
+import { createBusinessToolSet } from './ai/tools/factory.js';
+import { createConfiguredMemoryGateway } from './ai/memory/memoryGateway.js';
 import { createSessionBoundary } from './services/sessionBoundary.js';
 import { createSessionStore } from './services/sessionStore.js';
+import { createStreamRouter } from './routes/stream.js';
+import { createResumeRouter } from './routes/resume.js';
 
 export const createApp = ({
-  modelClient = createDeepSeekClient(),
+  modelClient = createModelClient(),
   orchestrator,
+  tools,
+  memoryGateway = null,
   sessionStore = createSessionStore({
     ttlMs: env.session.ttlMs,
     maxCount: env.session.maxCount,
@@ -21,6 +27,8 @@ export const createApp = ({
     orchestrator ||
     createSceneOrchestrator({
       modelClient,
+      tools,
+      memoryGateway,
     });
   const sessionBoundary = createSessionBoundary({
     orchestrator: sceneOrchestrator,
@@ -39,6 +47,8 @@ export const createApp = ({
 
   app.use('/api', apiRouter);
   app.use('/api', createSceneRouter({ orchestrator: sessionBoundary }));
+  app.use('/api', createStreamRouter({ orchestrator: sceneOrchestrator }));
+  app.use('/api', createResumeRouter({ orchestrator: sceneOrchestrator }));
 
   app.use((_request, response) => {
     response.status(404).json({
@@ -60,4 +70,7 @@ export const createApp = ({
   return app;
 };
 
-export default createApp();
+export default createApp({
+  tools: createBusinessToolSet(),
+  memoryGateway: createConfiguredMemoryGateway(),
+});

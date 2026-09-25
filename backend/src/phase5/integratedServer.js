@@ -2,7 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { createApp } from '../app.js';
-import { createDeepSeekClient } from '../services/deepSeekClient.js';
+import { createModelClient } from '../ai/modelClientFactory.js';
+import { createBusinessToolSet } from '../ai/tools/factory.js';
+import { createConfiguredMemoryGateway } from '../ai/memory/memoryGateway.js';
 import {
   createRagClient,
   createRagEnhancedModelClient,
@@ -29,7 +31,7 @@ export const startIntegratedPhase4Server = async ({
     baseUrl: phase5Config.phase4BaseUrl,
     serviceToken: phase5Config.serviceToken,
   });
-  const baseModelClient = createDeepSeekClient({
+  const baseModelClient = createModelClient({
     apiKey: process.env.DEEPSEEK_API_KEY,
     baseUrl: process.env.DEEPSEEK_BASE_URL,
     model: process.env.DEEPSEEK_MODEL,
@@ -48,6 +50,8 @@ export const startIntegratedPhase4Server = async ({
   const app = createApp({
     modelClient,
     sessionStore,
+    tools: createBusinessToolSet(),
+    memoryGateway: createConfiguredMemoryGateway(),
   });
   const server = await new Promise((resolve, reject) => {
     const listeningServer = app.listen(phase4Config.port, 'localhost');

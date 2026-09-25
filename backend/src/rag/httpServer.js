@@ -2,10 +2,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { ragConfig } from './config.js';
-import { ingestDocuments } from './ingestService.js';
-import { retrieveKnowledge } from './retrievalService.js';
+import { createRagEngine } from '../ai/ragEngine.js';
 import { validateIngestRequest, validateQueryRequest } from './validation.js';
-import { checkVectorStore } from './vectorStore.js';
+
+// 惰性单例：rag/index.js 顶层 re-export 本模块，本模块又经 ragEngine 引用 rag/index，
+// 若在模块顶层实例化会触发循环依赖的 TDZ 错误；改为首次调用时创建。
+let ragEngine;
+
+const getRagEngine = () => {
+  ragEngine ??= createRagEngine();
+
+  return ragEngine;
+};
 
 const asyncHandler = (handler) => (request, response, next) =>
   Promise.resolve(handler(request, response, next)).catch(next);
@@ -19,7 +27,7 @@ export const createRagApp = () => {
   app.get(
     '/health',
     asyncHandler(async (_request, response) => {
-      const vectorStore = await checkVectorStore();
+      const vectorStore = await getRagEngine().checkVectorStore();
 
       response.json({
         service: 'virtual-utopia-rag',
@@ -31,7 +39,9 @@ export const createRagApp = () => {
   app.post(
     '/api/rag/ingest',
     asyncHandler(async (request, response) => {
-      const result = await ingestDocuments(validateIngestRequest(request.body));
+      const result = await getRagEngine().ingestDocuments(
+        validateIngestRequest(request.body),
+      );
 
       response.json(result);
     }),
@@ -40,7 +50,7 @@ export const createRagApp = () => {
   app.post(
     '/api/rag/query',
     asyncHandler(async (request, response) => {
-      const result = await retrieveKnowledge(
+      const result = await getRagEngine().retrieveKnowledge(
         validateQueryRequest(request.body),
       );
 

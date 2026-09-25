@@ -18,8 +18,29 @@ const toast = useToast();
 const input = ref('');
 const sceneIdRef = computed(() => props.sceneId);
 const scene = computed(() => getSceneDefinition(props.sceneId));
-const { conversation, sendMessage } = useSceneConversation(sceneIdRef);
+const { conversation, sendMessageStream, resolveApproval } =
+  useSceneConversation(sceneIdRef);
 const isUnavailable = computed(() => !scene.value?.agentEnabled);
+
+const statusLabel = computed(() => {
+  if (!conversation.value.loading) return '';
+
+  if (conversation.value.status === 'tool_calling') {
+    return `正在查询${conversation.value.statusDetail || ''}…`;
+  }
+
+  if (conversation.value.status === 'tool_result') {
+    return '已获取数据，正在整理回答…';
+  }
+
+  return `${scene.value?.name || '场景'}的伙伴正在思考…`;
+});
+
+const approvalToolNames = computed(() =>
+  (conversation.value.pendingApproval?.approval?.toolCalls ?? [])
+    .map((call) => call.name)
+    .join('、'),
+);
 
 const submitMessage = async () => {
   const content = input.value.trim();
@@ -36,9 +57,22 @@ const submitMessage = async () => {
   input.value = '';
 
   try {
-    await sendMessage(content);
+    await sendMessageStream(content);
   } catch (error) {
     toast.error(error.message || '消息发送失败', {
+      title: scene.value?.name || '场景请求',
+    });
+  }
+};
+
+const handleApproval = async (approved) => {
+  try {
+    await resolveApproval({
+      approved,
+      reason: approved ? 'KIN 批准' : 'KIN 拒绝',
+    });
+  } catch (error) {
+    toast.error(error.message || '审批处理失败', {
       title: scene.value?.name || '场景请求',
     });
   }
@@ -72,9 +106,57 @@ const submitMessage = async () => {
                 : 'border border-line/70 bg-surface-muted/65 text-ink'
             "
           >
-            {{ message.content }}
+            {{ message.content
+            }}<span
+              v-if="message.streaming"
+              class="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-ink/60"
+              aria-hidden="true"
+            />
           </p>
         </article>
+
+        <p
+          v-if="statusLabel"
+          class="flex items-center gap-2 text-xs text-muted"
+          role="status"
+        >
+          <span
+            class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-line border-t-accent"
+            aria-hidden="true"
+          />
+          {{ statusLabel }}
+        </p>
+
+        <!-- P4 HITL：KIN 审批卡片 -->
+        <div
+          v-if="conversation.pendingApproval"
+          class="rounded-hig border border-amber-300 bg-amber-50 p-4"
+          role="dialog"
+          aria-label="需要 KIN 审批"
+        >
+          <p class="text-sm font-medium text-amber-900">需要 KIN 审批</p>
+          <p class="mt-1 text-xs leading-5 text-amber-800">
+            阿禾请求执行以下操作：{{ approvalToolNames }}。此操作需要管理方（KIN）确认后方可执行。
+          </p>
+          <div class="mt-3 flex gap-2">
+            <BaseButton
+              size="sm"
+              variant="primary"
+              :disabled="conversation.loading"
+              @click="handleApproval(true)"
+            >
+              批准
+            </BaseButton>
+            <BaseButton
+              size="sm"
+              variant="secondary"
+              :disabled="conversation.loading"
+              @click="handleApproval(false)"
+            >
+              拒绝
+            </BaseButton>
+          </div>
+        </div>
       </div>
     </BaseScroll>
 

@@ -66,4 +66,17 @@ export const env = Object.freeze({
     ),
     maxCount: toInteger(process.env.SESSION_MAX_COUNT, 1000, 1),
   }),
+  ai: Object.freeze({
+    llmBackend: process.env.AI_LLM_BACKEND || 'langchain',
+    ragBackend: process.env.AI_RAG_BACKEND || 'langchain',
+    langsmithTracing: toBoolean(process.env.LANGSMITH_TRACING),
+    useLanggraph: process.env.USE_LANGGRAPH !== '0',
+    // P4: HITL（KIN 审批）—— 命中敏感工具时 interrupt 暂停等审批。
+    // 可关：AI_HITL_ENABLED=false；敏感工具清单：AI_APPROVAL_TOOLS=guestbook_write,...
+    hitlEnabled: process.env.AI_HITL_ENABLED !== 'false',
+    approvalTools: (process.env.AI_APPROVAL_TOOLS || 'guestbook_write')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  }),
 });

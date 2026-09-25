@@ -12,6 +12,8 @@
 6. 访客名额权限模块
 7. 家园装饰素材库扩充（树木/景观小品/庭院摆件）
 8. Avatar 居民智能体基础模板（复用 KIN 角色框架）
+9. 居民 AI 一对一对话能力
+10. LangGraph 重构（AI 编排层）
 
 ---
 
@@ -94,3 +96,39 @@
 - 注意：`backend/.env.development` 的 `DEEPSEEK_API_KEY=` 为空，会覆盖 `.env` 真实 key；`residentChatService.js` 内部以 `dotenv override` 重新加载 `backend/.env` 获取真实 key。
 - 备份：`app.js.residentchatbak`、`gatewayService.js.residentchatbak`、`gatewayClient.js.residentchatbak`、`worldStore.js.residentchatbak`、`WorldView.vue.residentchatbak`。
 - 自检：靠近显示按钮✓ / 唤起+关闭✓ / 带人设回复✓ / 200字符+空消息拦截✓ / 会话隔离✓ / 快照持久化+刷新保留✓ / 回归(后端33+前端13+phase6 16)✓ / Playwright 0 报错✓（截图 `vu_screens/resident_chat_dialog.png`）。
+
+## 10. LangGraph 重构（AI 编排层）
+
+> 定稿规范（2026-09-25 用户逐项拍板）
+
+1. 自研 AI 编排（deepSeekClient 熔断+并发+重试+JSON 解析 240+ 行 + 静态 if/else orchestrator + 5 个纯 Prompt 分支 Agent）重构为 LangChain.js + LangGraph.js 图编排；**业务层（phase5/6/7 + 8 个 SQLite 库）零改动**。
+2. 模型继续用 DeepSeek（`@langchain/deepseek`，deepseek-chat）；首批 5 个工具全开；LangSmith 免费 Developer 层；试点=居民 AI 对话。
+3. 保留完整回退开关：AI_LLM_BACKEND / AI_RAG_BACKEND / USE_LANGGRAPH / AI_MEMORY_ENABLED / AI_HITL_ENABLED。
+
+### 文件路径
+- 模型层：`backend/src/ai/{schemas.js, langchainModelClient.js, modelClientFactory.js}`（AI_LLM_BACKEND 择 langchain/legacy，三处装配点注入）。
+- 图编排：`backend/src/ai/graph/{state.js, checkpointer.js, nodes.js, graphOrchestrator.js}`（Annotation.Root + SqliteSaver + 5 分支节点 + finalize）。
+- 工具：`backend/src/ai/tools/{auth.js, index.js, context.js, factory.js}`（角色矩阵 + 5 工具 + AsyncLocalStorage 用户上下文 + 与 phase6 同库业务工具集）。
+- 长记忆：`backend/src/ai/memory/memoryGateway.js`（before 召回注入 / after 落库+异步提炼）。
+- RAG：`backend/src/ai/rag/`（组件化 + Chroma 集成）。
+- 路由：`backend/src/routes/{stream.js, resume.js}`、`backend/src/app.js`（stream+resume 挂载）、`backend/src/config/env.js`（ai 块含 hitlEnabled/approvalTools）。
+- 前端：`frontend/src/services/sceneApi.js`（sendMessageStream/resumeApproval）、`frontend/src/stores/conversationStore.js`（DEFAULT_USER/流式/审批）、`frontend/src/components/scene/SceneConversationPanel.vue`（打字机+审批卡片）。
+
+### 关键实现
+- **图结构**：`START → route →(risk=high→safety : scene→branch×5) → branch →(有 toolCalls→[敏感→approval(HITL)]→execute_tools→回 branch : finalize) → finalize → END`；SQLite Checkpointer `backend/data/langgraph.sqlite`（thread_id=conversationId 断点续跑，不带则 `ephemeral-${uuid}` 临时线程零污染）。
+- **模型适配器**：ChatDeepSeek 构造即校 key → `langchainModelClient.js` 惰性实例化缓存；无 `.bind` → 结构化输出 `invoke(messages, {response_format:{type:'json_object'}})`（prompt 含「仅返回合法 JSON」）；工具轮 bindTools 不加 response_format（互斥）。
+- **5 工具权限矩阵**：query_friends→resident/admin、guestbook_write→editor/admin、plot_lookup/quota_overview/resident_card_lookup→viewer+、无身份 role=null 全拒绝。
+- **长记忆**：memoryGateway before 召回注入 / after 落库+异步提炼，AI_MEMORY_ENABLED 开关；memory 库落库验证通过。
+- **HITL（KIN 审批）**：LangGraph 原生 `interrupt`/`Command({resume})`/`isInterrupted()`（`__interrupt__` 键）；approval 节点 + resume 路由 `POST /api/scene/route/resume` + 前端审批卡片；verify-hitl.mjs 批准路径真实执行、拒绝路径不执行。
+- **流式 SSE**：`createStructuredResponseStream`（.stream + json_object + onToken）+ `POST /api/scene/route/stream`；断线判定用 `response.on('close')` + `writableEnded`（勿用 request.on('close')）。
+- **prompt 改句**：`createBranchAgent.js` 第 40 行改为「允许使用工具 + 写入须确认/审批」（一处改 5 分支）；`pruneToolMessages` 剪枝断点续跑工具历史（AI tool_calls + ToolMessage）。
+
+### 验收状态
+- 后端回归 **45/45**（42 旧 + toolAuth 3）、前端 9/9、vite build 通过。
+- 冒烟：verify-llm.mjs 真实流式 10 chunks；verify-stream.mjs 202 chunks 全通过；verify-hitl.mjs 批准/拒绝双路径；RAG E2E 双引擎（自研 vs LangChain）结果逐位一致；HTTP E2E viewer 问名额返回真实 14 项数据；记忆落库验证通过。
+
+### 已知局限
+- 前端默认身份 DEFAULT_USER（userId:1, resident/editor）为试点值，生产应接真实认证。
+- Chroma 本机无 Docker 用 venv（`.venv-chroma` / `.chroma-data`），collection `virtual_utopia_rag` E2E 后已清空；生产部署方式待定。
+- `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。
+- 详细 13 条坑（惰性实例化 / response_format / 节点名撞字段 / thread_id 语义 / SSE 断线 / interrupt 约束 / 工具消息累积等）见 memory-log.md 2026-09-25 条目。
