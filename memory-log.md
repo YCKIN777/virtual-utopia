@@ -1311,3 +1311,53 @@
 - resume 审批人校验仅限「admin 角色」，未做 conversationId→owner 归属校验（后续可加：审批人须为该会话授权人）。
 - sceneAuth 调 phase6 无超时重试（fetch 直连，网络错误即 503）；跨服务调用可后续加超时与重试。
 - 前端登录 token 存外层 localStorage（key `scene-app.phase5.token`），与主世界（virtual-utopia.phase5.token）相互独立——跨应用同源共享待定。
+
+---
+
+## 2026-09-26 待办② Chroma 数据治理与生产部署方式（启动编排 + 治理命令 + 部署模板）
+
+> 决策：按 memory-core 待办②落地。现状：CHROMA_URL/CHROMA_COLLECTION 已可通过 env 配置（vectorStore.js 按协议自动 ssl），
+> 但缺启动编排（start-all.mjs 只管 phase5/phase6）、数据治理命令、生产部署模板。
+
+### 改动文件
+- `scripts/chroma.mjs`（新）：五子命令 `start` / `stop` / `status` / `reset` / `reset-data`，**纯 Node 原生（零 shell 依赖）**。
+- `scripts/start-all.mjs`：新增 `chroma` 服务条目（kind=venv、health 探测 `/api/v2/heartbeat`、required=false 可选启动）。
+- `backend/.env.example`：补 `CHROMA_URL` / `CHROMA_COLLECTION` / `RAG_DOCS_DIR` 注释段。
+- `deploy/chroma.docker-compose.yml`（新）：生产部署模板（chromadb/chroma:1.5.9 + 数据卷 + healthcheck，**本机无 Docker 未实测**）。
+
+### 关键实现
+- **start**：`detached: true` spawn（脱离 Job Object，父进程退出后服务存活）+ openSync fd 写日志（`.chroma-data/chroma.out.log` / `chroma.err.log`）+ PID 文件（`.chroma-data/chroma.pid`）+ 轮询 `/api/v2/heartbeat` 就绪。
+- **stop**：读 PID 文件 → `process.kill(pid, 'SIGTERM')`（Windows 即 TerminateProcess）→ 轮询心跳确认停止。
+- **status**：心跳 + collections 列表 + count + 数据目录大小。
+- **reset**：DELETE collection（幂等，404 视为已空）。
+- **reset-data**：数据目录损坏时整体重命名备份（`.corrupt-<时间戳>`，**不删除**）→ 重建空目录。
+- **start-all 集成**：chroma 可选（venv 不存在/启动失败只降级 RAG，不阻塞业务服务）。
+
+### 排障过程（本轮最有价值部分，4 层根因）
+1. **第一层（数据目录）**：`.chroma-data` 旧 SQLite 损坏（昨日进程被强杀未干净关闭）→ chroma 打印 listening 后静默退出 → 换全新空目录验证通过 → 引入 `reset-data`。
+2. **第二层（API 路径）**：`/api/v1/heartbeat` 全部 **410 Gone** —— chromadb 1.5.9（Rust 版）API 路径改版：`/api/v1/*` 废弃，正确路径为 `/api/v2/heartbeat`（心跳）、`/api/v2/tenants/default_tenant/databases/default_database/collections`（列表/删除）；`/api/v2/version` → `"1.0.0"`。
+3. **第三层（进程生命周期）**：node spawn 的 chroma 子进程在**父进程退出后被 Job Object 终止**（start 时轮询心跳成功、脚本一退出进程即消失）→ 改 `detached: true` 脱离。
+4. **第四层（PATH 精简）**：本环境 node 子进程 **PATH 精简，无 powershell / netstat**（`spawn powershell ENOENT`、`netstat` 找不到）→ 进程管理弃用 shell，改 **PID 文件 + `process.kill`**（Node 原生）。
+- 附加排查（已排除）：曾怀疑异步 FileHandle GC 关闭 fd 导致 chroma 写 stdout 崩溃 → 一度改 openSync（非根因，保留无害）；最终 detached + openSync fd 组合稳定。
+
+### 测试结果
+- `node scripts/chroma.mjs start` → 已启动（PID 22648）；**父脚本退出 2 秒后 `status` 仍显示运行中（PID 22648）**——detached 脱离存活确认。
+- `status`：collections（0）、数据目录 0.19 MB。
+- `reset`：collection 不存在（已空）幂等通过。
+- `stop`：已停止（PID 22648）；随后 `status` → 未在运行。
+- `start-all.mjs` 冒烟（注入 phase5 env 后台跑）：`phase5 就绪` → `phase6 就绪` → `chroma 就绪` → 全部必需服务已就绪；TaskStop 后 3300/3400/8000 全部释放。
+- 后端回归 **54/54 全绿**（本轮未改后端代码，保险确认）。
+- 清理：`.chroma-data.corrupt-2026-09-25T16-48-58-596Z`（损坏旧数据备份）、`.chroma-tmp`/`.chroma-tmp2`/diag 脚本（测试产物）已清理。
+
+### 自检清单
+- [x] chroma.mjs 五子命令全链路验证（start/status/reset/stop + 脱离存活）
+- [x] start-all 集成 Chroma 可选启动冒烟通过（三服务就绪 + 停止后端口全释放）
+- [x] 后端 54/54 无回归
+- [x] 生产部署模板与 .env.example 同步
+- [x] 规划文档 P4 后续行更新（真实认证 ✅ + Chroma 治理 ✅ + 剩余待办）
+- [x] 记忆三件套同步（本条 + memory-core 第八节）
+
+### 已知局限
+- 本机无 Docker，`deploy/chroma.docker-compose.yml` 未实测（生产部署需在目标环境验证）。
+- chroma.mjs 的 `reset`/`reset-data` 假定默认 tenant/database（`default_tenant`/`default_database`）；自定义租户需扩展。
+- start-all 集成后 chroma 日志走 stdio inherit（随编排终端），独立 `chroma.mjs start` 才写 chroma.out/err.log。

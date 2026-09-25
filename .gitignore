@@ -32,5 +32,6 @@ vu_screens/
 release/
 
 # LangGraph 重构运行产物（2026-09-25）
-.chroma-data/
+# .chroma-data*/ 同时覆盖损坏备份目录（.chroma-data.corrupt-*，2026-09-26）
+.chroma-data*/
 .workbuddy/

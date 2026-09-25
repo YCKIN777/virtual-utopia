@@ -138,7 +138,12 @@
 ### 已知局限
 - 外层壳登录为最小实现（无注册入口/验证码）；resume 审批人校验仅限 admin 角色（conversationId→owner 归属校验待加）；sceneAuth 调 phase6 无超时重试；前端登录 token 与主世界各自独立存储（跨应用同源共享待定）。
 - 前端默认身份 DEFAULT_USER（userId:1, resident/editor）已废弃（2026-09-26 真实认证落地后删除）。
-- 前端默认身份 DEFAULT_USER（userId:1, resident/editor）为试点值，生产应接真实认证。
-- Chroma 本机无 Docker 用 venv（`.venv-chroma` / `.chroma-data`），collection `virtual_utopia_rag` E2E 后已清空；生产部署方式待定。
 - `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。
 - 详细 13 条坑（惰性实例化 / response_format / 节点名撞字段 / thread_id 语义 / SSE 断线 / interrupt 约束 / 工具消息累积等）见 memory-log.md 2026-09-25 条目。
+
+### Chroma 数据治理与生产部署（2026-09-26 落地）
+- 治理脚本：`scripts/chroma.mjs`（start/stop/status/reset/reset-data 五子命令，纯 Node 原生零 shell 依赖；start 用 `detached:true` 脱离 Job Object + PID 文件 `.chroma-data/chroma.pid` + 轮询 `/api/v2/heartbeat`；stop 读 PID 文件 `process.kill`；reset 删 collection 幂等；reset-data 数据目录损坏时重命名备份 `.corrupt-<时间戳>` 并重建空目录，不删数据）。
+- 编排集成：`scripts/start-all.mjs` 新增 chroma 可选服务（kind=venv，health `/api/v2/heartbeat`，required=false——venv 缺失只降级 RAG 不阻塞业务）。
+- 生产部署：`deploy/chroma.docker-compose.yml`（chromadb/chroma:1.5.9 + 数据卷 + healthcheck；本机无 Docker 未实测）；`CHROMA_URL` 指向远端即可（https 自动 ssl）；`.env.example` 补 `CHROMA_URL/CHROMA_COLLECTION/RAG_DOCS_DIR`。
+- **关键坑（4 层排障）**：① 旧 `.chroma-data` SQLite 未干净关闭（进程被强杀）→ chroma 打印 listening 后静默退出 → reset-data 备份重建；② chromadb 1.5.9（Rust 版）API 路径 `/api/v1/*` 全 410 Gone，正确为 `/api/v2/*`（心跳/collections 走 `/api/v2/tenants/default_tenant/databases/default_database/collections`）；③ node spawn 子进程在父退出时被 Job Object 终止 → 必须 `detached:true`；④ 本环境 node 子进程 PATH 精简（无 powershell/netstat）→ 进程管理用 PID 文件 + process.kill。
+- 验证：chroma.mjs 全链路 start→status→reset→stop 通过（父退出后服务存活）；start-all 冒烟 phase5/phase6/chroma 三就绪、停止后端口全释放；后端回归 54/54。

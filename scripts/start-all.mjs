@@ -8,12 +8,17 @@
  * 启动顺序：phase5(3300) -> phase6(3400)（前端另行启动，见 README）。
  */
 import { spawn } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HEALTH_TIMEOUT_MS = 30000;
 const HEALTH_INTERVAL_MS = 500;
+
+const venvChromaPath = () =>
+  process.platform === 'win32'
+    ? join(ROOT, '.venv-chroma', 'Scripts', 'chroma.exe')
+    : join(ROOT, '.venv-chroma', 'bin', 'chroma');
 
 const SERVICES = [
   {
@@ -35,6 +40,19 @@ const SERVICES = [
       'http://127.0.0.1:3400/health',
     ],
     required: true,
+  },
+  {
+    // 待办②：Chroma 向量库纳入统一编排（可选）。本机无 Docker 用 venv 跑；
+    // 若未安装 venv 或启动失败，业务服务仍可启动，仅 RAG 功能降级。
+    name: 'chroma',
+    kind: 'venv',
+    entry: 'node_modules/.bin/chroma', // 占位，实际按平台解析 .venv-chroma
+    args: ['run', '--path', '.chroma-data', '--host', '127.0.0.1', '--port', '8000'],
+    health: [
+      'http://localhost:8000/api/v2/heartbeat',
+      'http://127.0.0.1:8000/api/v2/heartbeat',
+    ],
+    required: false,
   },
 ];
 
@@ -73,9 +91,14 @@ process.on('SIGTERM', () => stopAll());
 const main = async () => {
   for (const svc of SERVICES) {
     console.log('[start-all] 启动 ' + svc.name + ' ...');
-    const child = spawn(process.execPath, [resolve(ROOT, svc.entry)], {
-      stdio: 'inherit',
-    });
+    const child =
+      svc.kind === 'venv'
+        ? spawn(venvChromaPath(), svc.args.map((a) => (a === '.chroma-data' ? join(ROOT, '.chroma-data') : a)), {
+            stdio: 'inherit',
+          })
+        : spawn(process.execPath, [resolve(ROOT, svc.entry)], {
+            stdio: 'inherit',
+          });
     children.push(child);
 
     const ready = await waitForHealth(svc.health, HEALTH_TIMEOUT_MS);

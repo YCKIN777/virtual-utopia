@@ -1,0 +1,35 @@
+# Chroma 生产部署模板（待办②：Chroma 数据治理与生产部署方式）
+#
+# 说明：
+#   - 本模板为生产部署参考，本机（无 Docker）未实测；本机开发请用
+#     `node scripts/chroma.mjs start`（Python venv 方式）。
+#   - 部署后把 backend/.env 的 CHROMA_URL 指向本服务（如 http://<host>:8000）；
+#     vectorStore.js 按协议自动启用 ssl（https 地址即可）。
+#   - 数据卷 chroma-data 持久化；生产建议启用 AUTH（chromadb 1.5+ 支持
+#     CHROMA_SERVER_AUTHN_CREDENTIALS 等环境变量，按官方文档配置后注入）。
+#
+# 用法：
+#   docker compose -f deploy/chroma.docker-compose.yml up -d
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9
+    container_name: virtual-utopia-chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+    environment:
+      # 生产按需启用鉴权（示例：静态 API key）
+      # CHROMA_SERVER_AUTHN_CREDENTIALS: "change-me"
+      # CHROMA_SERVER_AUTHN_CREDENTIALS_FILE: ""
+      # CHROMA_AUTHN_TRANSPORT_HEADER: "X-Chroma-Token"
+      ANONYMIZED_TELEMETRY: "False"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  chroma-data:
