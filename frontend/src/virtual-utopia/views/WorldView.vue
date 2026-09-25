@@ -7,6 +7,7 @@ import {
   ref,
   watch,
 } from 'vue';
+import { useRouter } from 'vue-router';
 import HomePanel from '../components/HomePanel.vue';
 import ResidentChatPanel from '../components/ResidentChatPanel.vue';
 import SpaceChatPanel from '../components/SpaceChatPanel.vue';
@@ -15,7 +16,11 @@ import WorldChatPanel from '../components/WorldChatPanel.vue';
 import { createPresenceClient } from '../services/presenceClient.js';
 import { worldStore } from '../stores/worldStore.js';
 import { ThreeWorld } from '../webgl/ThreeWorld.js';
-import { getHomeById, validateHomeLayout } from '../webgl/worldLayout.js';
+import {
+  getChannelForPosition,
+  getHomeById,
+  validateHomeLayout,
+} from '../webgl/worldLayout.js';
 import {
   RESIDENT_CHAT_DISTANCE,
   seedResidents,
@@ -99,6 +104,87 @@ const spacePanel = reactive({
 const searchOpen = ref(false);
 let socialTimer = null;
 let residentBubbleClock = '';
+let positionSyncTimer = null;
+let worldChatChannelTimer = null;
+let visitNotifyTimer = null;
+let pendingReturnPoller = null;
+let pendingReturnApplied = false;
+
+// P1-1 主页回我家：周期保存玩家位置 + 场景标签到 worldStore，
+// 让 ProfileView 能告诉用户「我现在在哪」+ 跨页落地。
+const persistPlayerPosition = () => {
+  if (!world) return;
+  const position = world.getPlayerPosition ? world.getPlayerPosition() : null;
+  if (!position) return;
+  const ctx = world.getSocialContext ? world.getSocialContext() : null;
+  const plotId =
+    ctx?.nearestHome && typeof ctx.nearestHome.distance === 'number' && ctx.nearestHome.distance <= 12.5
+      ? ctx.nearestHome.id
+      : null;
+  worldStore.setLastWorldPosition({
+    x: position.x,
+    y: position.y,
+    z: position.z,
+    sceneLabel: ctx?.label || '',
+    plotId,
+  });
+};
+
+// P1-1 主页回我家：把本地化身（targetPosition + group.position）和
+// camera/controls.target 一起同步到给定坐标，避免被 animate 里 updateLocalAvatarTransform 复位
+const snapAvatarTo = (x, y, z) => {
+  if (!world) return;
+  if (world.localAvatarId && world.avatarObjects?.has(world.localAvatarId)) {
+    const record = world.avatarObjects.get(world.localAvatarId);
+    if (record?.targetPosition) record.targetPosition.set(x, y, z);
+    if (record?.group?.position) {
+      record.group.position.set(x, y, z);
+      record.group.updateMatrixWorld?.();
+    }
+  }
+  if (world.camera && world.controls) {
+    world.camera.position.set(x + 18, y + 22, z + 22);
+    world.controls.target.set(x, y + 1, z);
+    world.controls.update?.();
+  }
+};
+// P1-1 主页回我家：消费 ProfileView 设置的 pendingReturn
+//  - type='home' → flyToHome(plotId) + 强制结束 flyAnimation + snap avatar 到 home
+//  - type='here' → snapAvatarTo(lastPosition)
+const applyPendingReturn = () => {
+  if (!world) return;
+  const target = worldStore.consumePendingReturn();
+  if (!target) return;
+  if (target.type === 'home') {
+    const homeId = target.plotId || worldStore.getOwnedHome()?.id;
+    if (homeId) {
+      world.flyToHome(homeId);
+      // 立刻结束飞行动画：flyAnimation.target 是 (home.x, home.y+2.4, home.z)，
+      // controls.target 用 lerp(0.1) 走过去要走几百帧，我们不等。
+      if (world.flyAnimation) {
+        const dest = world.flyAnimation.target;
+        if (world.controls && dest) {
+          world.controls.target.copy(dest);
+        }
+        if (world.camera && dest) {
+          world.camera.lookAt(dest);
+          world.camera.position.set(dest.x + 18, dest.y + 22, dest.z + 22);
+        }
+        world.flyAnimation = null;
+      }
+      // 手动同步 avatar 到 home 位置，避免 animate 下帧把它拉回。
+      const home = worldStore.getHomePlot(homeId);
+      if (home) {
+        snapAvatarTo(home.x, home.y, home.z);
+      }
+    }
+    return;
+  }
+  if (target.type === 'here' && target.position) {
+    const { x, y, z } = target.position;
+    snapAvatarTo(x, y, z);
+  }
+};
 
 const isResidentUser = computed(() =>
   ['admin', 'editor'].includes(worldStore.state.permissions?.role),
@@ -317,6 +403,8 @@ const startPresence = () => {
 
 const layoutValidation = validateHomeLayout();
 
+const router = useRouter();
+
 const selectWorldObject = (info) => {
   selectedInfo.value = info;
 
@@ -338,6 +426,66 @@ const selectWorldObject = (info) => {
       });
     }
   }
+
+  // P2 迷你主页：点击广场 Avatar 弹出小卡
+  if (info?.type === 'avatar') {
+    openMiniProfile(info);
+  }
+};
+
+// —— P2 迷你主页 ——
+const miniProfile = ref(null);
+const miniProfileBio = ref('');
+
+const openMiniProfile = async (info) => {
+  const online = onlineUsers.value.find((item) => item.userId === info.userId);
+
+  miniProfile.value = {
+    avatarId: info.avatarId,
+    userId: info.userId,
+    displayName: info.displayName || '漫游者',
+    color: online?.color || '#4f8f7b',
+    online: Boolean(online),
+  };
+  miniProfileBio.value = '';
+
+  const directory = await worldStore.listResidentDirectory();
+
+  if (directory.ok) {
+    const entry = directory.residents.find(
+      (item) => item.userId === info.userId,
+    );
+    miniProfileBio.value =
+      entry?.selfIntro || entry?.occupation || entry?.hobbies || '';
+  }
+};
+
+const greetMiniProfile = async () => {
+  const target = miniProfile.value;
+
+  if (!target) {
+    return;
+  }
+
+  const result = await worldStore.sendDirectMessage({
+    toUserId: target.userId,
+    content: '你好，很高兴认识你！',
+  });
+
+  if (result.ok) {
+    worldStore.notify(`已向 ${target.displayName} 打招呼`, 'success');
+  }
+};
+
+const viewFullProfile = () => {
+  const target = miniProfile.value;
+
+  if (!target) {
+    return;
+  }
+
+  miniProfile.value = null;
+  router.push({ name: 'profile', query: { userId: target.userId } });
 };
 
 const TIME_PERIODS = ['day', 'dusk', 'night', 'dawn'];
@@ -487,6 +635,50 @@ onMounted(async () => {
     }, 900);
     kinYardTimer = setInterval(updateKinYardPresence, 500);
     updateKinYardPresence();
+    // P1-1 主页回我家：周期持久化玩家位置（3s 一次，复用现有轮询节流）
+    persistPlayerPosition();
+    positionSyncTimer = setInterval(persistPlayerPosition, 3000);
+    // P1-2 属地聊天：按玩家位置实时切换聊天频道（广场 / 宅院门口）
+    worldChatChannelTimer = setInterval(() => {
+      const position = world.getLocalAvatarState();
+
+      if (position) {
+        worldStore.setWorldChatChannel(
+          getChannelForPosition(position.x, position.z),
+        );
+      }
+    }, 800);
+    // P1-3 串门通知：轮询自家宅院来访记录，检测到新访客时站内提示
+    worldStore.checkHomeVisitNotifications();
+    visitNotifyTimer = setInterval(
+      () => worldStore.checkHomeVisitNotifications(),
+      3000,
+    );
+    // P1-1 主页回我家：等 homeObjects===50 且首帧渲染后才消费 pendingReturn，
+    // 否则 flyToHome 会被下一帧 updateLocalAvatarTransform 复位。
+    pendingReturnApplied = false;
+    pendingReturnPoller = setInterval(() => {
+      if (pendingReturnApplied) {
+        if (pendingReturnPoller) {
+          clearInterval(pendingReturnPoller);
+          pendingReturnPoller = null;
+        }
+        return;
+      }
+      if (!world || !world.homeObjects || world.homeObjects.size < 50) {
+        return;
+      }
+      // requestAnimationFrame 保证在 ThreeWorld.animate 真正渲染过一次之后再消费。
+      requestAnimationFrame(() => {
+        if (pendingReturnApplied) return;
+        applyPendingReturn();
+        pendingReturnApplied = true;
+        if (pendingReturnPoller) {
+          clearInterval(pendingReturnPoller);
+          pendingReturnPoller = null;
+        }
+      });
+    }, 250);
     if (import.meta.env.DEV) {
       window.__utopiaWorld = world;
       // 开发期调试钩子：便于自测脚本查看 worldStore 状态（生产不注入）。
@@ -515,6 +707,22 @@ onBeforeUnmount(() => {
   if (socialTimer) {
     clearInterval(socialTimer);
     socialTimer = null;
+  }
+  if (positionSyncTimer) {
+    clearInterval(positionSyncTimer);
+    positionSyncTimer = null;
+  }
+  if (worldChatChannelTimer) {
+    clearInterval(worldChatChannelTimer);
+    worldChatChannelTimer = null;
+  }
+  if (visitNotifyTimer) {
+    clearInterval(visitNotifyTimer);
+    visitNotifyTimer = null;
+  }
+  if (pendingReturnPoller) {
+    clearInterval(pendingReturnPoller);
+    pendingReturnPoller = null;
   }
   if (import.meta.env.DEV) {
     delete window.__utopiaWorld;
@@ -890,10 +1098,129 @@ watch(currentUser, () => {
     />
 
     <WorldChatPanel v-if="currentUser" @select-resident="openResidentChat" />
+
+    <aside v-if="miniProfile" class="vu-mini-profile">
+      <button
+        type="button"
+        class="vu-mini-profile__close"
+        aria-label="关闭迷你主页"
+        @click="miniProfile = null"
+      >
+        ×
+      </button>
+      <div class="vu-mini-profile__head">
+        <span
+          class="vu-mini-profile__avatar"
+          :style="{ background: miniProfile.color }"
+          aria-hidden="true"
+        >
+          {{ miniProfile.displayName.slice(0, 1) }}
+        </span>
+        <div>
+          <strong>{{ miniProfile.displayName }}</strong>
+          <span
+            class="vu-mini-profile__status"
+            :class="miniProfile.online ? 'is-online' : 'is-offline'"
+          >
+            {{ miniProfile.online ? '在线' : '离线' }}
+          </span>
+        </div>
+      </div>
+      <p class="vu-mini-profile__bio">
+        {{ miniProfileBio || '这位邻居还没有填写简介' }}
+      </p>
+      <div class="vu-mini-profile__actions">
+        <button
+          type="button"
+          class="vu-button vu-button--accent vu-button--small"
+          @click="greetMiniProfile"
+        >
+          打招呼
+        </button>
+        <button
+          type="button"
+          class="vu-button vu-button--light vu-button--small"
+          @click="viewFullProfile"
+        >
+          查看主页
+        </button>
+      </div>
+    </aside>
   </main>
 </template>
 
 <style scoped>
+.vu-mini-profile {
+  position: fixed;
+  left: 22px;
+  bottom: 22px;
+  z-index: 36;
+  width: min(260px, calc(100vw - 28px));
+  padding: 14px;
+  border: 1px solid rgba(28, 62, 54, 0.22);
+  border-radius: 10px;
+  background: #f7f5ef;
+  color: #243d37;
+  box-shadow: 0 12px 34px rgba(13, 29, 27, 0.24);
+}
+
+.vu-mini-profile__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: 0;
+  background: none;
+  color: #7a8a83;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.vu-mini-profile__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vu-mini-profile__avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.vu-mini-profile__head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.vu-mini-profile__status {
+  font-size: 11px;
+}
+
+.vu-mini-profile__status.is-online {
+  color: #2d7a5c;
+}
+
+.vu-mini-profile__status.is-offline {
+  color: #98a29d;
+}
+
+.vu-mini-profile__bio {
+  margin: 10px 0;
+  color: #557067;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.vu-mini-profile__actions {
+  display: flex;
+  gap: 8px;
+}
 .vu-world-online {
   position: absolute;
   top: 118px;

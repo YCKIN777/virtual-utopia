@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { createAuditStore } from './auditStore.js';
 import { createPhase6App } from './app.js';
 import { createGuestbookStore } from './guestbookStore.js';
+import { createHomeSocialStore } from './homeSocialStore.js';
 import { createPlotAssignmentStore } from './plotAssignmentStore.js';
 import { createResidentCardStore } from './residentCardStore.js';
 import { createResidentSocialStore } from './residentSocialStore.js';
@@ -30,6 +31,9 @@ export const startPhase6Server = async ({
   const residentSocialStore = createResidentSocialStore({
     databasePath: config.socialDatabasePath,
   });
+  const homeSocialStore = createHomeSocialStore({
+    databasePath: config.homeSocialDatabasePath,
+  });
   const frozenApp = createPhase6App({
     config,
     auditStore,
@@ -38,6 +42,7 @@ export const startPhase6Server = async ({
     residentCardStore,
     guestbookStore,
     residentSocialStore,
+    homeSocialStore,
   });
   const { app } = createGuardedApp({
     service: 'virtual-utopia-phase6',
@@ -65,6 +70,7 @@ export const startPhase6Server = async ({
         residentCardStore.close();
         guestbookStore.close();
         residentSocialStore.close();
+        homeSocialStore.close();
 
         if (error) {
           reject(error);

@@ -7,7 +7,7 @@ import {
   ref,
   watch,
 } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import HomepageS2Panel from '../components/HomepageS2Panel.vue';
 import ResidentCardsPanel from '../components/ResidentCardsPanel.vue';
 import ResidentDirectoryPanel from '../components/ResidentDirectoryPanel.vue';
@@ -17,10 +17,42 @@ import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
 
 const router = useRouter();
+const route = useRoute();
 
 const user = computed(() => worldStore.state.user);
 const nickname = computed(() => user.value?.displayName || '居民');
 const myUserId = computed(() => user.value?.phase5UserId);
+
+// P2 迷你主页跳转：查看他人完整主页（?userId=X）
+const guestUserId = computed(() => {
+  const raw = route.query.userId;
+  const parsed = raw ? Number.parseInt(raw, 10) : null;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+});
+const isViewingGuest = computed(
+  () => Boolean(guestUserId.value && guestUserId.value !== myUserId.value),
+);
+const guestProfile = ref(null);
+
+const loadGuestProfile = async () => {
+  guestProfile.value = null;
+
+  if (!isViewingGuest.value) {
+    return;
+  }
+
+  const directory = await worldStore.listResidentDirectory();
+
+  if (directory.ok) {
+    guestProfile.value =
+      directory.residents.find((item) => item.userId === guestUserId.value) ||
+      null;
+  }
+};
+
+const backToMyProfile = () => {
+  router.replace({ name: 'profile' });
+};
 const identityLabel = computed(() => {
   if (!user.value) return '';
   const isAI = seedResidents.some((r) => r.residentName === user.value.displayName);
@@ -251,6 +283,7 @@ watch(anyOverlayOpen, (open) => {
 
 onMounted(() => {
   worldStore.loadResidentCards();
+  loadGuestProfile();
 });
 onBeforeUnmount(() => {
   document.body.style.overflow = '';
@@ -259,6 +292,55 @@ onBeforeUnmount(() => {
     groupTimer = null;
   }
 });
+
+// ---- P1-1 主页回我家：当前所在位置 + 一键回到 3D 世界 ----
+// 不引入新后端事件；position 由 WorldView 周期写入 worldStore.state.lastWorldPosition，
+// 落地意图通过 worldStore.setPendingReturn 注入 WorldView onMounted 消费。
+const myHome = computed(() => (worldStore.getOwnedHome ? worldStore.getOwnedHome() : null) || null);
+const lastPosition = computed(() => worldStore.state.lastWorldPosition || null);
+const lastPositionLabel = computed(() => {
+  const p = lastPosition.value;
+  if (!p) return '尚未进入 3D 世界';
+  const label = p.sceneLabel || '';
+  if (label) return `${label}（x:${p.x.toFixed(1)} z:${p.z.toFixed(1)}）`;
+  return `x:${p.x.toFixed(1)} z:${p.z.toFixed(1)}`;
+});
+const hasLastPosition = computed(
+  () => Boolean(lastPosition.value && Number.isFinite(lastPosition.value.x)),
+);
+
+const gotoMyHome = () => {
+  // 触发 WorldView 在初始化完成后 flyToHome 到我自己的宅院；
+  // 若没有自己的宅院，回退到「当前位置」不打开空面板。
+  const home = myHome.value;
+  if (home) {
+    worldStore.setPendingReturn({ type: 'home', plotId: home.id, sceneLabel: home.title || '' });
+  } else if (hasLastPosition.value) {
+    worldStore.setPendingReturn({
+      type: 'here',
+      position: lastPosition.value,
+      sceneLabel: lastPosition.value.sceneLabel,
+    });
+  } else {
+    worldStore.notify('你还没有自己的宅院，先到 3D 世界逛逛吧', 'info');
+    router.push({ name: 'world' });
+    return;
+  }
+  router.push({ name: 'world' });
+};
+
+const gotoLastPosition = () => {
+  if (!hasLastPosition.value) {
+    worldStore.notify('你还没去过 3D 世界，先去逛逛吧', 'info');
+    return;
+  }
+  worldStore.setPendingReturn({
+    type: 'here',
+    position: lastPosition.value,
+    sceneLabel: lastPosition.value.sceneLabel,
+  });
+  router.push({ name: 'world' });
+};
 </script>
 
 <template>
@@ -277,6 +359,62 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </header>
+
+      <!-- P2 迷你主页跳转：查看他人主页时的提示横幅 -->
+      <div v-if="isViewingGuest" class="vu-guest-banner">
+        <div>
+          <strong>{{ guestProfile?.displayName || '邻居' }} 的主页</strong>
+          <p>
+            {{
+              guestProfile?.selfIntro ||
+              guestProfile?.occupation ||
+              guestProfile?.hobbies ||
+              '这位邻居还没有填写简介'
+            }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="vu-button vu-button--light vu-button--small"
+          @click="backToMyProfile"
+        >
+          返回我的主页
+        </button>
+      </div>
+
+      <!-- P1-1 主页回我家：从主页一键回到 3D 世界 -->
+      <section class="vu-home-return" aria-label="回 3D 世界入口">
+        <div class="vu-home-return__where">
+          <span class="vu-home-return__kicker">我现在在</span>
+          <span class="vu-home-return__label">{{ lastPositionLabel }}</span>
+        </div>
+        <div class="vu-home-return__actions">
+          <button
+            type="button"
+            class="vu-btn vu-btn--primary vu-home-return__btn"
+            :disabled="!myHome && !hasLastPosition"
+            @click="gotoMyHome"
+          >
+            <span aria-hidden="true">🏠</span>
+            <span>{{ myHome ? '回我的宅院' : '前往 3D 世界' }}</span>
+          </button>
+          <button
+            type="button"
+            class="vu-btn vu-home-return__btn"
+            :disabled="!hasLastPosition"
+            @click="gotoLastPosition"
+          >
+            <span aria-hidden="true">📍</span>
+            <span>回到刚才的位置</span>
+          </button>
+        </div>
+        <small v-if="!myHome" class="vu-home-return__hint">
+          你还没有自己的宅院；下方按钮会带你回到刚才的位置或先进 3D 世界逛逛。
+        </small>
+        <small v-else class="vu-home-return__hint">
+          「回我的宅院」会自动飞回 {{ myHome.title || myHome.id }}；「回到刚才的位置」会回到你离开前所在的地方。
+        </small>
+      </section>
 
       <!-- 主视觉大卡片：动态标题 + 3 动态标签 -->
       <section class="vu-maincard">
@@ -574,6 +712,27 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.vu-guest-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(244, 246, 245, 0.12);
+  border-radius: 10px;
+  background: rgba(191, 232, 210, 0.08);
+}
+
+.vu-guest-banner strong {
+  font-size: 15px;
+}
+
+.vu-guest-banner p {
+  margin: 2px 0 0;
+  color: rgba(244, 246, 245, 0.7);
+  font-size: 13px;
+}
 .vu-profile {
   background: var(--vu-paper, #fbfbfd);
   color: var(--vu-ink, #1d1d1f);
@@ -634,6 +793,78 @@ onBeforeUnmount(() => {
 .vu-at {
   font-size: 13px;
   color: var(--vu-muted, #6e6e73);
+}
+
+/* P1-1 主页回我家 */
+.vu-home-return {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  margin-top: 4px;
+  border: 2px solid rgba(47, 168, 79, 0.32);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(47, 168, 79, 0.08) 0%, rgba(47, 168, 79, 0.02) 100%);
+  box-shadow: 0 2px 10px rgba(47, 168, 79, 0.08);
+}
+.vu-home-return__where {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vu-home-return__kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vu-brand-deep, #1f6f3f);
+  font-weight: 800;
+}
+.vu-home-return__label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--vu-ink, #1d1d1f);
+  word-break: break-word;
+}
+.vu-home-return__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.vu-home-return__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--vu-line, #e3e3e8);
+  background: #fff;
+  color: var(--vu-ink, #1d1d1f);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.vu-home-return__btn:hover:not([disabled]) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+.vu-home-return__btn.vu-btn--primary {
+  background: var(--vu-accent, #2fa84f);
+  border-color: transparent;
+  color: #fff;
+}
+.vu-home-return__btn.vu-btn--primary:hover:not([disabled]) {
+  background: var(--vu-brand-deep, #258a41);
+}
+.vu-home-return__btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.vu-home-return__hint {
+  font-size: 12px;
+  color: var(--vu-muted, #6e6e73);
+  line-height: 1.65;
 }
 
 /* 主视觉大卡片 */

@@ -100,7 +100,7 @@ test('enforces home ownership and visitor actions', async () => {
 
   // 默认关闭参观权限：外人在未开放宅院不能留言/寻宝
   assert.equal(
-    store.addHomeMessage({
+    await store.addHomeMessage({
       plotId: 'plot-1',
       content: '这里很安静。',
     }),

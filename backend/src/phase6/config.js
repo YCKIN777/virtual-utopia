@@ -74,6 +74,10 @@ export const readPhase6Config = (environment = process.env) => {
       environment.PHASE6_SOCIAL_DB_PATH ||
         path.join(rootDirectory, 'data', 'phase6_resident_social.sqlite'),
     ),
+    homeSocialDatabasePath: path.resolve(
+      environment.PHASE6_HOME_SOCIAL_DB_PATH ||
+        path.join(rootDirectory, 'data', 'phase6_home_social.sqlite'),
+    ),
     maxUploadBytes: toInteger(
       environment.PHASE6_MAX_UPLOAD_BYTES,
       10 * 1024 * 1024,

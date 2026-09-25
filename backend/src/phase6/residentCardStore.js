@@ -21,6 +21,13 @@ export const RESIDENT_CARD_TYPES = Object.freeze([
 
 export const RESIDENT_CARD_PERMISSIONS = Object.freeze(['self', 'residents']);
 
+export const CARD_INTERACTION_KINDS = Object.freeze([
+  'signup', // 出游卡：报名参加
+  'help', // 心愿卡：我来帮你
+  'want', // 心愿卡：我也想要
+  'comment', // 随记卡：评论
+]);
+
 const now = () => new Date().toISOString();
 
 const mapCard = (row) => {
@@ -73,6 +80,20 @@ export const createResidentCardStore = ({ databasePath = ':memory:' } = {}) => {
       ON resident_cards(user_id, card_type);
     CREATE INDEX IF NOT EXISTS idx_resident_cards_perm_type
       ON resident_cards(permission, card_type);
+
+    CREATE TABLE IF NOT EXISTS card_interactions (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      kind TEXT NOT NULL
+        CHECK (kind IN ('signup', 'help', 'want', 'comment')),
+      content TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_card_interactions_card
+      ON card_interactions(card_id, created_at);
   `);
 
   const getById = (id) => {
@@ -181,7 +202,62 @@ export const createResidentCardStore = ({ databasePath = ':memory:' } = {}) => {
     if (!current) return null;
 
     database.prepare('DELETE FROM resident_cards WHERE id = ?').run(id);
+    database
+      .prepare('DELETE FROM card_interactions WHERE card_id = ?')
+      .run(id);
     return current;
+  };
+
+  const mapInteraction = (row) => ({
+    id: row.id,
+    cardId: row.card_id,
+    userId: row.user_id,
+    username: row.username,
+    kind: row.kind,
+    content: row.content || null,
+    createdAt: row.created_at,
+  });
+
+  const listInteractions = (cardId) =>
+    database
+      .prepare(
+        `SELECT * FROM card_interactions
+         WHERE card_id = ?
+         ORDER BY created_at ASC, id ASC`,
+      )
+      .all(cardId)
+      .map(mapInteraction);
+
+  const createInteraction = ({ cardId, userId, username, kind, content }) => {
+    const createdAt = now();
+    const id = `ci-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const interaction = {
+      id,
+      cardId,
+      userId,
+      username: username || '',
+      kind,
+      content: content || null,
+      createdAt,
+    };
+
+    database
+      .prepare(
+        `INSERT INTO card_interactions (
+          id, card_id, user_id, username, kind, content, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        interaction.id,
+        interaction.cardId,
+        interaction.userId,
+        interaction.username,
+        interaction.kind,
+        interaction.content,
+        interaction.createdAt,
+      );
+
+    return interaction;
   };
 
   return Object.freeze({
@@ -189,6 +265,8 @@ export const createResidentCardStore = ({ databasePath = ':memory:' } = {}) => {
     listByUser,
     listCommunity,
     listPublicByUser,
+    listInteractions,
+    createInteraction,
     create,
     update,
     remove,

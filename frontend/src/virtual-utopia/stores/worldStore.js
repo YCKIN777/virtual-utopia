@@ -133,6 +133,7 @@ export const createWorldStore = ({
     residentChats: {},
     worldChat: {
       loaded: false,
+      channel: 'plaza',
       messages: [],
     },
     residentCards: {
@@ -140,6 +141,7 @@ export const createWorldStore = ({
       mine: [],
       community: [],
     },
+    cardInteractions: {},
     board: {
       loaded: false,
       items: [],
@@ -148,6 +150,8 @@ export const createWorldStore = ({
       loaded: false,
       messages: [],
     },
+    // P1-3 串门通知：已见过的自家宅院来访数量（用于检测新访客）
+    homeVisitSeenCount: 0,
     // 阶段七：空间社交内容层（广场公屏 / 就近私聊 / 主页异步 / 宅院权限 / 检索）
     space: {
       scenes: [],
@@ -160,6 +164,10 @@ export const createWorldStore = ({
       lastExport: null,
       stats: null,
     },
+    // P1-1 主页回我家：周期保存玩家实时位置 + ProfileView→WorldView 的落地意图
+    // 不引入后端事件，纯前端 store；WorldView onMounted 时消费 pendingReturn。
+    lastWorldPosition: null, // { x, y, z, sceneLabel, plotId, ts }
+    pendingReturn: null,    // { type: 'home' | 'here', plotId?, position?, sceneLabel?, ts }
   });
 
   const dismissToast = (toastId) => {
@@ -524,6 +532,59 @@ export const createWorldStore = ({
       ? state.homes.find((home) => home.ownerId === state.user.id) || null
       : null;
 
+  // ============ P1-1 主页回我家 ============
+  // 周期保存玩家实时位置（WorldView 在 animate 中调用），
+  // 让 ProfileView 离开主世界后也能告诉用户「我现在在哪」。
+  const setLastWorldPosition = (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    const next = {
+      x: Number(payload.x) || 0,
+      y: Number(payload.y) || 0,
+      z: Number(payload.z) || 0,
+      sceneLabel: String(payload.sceneLabel || ''),
+      plotId: payload.plotId ? String(payload.plotId) : null,
+      ts: Date.now(),
+    };
+    state.lastWorldPosition = next;
+  };
+
+  // ProfileView 设置「回我家 / 我现在在哪」的落地意图；
+  // WorldView 在 onMounted 末尾消费并清理（一次性）。
+  const setPendingReturn = (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      state.pendingReturn = null;
+      return;
+    }
+    const type = payload.type === 'home' || payload.type === 'here' ? payload.type : null;
+    if (!type) {
+      state.pendingReturn = null;
+      return;
+    }
+    state.pendingReturn = {
+      type,
+      plotId: payload.plotId ? String(payload.plotId) : null,
+      position:
+        payload.position && typeof payload.position === 'object'
+          ? {
+              x: Number(payload.position.x) || 0,
+              y: Number(payload.position.y) || 0,
+              z: Number(payload.position.z) || 0,
+            }
+          : null,
+      sceneLabel: payload.sceneLabel ? String(payload.sceneLabel) : '',
+      ts: Date.now(),
+    };
+  };
+
+  // 消费并清理 pendingReturn；WorldView 在初始化完成后调用一次。
+  const consumePendingReturn = () => {
+    const current = state.pendingReturn;
+    state.pendingReturn = null;
+    return current;
+  };
+
+  const getPendingReturn = () => state.pendingReturn;
+
   const assignHome = (plotId, newOwnerName) => {
     const home = getHomePlot(plotId);
     const name = String(newOwnerName || '').trim();
@@ -605,25 +666,33 @@ export const createWorldStore = ({
     state.kinInOwnYard = Boolean(value);
   };
 
-  const addHomeMessage = ({ plotId, content }) => {
+  const addHomeMessage = async ({ plotId, content, parentId }) => {
     const home = getHomePlot(plotId);
     const message = String(content || '').trim();
 
-    if (!home || !state.user || !canViewHome(plotId) || !message) {
+    if (!home || !state.user || !accessToken || !canViewHome(plotId) || !message) {
       return false;
     }
 
-    home.messages = [
-      ...home.messages,
-      {
-        id: `message-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        author: state.user.displayName,
-        content: message.slice(0, 120),
-        createdAt: new Date().toISOString(),
-      },
-    ];
-    notify('留言仅保存在当前页面内存', 'success');
-    return true;
+    try {
+      const payload = await persistence.createHomeMessage(
+        accessToken,
+        plotId,
+        {
+          content: message.slice(0, 200),
+          parentId: parentId || null,
+        },
+      );
+
+      if (payload?.message) {
+        home.messages = [...home.messages, payload.message];
+      }
+
+      return Boolean(payload?.message);
+    } catch (error) {
+      notify(error.message || '留言失败', 'error');
+      return false;
+    }
   };
 
   const removeHomeMessage = ({ plotId, messageId }) => {
@@ -638,20 +707,83 @@ export const createWorldStore = ({
     return home.messages.length < before;
   };
 
-  const recordHomeVisit = ({ plotId }) => {
+  const loadHomeMessages = async (plotId) => {
     const home = getHomePlot(plotId);
 
-    if (!home || !state.user || home.ownerId === state.user.id) {
+    if (!home || !accessToken) {
+      return;
+    }
+
+    try {
+      const payload = await persistence.listHomeMessages(accessToken, plotId);
+      home.messages = Array.isArray(payload?.messages) ? payload.messages : [];
+    } catch {
+      // 留言加载失败不阻塞面板
+    }
+  };
+
+  const loadHomeVisits = async (plotId) => {
+    const home = getHomePlot(plotId);
+
+    if (!home || !accessToken) {
+      return;
+    }
+
+    try {
+      const payload = await persistence.listHomeVisits(accessToken, plotId);
+      home.visits = Array.isArray(payload?.visits) ? payload.visits : [];
+    } catch {
+      // 来访记录加载失败不阻塞面板
+    }
+  };
+
+  const recordHomeVisit = async ({ plotId }) => {
+    const home = getHomePlot(plotId);
+
+    if (!home || !state.user || !accessToken || home.ownerId === state.user.id) {
       return false;
     }
 
-    const visit = {
-      id: `visit-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      username: state.user.displayName || state.user.username || '访客',
-      visitedAt: new Date().toISOString(),
-    };
-    home.visits = [...(home.visits || []), visit];
-    return true;
+    try {
+      const payload = await persistence.recordHomeVisit(accessToken, plotId);
+
+      if (payload?.visit) {
+        home.visits = [...(home.visits || []), payload.visit];
+      }
+
+      return Boolean(payload?.visit);
+    } catch {
+      return false;
+    }
+  };
+
+  // P1-3 串门通知：轮询自家宅院来访记录，发现新访客时站内提示「X 来串门了」
+  const checkHomeVisitNotifications = async () => {
+    const home = getOwnedHome();
+
+    if (!home || !accessToken || !state.user) {
+      return;
+    }
+
+    try {
+      const payload = await persistence.listHomeVisits(accessToken, home.id);
+      const visits = Array.isArray(payload?.visits) ? payload.visits : [];
+      const previous = state.homeVisitSeenCount || 0;
+
+      if (visits.length > previous) {
+        const fresh = visits.slice(0, visits.length - previous);
+
+        for (const visit of fresh) {
+          if (visit.visitorUserId !== state.user.phase5UserId) {
+            notify(`${visit.visitorName} 来串门了`, 'info');
+          }
+        }
+      }
+
+      state.homeVisitSeenCount = visits.length;
+    } catch {
+      // 忽略轮询失败
+    }
   };
 
   const buryClue = ({ plotId, clue }) => {
@@ -934,6 +1066,43 @@ export const createWorldStore = ({
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error.message || '删除卡片失败' };
+    }
+  };
+
+  const loadCardInteractions = async (cardId) => {
+    if (!accessToken) return;
+    try {
+      const payload = await persistence.listCardInteractions(
+        accessToken,
+        cardId,
+      );
+      state.cardInteractions[cardId] = Array.isArray(payload?.interactions)
+        ? payload.interactions
+        : [];
+    } catch {
+      // 交互加载失败不阻塞
+    }
+  };
+
+  const createCardInteraction = async ({ cardId, kind, content }) => {
+    if (!accessToken) return { ok: false, error: '请先登录' };
+    try {
+      const payload = await persistence.createCardInteraction(
+        accessToken,
+        cardId,
+        { kind, content },
+      );
+
+      if (payload?.interaction) {
+        state.cardInteractions[cardId] = [
+          ...(state.cardInteractions[cardId] || []),
+          payload.interaction,
+        ];
+      }
+
+      return { ok: true, interaction: payload?.interaction };
+    } catch (error) {
+      return { ok: false, error: error.message || '操作失败' };
     }
   };
 
@@ -1336,19 +1505,41 @@ export const createWorldStore = ({
   const loadWorldChat = async () => {
     if (!accessToken) return;
     try {
-      const payload = await persistence.loadWorldChat(accessToken, 50);
+      const payload = await persistence.loadWorldChat(
+        accessToken,
+        50,
+        state.worldChat.channel,
+      );
       const list = Array.isArray(payload?.messages) ? payload.messages : [];
 
       // 空结果不覆盖已有消息（避免轮询偶发空响应清空面板）
       if (list.length > 0 || !state.worldChat.loaded) {
         state.worldChat = {
           loaded: true,
+          channel: state.worldChat.channel,
           messages: list,
         };
       }
     } catch (error) {
       console.error('[world-chat] 加载失败:', error?.message || error);
     }
+  };
+
+  const setWorldChatChannel = async (channel) => {
+    const normalized = String(channel || 'plaza');
+
+    if (normalized === state.worldChat.channel) {
+      return;
+    }
+
+    // 切频道：立即清空旧频道消息，避免残留
+    state.worldChat = {
+      loaded: false,
+      channel: normalized,
+      messages: [],
+    };
+
+    await loadWorldChat();
   };
 
   const sendWorldChat = async ({ content }) => {
@@ -1359,7 +1550,11 @@ export const createWorldStore = ({
     }
 
     try {
-      const payload = await persistence.sendWorldChat(accessToken, normalized);
+      const payload = await persistence.sendWorldChat(
+        accessToken,
+        normalized,
+        state.worldChat.channel,
+      );
 
       if (payload?.message) {
         state.worldChat.messages = [
@@ -1471,9 +1666,17 @@ export const createWorldStore = ({
     setKinInOwnYard,
     addHomeMessage,
     removeHomeMessage,
+    loadHomeMessages,
+    loadHomeVisits,
     recordHomeVisit,
+    checkHomeVisitNotifications,
     buryClue,
     discoverClue,
+    // P1-1 主页回我家
+    setLastWorldPosition,
+    setPendingReturn,
+    consumePendingReturn,
+    getPendingReturn,
     loadFriends,
     sendFriendRequest,
     respondFriendRequest,
@@ -1489,6 +1692,8 @@ export const createWorldStore = ({
     createResidentCard,
     updateResidentCard,
     deleteResidentCard,
+    loadCardInteractions,
+    createCardInteraction,
     loadResidentBoard,
     loadGuestbook,
     createGuestbookMessage,
@@ -1501,6 +1706,7 @@ export const createWorldStore = ({
     listGroupMessages,
     sendGroupMessage,
     loadWorldChat,
+    setWorldChatChannel,
     sendWorldChat,
     // 阶段七：空间社交内容层
     loadSpaceScenes,

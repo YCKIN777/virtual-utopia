@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { seedResidents } from '../data/residents.js';
 import { worldStore } from '../stores/worldStore.js';
+import { getChannelLabel } from '../webgl/worldLayout.js';
 
 const emit = defineEmits(['select-resident']);
 
@@ -14,6 +15,9 @@ const mentionQuery = ref('');
 let pollTimer = null;
 
 const messages = computed(() => worldStore.state.worldChat.messages);
+const channelLabel = computed(() =>
+  getChannelLabel(worldStore.state.worldChat.channel),
+);
 
 const matchedResidents = computed(() => {
   const query = mentionQuery.value.trim();
@@ -113,15 +117,15 @@ onBeforeUnmount(() => {
       :aria-expanded="open"
       @click="open = !open"
     >
-      世界频道
+      {{ channelLabel }}
       <span v-if="messages.length">{{ messages.length }}</span>
     </button>
 
     <section v-if="open" class="vu-world-chat__panel" aria-label="世界文字聊天">
       <header>
         <div>
-          <span class="vu-kicker">WORLD CHAT</span>
-          <strong>全局世界频道</strong>
+          <span class="vu-kicker">LOCAL CHAT</span>
+          <strong>{{ channelLabel }}</strong>
         </div>
         <button type="button" aria-label="关闭世界频道" @click="open = false">
           ×
@@ -137,7 +141,7 @@ onBeforeUnmount(() => {
           <p>{{ message.content }}</p>
         </article>
         <p v-if="messages.length === 0" class="vu-world-chat__empty">
-          世界频道暂无消息
+          {{ channelLabel }}暂无消息
         </p>
       </div>
 
@@ -164,7 +168,7 @@ onBeforeUnmount(() => {
         <input
           v-model="input"
           maxlength="200"
-          placeholder="发送世界消息（输入 @ 与居民私聊）"
+          placeholder="发送消息到当前位置频道（输入 @ 与居民私聊）"
           :disabled="sending"
           @input="syncMention"
           @keydown.esc="mentionOpen = false"

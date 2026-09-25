@@ -150,23 +150,23 @@ export const createPersistenceClient = ({
       fetchImpl,
       timeoutMs,
     }),
-  loadWorldChat: (token, limit = 60) =>
+  loadWorldChat: (token, limit = 60, channel = 'plaza') =>
     requestJson({
       baseUrl,
-      path: `/api/phase6/chat/world?limit=${encodeURIComponent(limit)}`,
+      path: `/api/phase6/chat/world?limit=${encodeURIComponent(
+        limit,
+      )}&channel=${encodeURIComponent(channel)}`,
       token,
       fetchImpl,
       timeoutMs,
     }),
-  sendWorldChat: (token, content) =>
+  sendWorldChat: (token, content, channel = 'plaza') =>
     requestJson({
       baseUrl,
       path: '/api/phase6/chat/world',
       method: 'POST',
       token,
-      body: {
-        content,
-      },
+      body: { content, channel },
       fetchImpl,
       timeoutMs,
     }),
@@ -339,6 +339,28 @@ export const createPersistenceClient = ({
       path: `/api/phase6/resident-cards/${encodeURIComponent(cardId)}`,
       method: 'DELETE',
       token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listCardInteractions: (token, cardId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-cards/${encodeURIComponent(
+        cardId,
+      )}/interactions`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createCardInteraction: (token, cardId, { kind, content }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/resident-cards/${encodeURIComponent(
+        cardId,
+      )}/interactions`,
+      method: 'POST',
+      token,
+      body: { kind, content },
       fetchImpl,
       timeoutMs,
     }),
@@ -588,6 +610,41 @@ export const createPersistenceClient = ({
     requestJson({
       baseUrl,
       path: '/api/phase7/backup',
+      method: 'POST',
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  listHomeMessages: (token, plotId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/home/${encodeURIComponent(plotId)}/messages`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  createHomeMessage: (token, plotId, { content, parentId }) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/home/${encodeURIComponent(plotId)}/messages`,
+      method: 'POST',
+      token,
+      body: { content, parentId },
+      fetchImpl,
+      timeoutMs,
+    }),
+  listHomeVisits: (token, plotId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/home/${encodeURIComponent(plotId)}/visits`,
+      token,
+      fetchImpl,
+      timeoutMs,
+    }),
+  recordHomeVisit: (token, plotId) =>
+    requestJson({
+      baseUrl,
+      path: `/api/phase6/home/${encodeURIComponent(plotId)}/visits`,
       method: 'POST',
       token,
       fetchImpl,

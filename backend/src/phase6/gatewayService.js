@@ -459,22 +459,27 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
     }
   };
 
-  const getWorldChat = async ({ authorization, limit = 60 }) => {
+  const getWorldChat = async ({ authorization, limit = 60, channel = 'plaza' }) => {
     await authenticate(authorization);
     await worldChatQueue;
     const session = await readWorldChatSession();
     const messages = Array.isArray(session?.messages) ? session.messages : [];
     const normalizedLimit = Math.max(1, Math.min(Number(limit) || 60, 100));
+    const normalizedChannel = String(channel || 'plaza');
 
     return {
       sessionId: WORLD_CHAT_SESSION_ID,
-      messages: messages.slice(-normalizedLimit),
+      channel: normalizedChannel,
+      messages: messages
+        .filter((message) => (message?.channel || 'plaza') === normalizedChannel)
+        .slice(-normalizedLimit),
     };
   };
 
-  const sendWorldChatMessage = async ({ authorization, content }) => {
+  const sendWorldChatMessage = async ({ authorization, content, channel = 'plaza' }) => {
     const user = await authenticate(authorization);
     const normalizedContent = String(content || '').trim();
+    const normalizedChannel = String(channel || 'plaza');
 
     if (normalizedContent.length === 0 || normalizedContent.length > 200) {
       throw new Phase6ValidationError(
@@ -491,6 +496,7 @@ export const createGatewayService = ({ config, httpClient, uploadService }) => {
         username: user.username,
         displayName: user.displayName || user.username,
         content: normalizedContent,
+        channel: normalizedChannel,
         createdAt: new Date().toISOString(),
       };
       const nextMessages = [...messages, message].slice(

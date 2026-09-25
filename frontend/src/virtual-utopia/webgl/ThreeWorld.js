@@ -5427,6 +5427,9 @@ export class ThreeWorld {
     const group = new THREE.Group();
     group.userData.avatarId = avatar.id;
     group.userData.isLocal = isLocal;
+    group.userData.userId = avatar.userId;
+    group.userData.displayName =
+      avatar.displayName || avatar.username || '漫游者';
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: bodyColor,
       roughness: 0.72,
@@ -5444,6 +5447,18 @@ export class ThreeWorld {
     body.castShadow = true;
     group.add(body);
 
+    // P2 迷你主页：非本人且为真实用户的 Avatar 可点击（头像/身体/头发）
+    if (!isLocal && avatar.userId) {
+      const tag = {
+        selectionType: 'avatar',
+        avatarId: avatar.id,
+        userId: avatar.userId,
+        displayName: avatar.displayName || avatar.username || '漫游者',
+      };
+      body.userData = { ...body.userData, ...tag };
+      this.clickableMeshes.push(body);
+    }
+
     const head = new THREE.Mesh(
       new THREE.SphereGeometry(0.27, 12, 8),
       new THREE.MeshStandardMaterial({
@@ -5454,6 +5469,17 @@ export class ThreeWorld {
     head.position.y = 1.25;
     head.castShadow = true;
     group.add(head);
+
+    if (!isLocal && avatar.userId) {
+      head.userData = {
+        ...head.userData,
+        selectionType: 'avatar',
+        avatarId: avatar.id,
+        userId: avatar.userId,
+        displayName: avatar.displayName || avatar.username || '漫游者',
+      };
+      this.clickableMeshes.push(head);
+    }
 
     const hairMaterial = new THREE.MeshStandardMaterial({
       color: hairColor,
@@ -6573,6 +6599,16 @@ export class ThreeWorld {
     }
 
     const object = hit.object;
+
+    if (object.userData.selectionType === 'avatar') {
+      this.onSelect({
+        type: 'avatar',
+        avatarId: object.userData.avatarId,
+        userId: object.userData.userId,
+        displayName: object.userData.displayName,
+      });
+      return;
+    }
 
     if (object.userData.selectionType === 'residentHome') {
       this.onSelect({

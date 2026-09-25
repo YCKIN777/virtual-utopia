@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { worldStore } from '../stores/worldStore.js';
 
 const CARD_TYPES = [
@@ -172,9 +172,63 @@ const remove = async (card) => {
   await worldStore.deleteResidentCard(card.id);
 };
 
-onMounted(() => {
-  worldStore.loadResidentCards();
+// —— P2 卡片交互：报名/帮你/想要/评论 ——
+const commentInputs = reactive({});
+const commentOpen = reactive({});
+
+const interactionsOf = (cardId) =>
+  worldStore.state.cardInteractions[cardId] || [];
+const signupsOf = (cardId) =>
+  interactionsOf(cardId).filter((item) => item.kind === 'signup');
+const helpOf = (cardId) =>
+  interactionsOf(cardId).filter((item) => item.kind === 'help');
+const wantOf = (cardId) =>
+  interactionsOf(cardId).filter((item) => item.kind === 'want');
+const commentsOf = (cardId) =>
+  interactionsOf(cardId).filter((item) => item.kind === 'comment');
+
+const loadInteractions = async () => {
+  const cards = [...mineCards.value, ...communityCards.value];
+  await Promise.all(cards.map((card) => worldStore.loadCardInteractions(card.id)));
+};
+
+const doInteraction = async (card, kind) => {
+  await worldStore.createCardInteraction({ cardId: card.id, kind });
+};
+
+const toggleComment = (cardId) => {
+  commentOpen[cardId] = !commentOpen[cardId];
+};
+
+const submitComment = async (card) => {
+  const content = (commentInputs[card.id] || '').trim();
+
+  if (!content) {
+    return;
+  }
+
+  const result = await worldStore.createCardInteraction({
+    cardId: card.id,
+    kind: 'comment',
+    content,
+  });
+
+  if (result.ok) {
+    commentInputs[card.id] = '';
+    commentOpen[card.id] = false;
+  }
+};
+
+const watchCardsAndLoad = async () => {
+  await loadInteractions();
+};
+
+onMounted(async () => {
+  await worldStore.loadResidentCards();
+  await watchCardsAndLoad();
 });
+
+watch(activeType, watchCardsAndLoad);
 </script>
 
 <template>
@@ -241,6 +295,37 @@ onMounted(() => {
               {{ card.content.body }}
             </p>
             <small class="rc-card__time">{{ formatDate(card.createdAt) }}</small>
+
+            <div v-if="interactionsOf(card.id).length" class="rc-interactions">
+              <template v-if="card.cardType === 'travel_log'">
+                <div class="rc-interaction-line">
+                  <span class="rc-kicker">同行名单</span>
+                  <span class="rc-interaction-names">
+                    {{ signupsOf(card.id).map((i) => i.username).join('、') }}
+                  </span>
+                </div>
+              </template>
+              <template v-else-if="card.cardType === 'wish_list'">
+                <div
+                  v-for="i in [...helpOf(card.id), ...wantOf(card.id)]"
+                  :key="i.id"
+                  class="rc-interaction-line"
+                >
+                  <strong>{{ i.username }}</strong>
+                  <span>{{ i.kind === 'help' ? '我来帮你' : '我也想要' }}</span>
+                </div>
+              </template>
+              <template v-else-if="card.cardType === 'life_note'">
+                <div
+                  v-for="c in commentsOf(card.id)"
+                  :key="c.id"
+                  class="rc-interaction-line"
+                >
+                  <strong>{{ c.username }}</strong>
+                  <span>{{ c.content }}</span>
+                </div>
+              </template>
+            </div>
           </div>
           <div class="rc-card__actions">
             <button type="button" class="rc-mini" @click="openEdit(card)">
@@ -279,6 +364,88 @@ onMounted(() => {
             <small class="rc-card__time">
               @{{ card.username }} · {{ formatDate(card.createdAt) }}
             </small>
+
+            <div v-if="interactionsOf(card.id).length" class="rc-interactions">
+              <template v-if="card.cardType === 'travel_log'">
+                <div class="rc-interaction-line">
+                  <span class="rc-kicker">同行名单</span>
+                  <span class="rc-interaction-names">
+                    {{ signupsOf(card.id).map((i) => i.username).join('、') }}
+                  </span>
+                </div>
+              </template>
+              <template v-else-if="card.cardType === 'wish_list'">
+                <div
+                  v-for="i in [...helpOf(card.id), ...wantOf(card.id)]"
+                  :key="i.id"
+                  class="rc-interaction-line"
+                >
+                  <strong>{{ i.username }}</strong>
+                  <span>{{ i.kind === 'help' ? '我来帮你' : '我也想要' }}</span>
+                </div>
+              </template>
+              <template v-else-if="card.cardType === 'life_note'">
+                <div
+                  v-for="c in commentsOf(card.id)"
+                  :key="c.id"
+                  class="rc-interaction-line"
+                >
+                  <strong>{{ c.username }}</strong>
+                  <span>{{ c.content }}</span>
+                </div>
+              </template>
+            </div>
+
+            <div class="rc-card__interact">
+              <button
+                v-if="card.cardType === 'travel_log'"
+                type="button"
+                class="rc-mini"
+                @click="doInteraction(card, 'signup')"
+              >
+                报名参加
+              </button>
+              <template v-else-if="card.cardType === 'wish_list'">
+                <button
+                  type="button"
+                  class="rc-mini"
+                  @click="doInteraction(card, 'help')"
+                >
+                  我来帮你
+                </button>
+                <button
+                  type="button"
+                  class="rc-mini"
+                  @click="doInteraction(card, 'want')"
+                >
+                  我也想要
+                </button>
+              </template>
+              <template v-else-if="card.cardType === 'life_note'">
+                <button
+                  type="button"
+                  class="rc-mini"
+                  @click="toggleComment(card.id)"
+                >
+                  {{ commentOpen[card.id] ? '收起' : '评论' }}
+                </button>
+                <div v-if="commentOpen[card.id]" class="rc-comment-form">
+                  <input
+                    v-model="commentInputs[card.id]"
+                    maxlength="300"
+                    placeholder="写评论…"
+                    @keyup.enter="submitComment(card)"
+                  />
+                  <button
+                    type="button"
+                    class="rc-mini"
+                    @click="submitComment(card)"
+                  >
+                    发送
+                  </button>
+                </div>
+              </template>
+            </div>
           </div>
         </article>
       </div>
@@ -381,6 +548,57 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.rc-interactions {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rc-interaction-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.rc-interaction-line strong {
+  color: rgba(244, 246, 245, 0.85);
+}
+
+.rc-interaction-line span {
+  color: rgba(244, 246, 245, 0.7);
+}
+
+.rc-interaction-names {
+  overflow-wrap: anywhere;
+}
+
+.rc-card__interact {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.rc-comment-form {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.rc-comment-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(244, 246, 245, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f4f6f5;
+  font-size: 13px;
+}
 .rc-panel {
   display: grid;
   gap: 16px;

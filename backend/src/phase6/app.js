@@ -12,6 +12,7 @@ import { createHttpClient } from './httpClient.js';
 import { parseMultipart } from './multipart.js';
 import { createFriendStore } from './friendStore.js';
 import { createGuestbookStore } from './guestbookStore.js';
+import { createHomeSocialStore } from './homeSocialStore.js';
 import { createPresenceStore } from './presenceStore.js';
 import { createPlotAssignmentStore } from './plotAssignmentStore.js';
 import { createResidentCardStore } from './residentCardStore.js';
@@ -158,6 +159,9 @@ export const createPhase6App = ({
   residentSocialStore = createResidentSocialStore({
     databasePath: config.socialDatabasePath,
   }),
+  homeSocialStore = createHomeSocialStore({
+    databasePath: config.homeSocialDatabasePath,
+  }),
   fetchImpl = globalThis.fetch,
 }) => {
   const httpClient = createHttpClient({
@@ -184,6 +188,7 @@ export const createPhase6App = ({
   app.locals.residentCardStore = residentCardStore;
   app.locals.guestbookStore = guestbookStore;
   app.locals.residentSocialStore = residentSocialStore;
+  app.locals.homeSocialStore = homeSocialStore;
 
   app.disable('x-powered-by');
   app.use(
@@ -422,6 +427,7 @@ export const createPhase6App = ({
         await gateway.getWorldChat({
           authorization,
           limit: request.query.limit,
+          channel: request.query.channel,
         }),
       );
     }),
@@ -436,6 +442,7 @@ export const createPhase6App = ({
         await gateway.sendWorldChatMessage({
           authorization,
           content: request.body?.content,
+          channel: request.body?.channel,
         }),
       );
     }),
@@ -1562,6 +1569,62 @@ export const createPhase6App = ({
     }),
   );
 
+  // ===== P2 卡片交互：报名/帮你/想要/评论 =====
+  app.get(
+    '/api/phase6/resident-cards/:id/interactions',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      const user = await gateway.authenticate(authorization);
+      requireResident(user);
+
+      response.json({
+        interactions: residentCardStore.listInteractions(request.params.id),
+      });
+    }),
+  );
+
+  app.post(
+    '/api/phase6/resident-cards/:id/interactions',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      const user = await gateway.authenticate(authorization);
+      requireResident(user);
+
+      const card = residentCardStore.getById(request.params.id);
+
+      if (!card) {
+        throw new Phase6NotFoundError('resident card not found');
+      }
+
+      const kind = String(request.body?.kind || '');
+
+      if (!['signup', 'help', 'want', 'comment'].includes(kind)) {
+        throw new Phase6ValidationError('interaction kind is invalid');
+      }
+
+      const content =
+        kind === 'comment'
+          ? String(request.body?.content || '').trim()
+          : '';
+
+      if (kind === 'comment' && (!content || content.length > 300)) {
+        throw new Phase6ValidationError(
+          'comment must be between 1 and 300 characters',
+        );
+      }
+
+      const interaction = residentCardStore.createInteraction({
+        cardId: card.id,
+        userId: user.id,
+        username: user.displayName || user.username,
+        kind,
+        content: content || null,
+      });
+
+      response.status(201).json({ interaction });
+    }),
+  );
+
   // ===== 居民主页迭代 S2：个人展示板 + 邻里留言簿 =====
   const readBoardUserId = (request, selfUserId) => {
     const raw = request.query.userId;
@@ -1900,6 +1963,72 @@ export const createPhase6App = ({
     app.use('/api', phase7.router);
   }
   app.locals.phase7 = phase7;
+
+  // ===== P1-3 串门留言簿：宅院留言（可回复）+ 来访记录 =====
+  app.get(
+    '/api/phase6/home/:plotId/messages',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      await gateway.authenticate(authorization);
+
+      response.json({
+        messages: homeSocialStore.listMessages(request.params.plotId),
+      });
+    }),
+  );
+
+  app.post(
+    '/api/phase6/home/:plotId/messages',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      const user = await gateway.authenticate(authorization);
+      const content = String(request.body?.content || '').trim();
+
+      if (!content || content.length > 200) {
+        throw new Phase6ValidationError(
+          'content must be between 1 and 200 characters',
+        );
+      }
+
+      const message = homeSocialStore.createMessage({
+        plotId: request.params.plotId,
+        authorUserId: user.id,
+        authorName: user.displayName || user.username,
+        content,
+        parentId: request.body?.parentId || null,
+      });
+
+      response.status(201).json({ message });
+    }),
+  );
+
+  app.get(
+    '/api/phase6/home/:plotId/visits',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      await gateway.authenticate(authorization);
+
+      response.json({
+        visits: homeSocialStore.listVisits(request.params.plotId),
+      });
+    }),
+  );
+
+  app.post(
+    '/api/phase6/home/:plotId/visits',
+    asyncHandler(async (request, response) => {
+      const authorization = requireAuthorization(request);
+      const user = await gateway.authenticate(authorization);
+
+      const visit = homeSocialStore.recordVisit({
+        plotId: request.params.plotId,
+        visitorUserId: user.id,
+        visitorName: user.displayName || user.username,
+      });
+
+      response.status(201).json({ visit });
+    }),
+  );
 
   app.use((_request, response) => {
     response.status(404).json({

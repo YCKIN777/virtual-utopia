@@ -263,6 +263,40 @@ export const crossGroupBridges = [
 
 export const getHomeById = (id) => homes.find((home) => home.id === id) || null;
 
+// 属地聊天：判定玩家当前所在的聊天频道。
+// 距离宅院中心 HOME_CHANNEL_RADIUS 内 => 该宅院门口频道（plot-N）；否则 => 广场频道（plaza）。
+const HOME_CHANNEL_RADIUS = 4.5;
+
+export const getChannelForPosition = (x, z) => {
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  for (const home of homes) {
+    const distance = Math.hypot(x - home.x, z - home.z);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = home;
+    }
+  }
+
+  if (nearest && nearestDistance <= HOME_CHANNEL_RADIUS) {
+    return `plot-${nearest.number}`;
+  }
+
+  return 'plaza';
+};
+
+export const getChannelLabel = (channel) => {
+  if (!channel || channel === 'plaza') {
+    return '广场频道';
+  }
+
+  const match = /^plot-(\d+)$/.exec(channel);
+
+  return match ? `${match[1]}号宅院门口` : channel;
+};
+
 export const getNearestHub = (home) => {
   const preferred = bridgeNetwork.find((bridge) => bridge.group === home.group);
 

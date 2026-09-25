@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { worldStore } from '../stores/worldStore.js';
 
@@ -14,6 +14,8 @@ const emit = defineEmits(['close']);
 
 const message = ref('');
 const clue = ref('');
+const replyToId = ref(null);
+const replyText = ref('');
 const selectedHome = computed(() => worldStore.getHomePlot(props.plotId));
 const isOwner = computed(() => worldStore.canEditHome(props.plotId));
 const canView = computed(() => worldStore.canViewHome(props.plotId));
@@ -21,6 +23,13 @@ const isPrivate = computed(() => selectedHome.value?.visibility === 'private');
 const occupiedCount = computed(
   () => worldStore.state.homes.filter((home) => home.ownerId).length,
 );
+
+// 串门留言簿：顶层留言 + 各自回复线程
+const topMessages = computed(() =>
+  (selectedHome.value?.messages || []).filter((item) => !item.parentId),
+);
+const repliesOf = (parentId) =>
+  (selectedHome.value?.messages || []).filter((item) => item.parentId === parentId);
 
 const formatDate = (value) =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -30,14 +39,34 @@ const formatDate = (value) =>
     minute: '2-digit',
   }).format(new Date(value));
 
-const submitMessage = () => {
-  const accepted = worldStore.addHomeMessage({
+const loadHomeData = async () => {
+  await Promise.all([
+    worldStore.loadHomeMessages(props.plotId),
+    worldStore.loadHomeVisits(props.plotId),
+  ]);
+};
+
+const submitMessage = async () => {
+  const accepted = await worldStore.addHomeMessage({
     plotId: props.plotId,
     content: message.value,
   });
 
   if (accepted) {
     message.value = '';
+  }
+};
+
+const submitReply = async (parentId) => {
+  const accepted = await worldStore.addHomeMessage({
+    plotId: props.plotId,
+    content: replyText.value,
+    parentId,
+  });
+
+  if (accepted) {
+    replyText.value = '';
+    replyToId.value = null;
   }
 };
 
@@ -62,6 +91,9 @@ const buryClue = () => {
 const discoverClue = () => {
   worldStore.discoverClue(props.plotId);
 };
+
+onMounted(loadHomeData);
+watch(() => props.plotId, loadHomeData);
 </script>
 
 <template>
@@ -164,11 +196,11 @@ const discoverClue = () => {
 
           <div class="vu-home-messages">
             <article
-              v-for="item in [...selectedHome.messages].reverse()"
+              v-for="item in [...topMessages].reverse()"
               :key="item.id"
             >
               <div>
-                <strong>{{ item.author }}</strong>
+                <strong>{{ item.authorName }}</strong>
                 <span>{{ formatDate(item.createdAt) }}</span>
                 <button
                   v-if="isOwner"
@@ -181,9 +213,48 @@ const discoverClue = () => {
                 </button>
               </div>
               <p>{{ item.content }}</p>
+
+              <div v-if="repliesOf(item.id).length" class="vu-home-replies">
+                <article v-for="reply in repliesOf(item.id)" :key="reply.id">
+                  <div>
+                    <strong>{{ reply.authorName }}</strong>
+                    <span>{{ formatDate(reply.createdAt) }}</span>
+                  </div>
+                  <p>{{ reply.content }}</p>
+                </article>
+              </div>
+
+              <div v-if="worldStore.state.user" class="vu-home-reply">
+                <button
+                  type="button"
+                  class="vu-home-reply__btn"
+                  @click="
+                    replyToId = replyToId === item.id ? null : item.id
+                  "
+                >
+                  {{ replyToId === item.id ? '取消回复' : '回复' }}
+                </button>
+                <form
+                  v-if="replyToId === item.id"
+                  class="vu-inline-form"
+                  @submit.prevent="submitReply(item.id)"
+                >
+                  <input
+                    v-model="replyText"
+                    maxlength="200"
+                    placeholder="回复这条留言…"
+                  />
+                  <button
+                    type="submit"
+                    class="vu-button vu-button--dark vu-button--small"
+                  >
+                    发送
+                  </button>
+                </form>
+              </div>
             </article>
             <p
-              v-if="selectedHome.messages.length === 0"
+              v-if="topMessages.length === 0"
               class="vu-home-messages__empty"
             >
               还没有参观留言。
@@ -202,7 +273,7 @@ const discoverClue = () => {
               :key="item.id"
             >
               <div>
-                <strong>{{ item.username }}</strong>
+                <strong>{{ item.visitorName }}</strong>
                 <span>{{ formatDate(item.visitedAt) }}</span>
               </div>
             </article>
@@ -285,6 +356,42 @@ const discoverClue = () => {
   color: #66766e;
   font-size: 12px;
   font-weight: 700;
+}
+
+.vu-home-replies {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0 18px;
+  padding-left: 10px;
+  border-left: 2px solid #e2e8e2;
+}
+
+.vu-home-replies article {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f4f6f2;
+}
+
+.vu-home-replies p {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+
+.vu-home-reply {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.vu-home-reply__btn {
+  justify-self: start;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: #e7eee9;
+  color: #33584c;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .vu-home-messages__delete {

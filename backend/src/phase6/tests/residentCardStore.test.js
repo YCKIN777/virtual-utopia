@@ -82,3 +82,25 @@ test('居民卡片：CRUD + 权限过滤 + 收藏角强制仅自己', () => {
 
   store.close();
 });
+
+test('卡片交互：报名/帮你/想要/评论 + 删除级联', () => {
+  const store = createResidentCardStore({ databasePath: ':memory:' });
+  const card = store.create({
+    userId: 1, username: 'alice', cardType: 'travel_log',
+    content: { title: '远林', body: '去' }, permission: 'residents',
+  });
+
+  store.createInteraction({ cardId: card.id, userId: 2, username: 'bob', kind: 'signup' });
+  store.createInteraction({ cardId: card.id, userId: 3, username: 'carol', kind: 'comment', content: '一起' });
+
+  const list = store.listInteractions(card.id);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].kind, 'signup');
+  assert.equal(list[1].content, '一起');
+
+  // 删除卡片时级联删除交互
+  store.remove(card.id);
+  assert.equal(store.listInteractions(card.id).length, 0);
+
+  store.close();
+});
