@@ -1,9 +1,9 @@
 // scripts/verify-hitl.mjs
 // P4 HITL（KIN 审批）E2E 验证 —— 真实认证模式（phase6 登录 → Bearer token）。
 // 依赖运行中的 phase5(3300)/phase6(3400)/scene(3000) 服务。
-// 前置：scene 服务需以 AI_APPROVAL_TOOLS=quota_overview,guestbook_write 启动
-//       （框架验证用查询类工具触发 interrupt，避免依赖模型对写入类工具的谨慎行为）。
-// 场景 A：admin 查询名额（quota_overview 命中审批）→ pending_approval → resume(approved:true) → 真实数据。
+// 前置：scene 服务需以 AI_APPROVAL_TOOLS=guestbook_write,query_friends 启动
+//       （待办④ 后隐私查询类 query_friends 命中审批；quota_overview 已移出清单）。
+// 场景 A：admin 查好友列表（query_friends 命中审批）→ pending_approval → resume(approved:true) → 真实数据。
 // 场景 B：新 thread → resume(approved:false) → 拒绝回复且不执行。
 // 场景 C（行为记录，不硬断言）：admin 授权写留言簿 —— 记录模型是否发起 guestbook_write。
 import path from 'node:path';
@@ -104,28 +104,29 @@ const assert = (condition, message) => {
 
 await login();
 
-console.log('场景 A：admin 查询名额 → pending_approval → resume(approved:true) → 真实数据');
+console.log('場景 A：admin 查好友列表 → pending_approval → resume(approved:true) → 真實數據');
 {
   const conversationId = `hitl-verify-${Date.now()}`;
   const events = await readSse({
     sceneId: 'yard',
     conversationId,
-    input: { content: '帮我查一下现在乌托邦的访客名额还剩多少？' },
+    // 待辦④後：query_friends 在審批清單（隱私查詢類）；quota_overview 已移出清單不再審批
+    input: { content: '請幫我看看我還有沒有待處理的好友申請' },
   });
 
   const pending = events.find(
     (e) => e.event === 'status' && e.payload?.phase === 'approval_pending',
   );
-  assert(!!pending, '收到 approval_pending 状态事件');
+  assert(!!pending, '收到 approval_pending 狀態事件');
   assert(
     pending.payload.approval?.type === 'kin_approval',
     'approval.type === kin_approval',
   );
   assert(
     (pending.payload.approval?.toolCalls ?? []).some(
-      (call) => call.name === 'quota_overview',
+      (call) => call.name === 'query_friends',
     ),
-    '审批请求包含 quota_overview 工具调用',
+    '審批請求包含 query_friends 工具調用',
   );
 
   const done = events.find((e) => e.event === 'done');
@@ -148,7 +149,7 @@ console.log('场景 A：admin 查询名额 → pending_approval → resume(appro
     `  meta: ${JSON.stringify(resume?.meta).slice(0, 300)}`,
   );
   assert(resume.meta?.fallback === false, 'resume 无 fallback（真实数据）');
-  assert(/名额/.test(resume.result.reply), '回复包含名额数据');
+  assert(/好友|朋友/.test(resume.result.reply), '回复包含好友数据');
   console.log(`  reply: ${resume.result.reply.slice(0, 80)}…`);
 }
 
@@ -165,7 +166,7 @@ console.log('场景 B：新 thread → resume(approved:false) → 拒绝回复�
     events = await readSse({
       sceneId: 'yard',
       conversationId: conversationIdB,
-      input: { content: '帮我查一下现在乌托邦的访客名额还剩多少？' },
+      input: { content: '请帮我看看我还有没有待处理的好友申请' },
     });
 
     if (
