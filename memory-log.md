@@ -1487,6 +1487,15 @@
 - **scene 启动 env 注入**：后台进程 cwd 漂移 → dotenv 读错 .env → 503 DEEPSEEK_CONFIGURATION_ERROR；修复=`--env-file` 显式注入（见上）。
 - **verify-hitl.mjs 过时**：场景 A/B 期望 quota_overview 触发审批，但待办④后该工具已移出审批清单 → ASSERT FAILED。已对齐为 query_friends，提问「请帮我看看我还有没有待处理的好友申请」实测稳定触发工具调用（已提交）。
 
+### start-all 统一编排升级（6 服务）
+- SERVICES 扩展：phase5(3300) + phase6(3400) + chroma(8000,可选) + **scene(3000)** + **shell-frontend(5173)** + **world-3d(5175)**（3D 主世界独立入口 virtual-utopia）。
+- 关键修复（预览轮坑的正式落地）：
+  - phase5/phase6 spawn 注入 --env-file=backend/.env + PHASE5_AUTH_SECRET/PHASE5_BOOTSTRAP_ADMIN_PASSWORD（默认 changeme/utopia2026，可环境变量覆盖）——phase5 config 校验必填，不注入直接抛错。
+  - scene 后端 --env-file 显式注入（修 cwd 漂移读错 .env → DEEPSEEK_CONFIGURATION_ERROR 503）。
+  - 前端两入口 spawn 带 cwd（vite 从 cwd 找 vite.config）：shell=frontend/、3D=frontend/src/virtual-utopia/。
+- 主进程 stdio inherit 保持运行（Ctrl+C / SIGTERM 一键停止全部子进程）。
+- 验证：一键拉起六服务全就绪；verify-auth 7/7（phase5/6 经 localhost IPv6 探测）；前端 5173/5175 200。
+
 ### 自检清单
 - [x] 五服务全部健康（200）
 - [x] 真实登录 + 对话 + 工具调用全链路
