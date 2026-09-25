@@ -74,6 +74,13 @@ export const env = Object.freeze({
       '',
     ),
   }),
+  phase5: Object.freeze({
+    // 待办⑤：外层壳注册代理 —— 验证码校验通过后转发 phase5 注册端点。
+    baseUrl: (process.env.PHASE5_BASE_URL || 'http://localhost:3300').replace(
+      /\/+$/,
+      '',
+    ),
+  }),
   ai: Object.freeze({
     llmBackend: process.env.AI_LLM_BACKEND || 'langchain',
     ragBackend: process.env.AI_RAG_BACKEND || 'langchain',

@@ -6,6 +6,7 @@ import BaseCard from '../ui/BaseCard.vue';
 import BaseInput from '../ui/BaseInput.vue';
 import { useToast } from '../../composables/useToast.js';
 import { authStore } from '../../stores/authStore.js';
+import { sceneApi } from '../../services/sceneApi.js';
 
 defineProps({
   title: {
@@ -25,6 +26,20 @@ const showLogin = ref(false);
 const loggingIn = ref(false);
 const loginForm = reactive({ username: '', password: '' });
 
+// 待办⑤：登录/注册双 tab + 图形验证码（注册防滥用）。
+const loginMode = ref('login'); // 'login' | 'register'
+const registerForm = reactive({
+  username: '',
+  displayName: '',
+  password: '',
+  confirmPassword: '',
+  captchaId: '',
+  captchaAnswer: '',
+});
+const captchaImage = ref('');
+const captchaLoading = ref(false);
+const registering = ref(false);
+
 const returnToMap = () => {
   router.push({ name: 'map' });
 };
@@ -38,12 +53,42 @@ const openLogin = () => {
   loginForm.username = '';
   loginForm.password = '';
   authStore.state.error = '';
+  loginMode.value = 'login';
   showLogin.value = true;
 };
 
 const closeLogin = () => {
-  if (loggingIn.value) return;
+  if (loggingIn.value || registering.value) return;
   showLogin.value = false;
+};
+
+const loadCaptcha = async () => {
+  captchaLoading.value = true;
+
+  try {
+    const { captchaId, image } = await sceneApi.getCaptcha();
+    registerForm.captchaId = captchaId;
+    registerForm.captchaAnswer = '';
+    captchaImage.value = image;
+  } catch (error) {
+    toast.error(error.message || '验证码加载失败', { title: '注册' });
+  } finally {
+    captchaLoading.value = false;
+  }
+};
+
+const switchMode = (mode) => {
+  loginMode.value = mode;
+  authStore.state.error = '';
+
+  if (mode === 'register') {
+    registerForm.username = '';
+    registerForm.displayName = '';
+    registerForm.password = '';
+    registerForm.confirmPassword = '';
+    registerForm.captchaAnswer = '';
+    loadCaptcha();
+  }
 };
 
 const submitLogin = async () => {
@@ -64,6 +109,61 @@ const submitLogin = async () => {
     toast.error(error.message || '登录失败', { title: '登录' });
   } finally {
     loggingIn.value = false;
+  }
+};
+
+const submitRegister = async () => {
+  if (registering.value) return;
+
+  const username = registerForm.username.trim();
+  const displayName = registerForm.displayName.trim();
+
+  if (!/^[a-zA-Z0-9_]{3,}$/.test(username)) {
+    toast.error('用户名需至少 3 位，仅字母/数字/下划线', { title: '注册' });
+    return;
+  }
+
+  if (displayName.length < 2 || displayName.length > 24) {
+    toast.error('昵称需为 2-24 个字符', { title: '注册' });
+    return;
+  }
+
+  if (registerForm.password.length < 6) {
+    toast.error('密码至少 6 个字符', { title: '注册' });
+    return;
+  }
+
+  if (registerForm.password !== registerForm.confirmPassword) {
+    toast.error('两次输入的密码不一致', { title: '注册' });
+    return;
+  }
+
+  if (!registerForm.captchaAnswer.trim()) {
+    toast.error('请输入验证码', { title: '注册' });
+    return;
+  }
+
+  registering.value = true;
+
+  try {
+    await sceneApi.register({
+      username,
+      password: registerForm.password,
+      displayName,
+      captchaId: registerForm.captchaId,
+      captchaAnswer: registerForm.captchaAnswer.trim(),
+    });
+    toast.success('入驻申请已提交，待 KIN 审批激活后可登录', { title: '注册' });
+    switchMode('login');
+    loginForm.username = username;
+  } catch (error) {
+    toast.error(error.message || '注册失败', { title: '注册' });
+    // 验证码错误/过期：自动刷新一张新验证码
+    if (error.code === 'CAPTCHA_INVALID' || error.code === 'CAPTCHA_ERROR') {
+      loadCaptcha();
+    }
+  } finally {
+    registering.value = false;
   }
 };
 
@@ -167,6 +267,7 @@ const handleLogout = async () => {
   </main>
 
   <!-- P4 收尾：登录弹窗（复用 phase6 账号体系；密码前端 sha256，与主世界一致） -->
+  <!-- 待办⑤：登录/注册双 tab；注册需图形验证码，提交后 pending 等 KIN 审批激活 -->
   <Teleport to="body">
     <div
       v-if="showLogin"
@@ -175,10 +276,12 @@ const handleLogout = async () => {
     >
       <form
         class="w-full max-w-sm rounded-hig border border-line bg-surface p-5 shadow-lg"
-        @submit.prevent="submitLogin"
+        @submit.prevent="loginMode === 'login' ? submitLogin() : submitRegister()"
       >
         <div class="flex items-center justify-between gap-2">
-          <h2 class="text-base font-semibold text-ink">登录（复用乌托邦账号）</h2>
+          <h2 class="text-base font-semibold text-ink">
+            {{ loginMode === 'login' ? '登录（复用乌托邦账号）' : '注册入驻申请' }}
+          </h2>
           <BaseButton
             size="sm"
             variant="ghost"
@@ -188,39 +291,135 @@ const handleLogout = async () => {
             ✕
           </BaseButton>
         </div>
-        <p class="mt-1 text-xs leading-5 text-muted">
-          未登录以游客身份对话：AI 可查询公开信息，写入/审批操作将被拒绝。
-        </p>
-        <div class="mt-4 space-y-3">
-          <BaseInput
-            v-model="loginForm.username"
-            placeholder="用户名"
-            autocomplete="username"
-          />
-          <BaseInput
-            v-model="loginForm.password"
-            type="password"
-            placeholder="密码"
-            autocomplete="current-password"
-          />
-          <p
-            v-if="authStore.state.error"
-            class="rounded-hig bg-red-50 px-3 py-2 text-xs text-red-700"
-            role="alert"
-          >
-            {{ authStore.state.error }}
-          </p>
-          <BaseButton
-            type="submit"
-            variant="primary"
-            class="w-full"
-            :disabled="
-              loggingIn || !loginForm.username.trim() || !loginForm.password
+
+        <!-- tab 切换 -->
+        <div class="mt-3 grid grid-cols-2 gap-1 rounded-hig bg-surface-muted/60 p-1">
+          <button
+            type="button"
+            class="rounded-hig px-3 py-1.5 text-xs font-medium transition-colors"
+            :class="
+              loginMode === 'login'
+                ? 'bg-surface text-ink shadow-sm'
+                : 'text-muted hover:text-ink'
             "
+            @click="switchMode('login')"
           >
-            {{ loggingIn ? '登录中…' : '登录' }}
-          </BaseButton>
+            登录
+          </button>
+          <button
+            type="button"
+            class="rounded-hig px-3 py-1.5 text-xs font-medium transition-colors"
+            :class="
+              loginMode === 'register'
+                ? 'bg-surface text-ink shadow-sm'
+                : 'text-muted hover:text-ink'
+            "
+            @click="switchMode('register')"
+          >
+            注册
+          </button>
         </div>
+
+        <!-- 登录表单 -->
+        <template v-if="loginMode === 'login'">
+          <p class="mt-3 text-xs leading-5 text-muted">
+            未登录以游客身份对话：AI 可查询公开信息，写入/审批操作将被拒绝。
+          </p>
+          <div class="mt-4 space-y-3">
+            <BaseInput
+              v-model="loginForm.username"
+              placeholder="用户名"
+              autocomplete="username"
+            />
+            <BaseInput
+              v-model="loginForm.password"
+              type="password"
+              placeholder="密码"
+              autocomplete="current-password"
+            />
+            <p
+              v-if="authStore.state.error"
+              class="rounded-hig bg-red-50 px-3 py-2 text-xs text-red-700"
+              role="alert"
+            >
+              {{ authStore.state.error }}
+            </p>
+            <BaseButton
+              type="submit"
+              variant="primary"
+              class="w-full"
+              :disabled="
+                loggingIn || !loginForm.username.trim() || !loginForm.password
+              "
+            >
+              {{ loggingIn ? '登录中…' : '登录' }}
+            </BaseButton>
+          </div>
+        </template>
+
+        <!-- 注册表单 -->
+        <template v-else>
+          <p class="mt-3 text-xs leading-5 text-muted">
+            提交居民入驻申请（editor 角色），由 KIN 审批激活后可登录并使用写入类操作。
+          </p>
+          <div class="mt-4 space-y-3">
+            <BaseInput
+              v-model="registerForm.username"
+              placeholder="用户名（≥3 位，字母/数字/下划线）"
+              autocomplete="username"
+            />
+            <BaseInput
+              v-model="registerForm.displayName"
+              placeholder="昵称（2-24 个字符）"
+            />
+            <BaseInput
+              v-model="registerForm.password"
+              type="password"
+              placeholder="密码（至少 6 位）"
+              autocomplete="new-password"
+            />
+            <BaseInput
+              v-model="registerForm.confirmPassword"
+              type="password"
+              placeholder="确认密码"
+              autocomplete="new-password"
+            />
+            <div class="flex items-stretch gap-2">
+              <BaseInput
+                v-model="registerForm.captchaAnswer"
+                placeholder="验证码"
+                class="min-w-0 flex-1"
+                :disabled="captchaLoading"
+              />
+              <button
+                type="button"
+                class="shrink-0 overflow-hidden rounded-hig border border-line bg-surface-muted/60"
+                :title="'点击刷新验证码'"
+                :aria-label="'刷新验证码'"
+                :disabled="captchaLoading"
+                @click="loadCaptcha"
+              >
+                <img
+                  v-if="captchaImage"
+                  :src="captchaImage"
+                  alt="验证码"
+                  class="h-10 w-32 object-cover"
+                />
+                <span v-else class="block h-10 w-32 leading-10 text-center text-xs text-muted">
+                  {{ captchaLoading ? '加载中…' : '点击获取' }}
+                </span>
+              </button>
+            </div>
+            <BaseButton
+              type="submit"
+              variant="primary"
+              class="w-full"
+              :disabled="registering"
+            >
+              {{ registering ? '提交中…' : '提交入驻申请' }}
+            </BaseButton>
+          </div>
+        </template>
       </form>
     </div>
   </Teleport>

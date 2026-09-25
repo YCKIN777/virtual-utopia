@@ -11,6 +11,9 @@ import { createSessionBoundary } from './services/sessionBoundary.js';
 import { createSessionStore } from './services/sessionStore.js';
 import { createStreamRouter } from './routes/stream.js';
 import { createResumeRouter } from './routes/resume.js';
+import { createCaptchaRouter } from './routes/captcha.js';
+import { createRegisterRouter } from './routes/register.js';
+import { captchaService } from './services/captchaService.js';
 import { createSceneAuthMiddleware } from './middleware/sceneAuth.js';
 
 export const createApp = ({
@@ -56,6 +59,16 @@ export const createApp = ({
   app.use('/api', createSceneRouter({ orchestrator: sessionBoundary }));
   app.use('/api', createStreamRouter({ orchestrator: sceneOrchestrator }));
   app.use('/api', createResumeRouter({ orchestrator: sceneOrchestrator }));
+  // 待办⑤：外层壳注册 + 验证码（公开端点；sceneAuth 对无 token 游客放行）。
+  // 验证码校验通过后转发 phase5 注册，phase5 零改动。
+  app.use('/api', createCaptchaRouter({ service: captchaService }));
+  app.use(
+    '/api',
+    createRegisterRouter({
+      phase5BaseUrl: env.phase5.baseUrl,
+      captcha: captchaService,
+    }),
+  );
 
   app.use((_request, response) => {
     response.status(404).json({

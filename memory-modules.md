@@ -142,6 +142,14 @@
 - `@langchain/community` 须 `--legacy-peer-deps`（可选 peer stagehand 要求 zod ^3 与项目 zod 4.6.5 冲突）。
 - 详细 13 条坑（惰性实例化 / response_format / 节点名撞字段 / thread_id 语义 / SSE 断线 / interrupt 约束 / 工具消息累积等）见 memory-log.md 2026-09-25 条目。
 
+### 外层壳注册 + 图形验证码（2026-09-26 落地）
+- 验证码：`src/services/captchaService.js`（4 位数字 SVG + 干扰线；内存 Map 5 分钟过期、一次性、上限 1000 自动清理）+ `GET /api/scene/route/captcha`（公开）。
+- 注册代理：`src/routes/register.js`（`POST /api/scene/route/register`：镜像 phase5 入参校验 → 验证码校验（403 CAPTCHA_INVALID）→ 转发 phase5 `/api/phase5/auth/register`（**phase5 零改动**）→ 201 pending；phase5 错误透传、不可达 503）。`env.js` 增 `phase5.baseUrl`（PHASE5_BASE_URL）。
+- 前端：`sceneApi.getCaptcha/register` + `ScenePageShell.vue` 登录/注册双 tab（验证码图点击刷新、本地规则校验、成功切回登录并预填用户名）。
+- 权限：注册端点公开（sceneAuth 对无 token 游客放行）；新用户 role=editor + status=pending，需 KIN 在 phase6 审批激活后可登录。
+- 关键：路由内路径不带 `/api` 前缀（app.js 已挂 `/api`）；验证码内存态（多实例需共享存储）。
+- 环境治理（pnpm 12）：`pnpm-workspace.yaml` 须写 `nodeLinker: hoisted`（本机无管理员/开发者模式不能建 symlink）+ `allowBuilds`（better-sqlite3/esbuild 构建脚本）；.npmrc 已不再读取链接器配置。
+
 ### Chroma 数据治理与生产部署（2026-09-26 落地）
 - 治理脚本：`scripts/chroma.mjs`（start/stop/status/reset/reset-data 五子命令，纯 Node 原生零 shell 依赖；start 用 `detached:true` 脱离 Job Object + PID 文件 `.chroma-data/chroma.pid` + 轮询 `/api/v2/heartbeat`；stop 读 PID 文件 `process.kill`；reset 删 collection 幂等；reset-data 数据目录损坏时重命名备份 `.corrupt-<时间戳>` 并重建空目录，不删数据）。
 - 编排集成：`scripts/start-all.mjs` 新增 chroma 可选服务（kind=venv，health `/api/v2/heartbeat`，required=false——venv 缺失只降级 RAG 不阻塞业务）。

@@ -1391,3 +1391,45 @@
 
 ### 已知局限
 - 门控日志仅覆盖 branch 节点（工具首轮/结构化路径）；tools 节点执行细节（每工具 args/输出）未加日志——需时可在 tools 节点补 `[debug-tools]` 门控。
+
+---
+
+## 2026-09-26 待办⑤ 外层壳注册入口 + 图形验证码
+
+> 场景：外层壳（scene 前端）登录弹窗只有登录，无注册入口/防滥用验证码。
+> 设计原则：**phase5 零改动**——验证码服务与注册代理都建在 scene 后端，验证通过后转发 phase5 注册端点（创建 pending 入驻申请，KIN 在 phase6 审批激活，与主世界注册同流程）。
+
+### 改动文件（后端）
+- `backend/src/services/captchaService.js`（新）：4 位数字（排除 0/1 易混）SVG 验证码 + 干扰线/噪点；内存 Map `captchaId → {answer, expiresAt}`，5 分钟过期、**一次性**（校验后删除）、上限 1000 自动清理过期；`create()` / `verify()`。
+- `backend/src/routes/captcha.js`（新）：`GET /api/scene/route/captcha` → `{captchaId, image}`（公开，游客可访问）。
+- `backend/src/routes/register.js`（新）：`POST /api/scene/route/register`——镜像 phase5 入参校验（用户名 ≥3 / `^[a-zA-Z0-9_]+$`、昵称 2-24、密码 ≥6）→ captchaService.verify（失败 403 `CAPTCHA_INVALID`）→ 转发 phase5 `/api/phase5/auth/register`（可选 profile 透传；phase5 错误码/message 原样透传；phase5 不可达 503 `REGISTER_SERVICE_UNAVAILABLE`）→ 201 `{id, username, displayName, role:'editor', status:'pending'}`。
+- `backend/src/config/env.js`：新增 `phase5.baseUrl`（`PHASE5_BASE_URL`，默认 http://localhost:3300）。
+- `backend/src/app.js`：挂载两个 router（route 前缀，sceneAuth 对无 token 游客放行）。
+
+### 改动文件（前端）
+- `frontend/src/services/sceneApi.js`：新增 `getCaptcha()`（GET captcha）+ `register(payload)`（POST register，公开不带 token）。
+- `frontend/src/components/scene/ScenePageShell.vue`：登录弹窗改**登录/注册双 tab**——注册表单（用户名/昵称/密码/确认密码 + 验证码图点击刷新 + 本地规则校验 + 确认密码一致）；提交成功 toast「入驻申请已提交，待 KIN 审批激活后可登录」并切回登录（预填用户名）；验证码错误自动刷新新码。
+
+### 测试结果
+- 后端新增 11/11：captchaService 6（生成/校验/一次性/过期清理/上限/缺参拒绝）+ registerRoute 5（成功转发/pending、验证码错 403 不转发、入参 400、phase5 错误透传、不可达 503）。
+- 后端全量 **65/65**（54 旧 + 11 新）；前端全量 **19/19**（sceneApi +3）；vite build 通过（54 modules）。
+- 真实 HTTP 冒烟（smoke-captcha.mjs）4/4：captcha 200 / 无验证码 403 / 非法入参 400 / 正确验证码 + phase5 未起 503。
+- 完整 E2E（smoke-register-201.mjs + phase5 注入 env 启动）：真实注册 **201 pending**（phase5 建号 `smoke_*`，editor + pending）。
+
+### 关键坑（本轮 3 条）
+1. **路由路径双前缀 404**：新路由内部写 `/api/scene/route/...`，而 app.js 已 `app.use('/api', router)` → 实际匹配 `/api/api/scene/route/...` → 404。**路由内路径只能写 `/scene/route/...`**（挂载前缀之外的部分）。单测独立挂 router 测不到此问题——**必须 app 级冒烟**。
+2. **pnpm 12 配置迁移**：`node-linker` 等链接器配置**不再读 .npmrc**（`pnpm config get node-linker` 为空），须写 `pnpm-workspace.yaml`（`nodeLinker: hoisted` + `packages`）。pnpm 12 默认还禁止依赖构建脚本 → `allowBuilds: {better-sqlite3: true, esbuild: true}`。
+3. **Windows symlink 权限**：本机无管理员/开发者模式，创建符号链接报「此操作需要管理员权限」（pnpm 建 `.pnpm` 虚拟存储 os error 2 找不到文件）→ **hoisted 复制模式绕开 symlink**（vite 依赖 bin shim 指向顶层路径，构建需用根 `node_modules/vite/bin/vite.js` 直接调或确认 shim 重建）。
+
+### 自检清单
+- [x] captchaService 生成/一次性/过期/上限单测
+- [x] register 路由全路径单测（成功/验证码错/入参/透传/不可达）
+- [x] 后端 65/65 + 前端 19/19 + build 通过
+- [x] 真实 HTTP 冒烟 4/4 + 完整 E2E 注册 201（phase5 真实建号）
+- [x] 规划文档 P4 后续行更新（待办③⑤ ✅ + 剩余 owner 校验）
+- [x] 记忆三件套同步（本条 + memory-core 第八节 + memory-modules 第 10 章）
+
+### 已知局限
+- 验证码为内存存储（单实例内存态，重启即清；多实例部署需换 Redis 等共享存储）；captchaService 上限清理为惰性（仅在 create 时 sweep）。
+- 注册代理仅透传 phase5 校验错误，不缓存/不幂等（重复提交会得到 phase5 的「用户名已被占用」——符合预期）。
+- 冒烟在 phase5 库留下 `smoke_*` pending 用户（无权限，不影响业务；如需清理需 admin 流程删除）。

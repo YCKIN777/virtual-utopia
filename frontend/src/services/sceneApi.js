@@ -290,6 +290,86 @@ export const createSceneApi = ({
 
     return payload;
   },
+
+  // 待办⑤：图形验证码 —— GET /api/scene/route/captcha（公开端点，无 token 也可）
+  async getCaptcha() {
+    let response;
+
+    try {
+      response = await fetchImpl(`${baseUrl}/scene/route/captcha`, {
+        method: 'GET',
+      });
+    } catch (error) {
+      throw new SceneApiError('无法连接后端服务', {
+        code: 'NETWORK_ERROR',
+        cause: error,
+      });
+    }
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new SceneApiError(payload?.message || '验证码获取失败', {
+        code: payload?.code || 'CAPTCHA_ERROR',
+        statusCode: response.status,
+      });
+    }
+
+    if (!payload?.captchaId || !payload?.image) {
+      throw new SceneApiError('后端返回了无效响应', {
+        code: 'INVALID_RESPONSE',
+        statusCode: 502,
+      });
+    }
+
+    return payload;
+  },
+
+  // 待办⑤：注册（居民入驻申请）—— POST /api/scene/route/register
+  // 提交后 status=pending，需 KIN 在 phase6 审批激活；验证码错误后端返回 403。
+  async register({
+    username,
+    password,
+    displayName,
+    captchaId,
+    captchaAnswer,
+    profile = {},
+  }) {
+    let response;
+
+    try {
+      response = await fetchImpl(`${baseUrl}/scene/route/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          password,
+          displayName,
+          captchaId,
+          captchaAnswer,
+          ...profile,
+        }),
+      });
+    } catch (error) {
+      throw new SceneApiError('无法连接后端服务', {
+        code: 'NETWORK_ERROR',
+        cause: error,
+      });
+    }
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new SceneApiError(payload?.message || '注册失败', {
+        code: payload?.code || 'REGISTER_FAILED',
+        statusCode: response.status,
+      });
+    }
+
+    return payload; // { id, username, displayName, role, status: 'pending' }
+  },
   };
 };
 
