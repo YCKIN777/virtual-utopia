@@ -1505,6 +1505,28 @@
 
 ---
 
+## 2026-09-26 3D 世界登录不了排查（服务存活 + 登录协议）
+
+> 现象：用户报 http://localhost:5175 登录不了。
+
+### 根因（两层）
+1. **服务被杀（真凶）**：预览轮用 run_in_background 起的后台任务随执行会话终止被级联杀掉（start-all 及其全部子进程）——5175 vite 死 → 页面半死 + /phase6-api 代理全挂 → 登录请求失败降级「Phase5 离线/内存临时模式」（worldStore 的 isOfflinePersistenceError 降级路径掩盖了真实错误）。
+2. 登录协议本身无 bug：3D 世界登录把密码 sha256 哈希后提交，phase5 登录兼容双协议（64-hex 直通 verifyPassword(sha256) 分支；明文走 sha256Hex 分支）——与存储 hashPassword(sha256Hex(明文)) 一致，设计正确。phase6 登录原样透传 phase5，同样兼容。
+
+### 可靠启动方式（实测，日志在 H:\BP2\logs\）
+- 独立进程（推荐预览）：Start-Process 起 6 服务，日志重定向 logs\*.log：
+  - phase5：node --env-file=backend\.env backend\src\phase5\server.js（注入 PHASE5_AUTH_SECRET/BOOTSTRAP，默认 changeme/utopia2026）
+  - phase6：node --env-file=backend\.env backend\src\phase6\server.js；scene：node --env-file=backend\.env backend\src\server.js
+  - vite 双入口：node H:\BP2\node_modules\vite\bin\vite.js --host 0.0.0.0，WorkingDirectory frontend（5173）/ frontend\src\virtual-utopia（5175）——vite bin 必须绝对路径（Start-Process 相对路径解析到 WorkingDirectory 下报 Cannot find module）
+  - chroma：node scripts\chroma.mjs start（自身 detached + PID 文件）
+- 坑：logs 目录须先存在（Start-Process 重定向到不存在目录会静默失败）；Start-Process 须先设 phase5 secret 环境变量（子进程继承）。
+
+### 验证
+- 六服务全 OK（3300/3400/8000/3000/5173/5175 均 200）。
+- 浏览器实测：traveler/utopia2026 → 个人中心「Phase5 持久化已连接」；admin/utopia2026 → Phase5 Administrator 面板。真实认证 + 持久化链路完好。
+- 遗留建议：start-all.mjs 的 spawn 非 detached，被会话终止时级联杀全部——如需「一键拉起 + 存活」可后续改 detached + PID 管理（未做，预览用 Start-Process 即可）。
+
+---
 ## 2026-09-26 待办⑥ resume conversationId → owner 归属校验
 
 > 背景：resume 端点此前仅校验「role=admin」（KIN 审批），任意 conversationId 只要 admin 就能恢复；
