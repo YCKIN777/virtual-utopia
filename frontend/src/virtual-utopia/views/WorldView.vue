@@ -13,6 +13,7 @@ import ResidentChatPanel from '../components/ResidentChatPanel.vue';
 import SpaceChatPanel from '../components/SpaceChatPanel.vue';
 import SpaceSearchPanel from '../components/SpaceSearchPanel.vue';
 import WorldChatPanel from '../components/WorldChatPanel.vue';
+import AiChatPanel from '../components/AiChatPanel.vue';
 import { createPresenceClient } from '../services/presenceClient.js';
 import { worldStore } from '../stores/worldStore.js';
 import { ThreeWorld } from '../webgl/ThreeWorld.js';
@@ -1098,6 +1099,9 @@ watch(currentUser, () => {
     />
 
     <WorldChatPanel v-if="currentUser" @select-resident="openResidentChat" />
+
+    <!-- P5 前端改造：3D 世界 AI 对话（scene 3000 LangGraph stream + KIN 审批） -->
+    <AiChatPanel />
 
     <aside v-if="miniProfile" class="vu-mini-profile">
       <button

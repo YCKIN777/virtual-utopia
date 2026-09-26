@@ -27,6 +27,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (requestPath) => requestPath.replace(/^\/phase6-api/, ''),
       },
+      // P5 前端改造：3D 世界 AI 对话（scene 3000 LangGraph stream）走同源代理，避免 CORS
+      '/scene-api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/scene-api/, ''),
+      },
     },
   },
   preview: {

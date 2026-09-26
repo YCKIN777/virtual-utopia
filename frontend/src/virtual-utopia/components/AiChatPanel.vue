@@ -1,0 +1,502 @@
+<script setup>
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import { aiChatStore } from '../stores/aiChatStore.js';
+import { isAiChatAvailable } from '../services/sceneClient.js';
+import { worldStore } from '../stores/worldStore.js';
+
+const open = ref(false);
+const input = ref('');
+const listRef = ref(null);
+const SCENE_NAME = '大院';
+
+const loggedIn = computed(() => isAiChatAvailable());
+const conversation = computed(() => aiChatStore.state);
+
+const statusLabel = computed(() => {
+  const { loading, status, statusDetail } = conversation.value;
+  if (!loading) return '';
+  if (status === 'tool_calling') return `正在查询${statusDetail || ''}…`;
+  if (status === 'tool_result') return '已获取数据，正在整理回答…';
+  return `${SCENE_NAME}的伙伴正在思考…`;
+});
+
+const approvalToolNames = computed(() =>
+  (conversation.value.pendingApproval?.approval?.toolCalls ?? [])
+    .map((call) => call.name)
+    .join('、'),
+);
+
+const scrollToBottom = async () => {
+  await nextTick();
+  if (listRef.value) {
+    listRef.value.scrollTop = listRef.value.scrollHeight;
+  }
+};
+
+const submitMessage = async () => {
+  const content = input.value.trim();
+  if (!content || conversation.value.loading) return;
+  if (!loggedIn.value) {
+    worldStore.notify('请先登录后再与居民对话', 'info');
+    return;
+  }
+  input.value = '';
+  try {
+    await aiChatStore.sendStream(content);
+  } catch (error) {
+    // 错误已写入 state.error，由浮层展示
+  }
+  await scrollToBottom();
+};
+
+const handleApproval = async (approved) => {
+  try {
+    await aiChatStore.resolveApproval({
+      approved,
+      reason: approved ? 'KIN 批准' : 'KIN 拒绝',
+    });
+  } catch (error) {
+    // state.error 已写入
+  }
+  await scrollToBottom();
+};
+
+const resetChat = () => {
+  aiChatStore.resetConversation();
+};
+
+const formatTime = (value) => {
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
+  } catch {
+    return '';
+  }
+};
+
+onBeforeUnmount(() => {
+  // 面板关闭不销毁会话（LangGraph 服务端状态保留）
+});
+</script>
+
+<template>
+  <div class="vu-ai-chat">
+    <button
+      type="button"
+      class="vu-ai-chat__trigger"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
+      AI 对话
+      <span v-if="conversation.loading" class="vu-ai-chat__dot" aria-hidden="true" />
+    </button>
+
+    <section v-if="open" class="vu-ai-chat__panel" aria-label="与 AI 居民对话">
+      <header>
+        <div>
+          <span class="vu-kicker">AI RESIDENT</span>
+          <strong>{{ SCENE_NAME }} · 阿禾</strong>
+        </div>
+        <div class="vu-ai-chat__actions">
+          <button type="button" title="新话题" aria-label="新话题" @click="resetChat">
+            新话题
+          </button>
+          <button type="button" aria-label="关闭" @click="open = false">×</button>
+        </div>
+      </header>
+
+      <p v-if="!loggedIn" class="vu-ai-chat__login-hint">
+        请先登录（右上角「登录」）后，再与 AI 居民对话。
+      </p>
+
+      <div ref="listRef" class="vu-ai-chat__messages">
+        <article
+          v-for="message in conversation.messages"
+          :key="message.id"
+          class="vu-ai-chat__message"
+          :class="message.role === 'user' ? 'is-user' : 'is-assistant'"
+        >
+          <div class="vu-ai-chat__message-head">
+            <strong>{{ message.role === 'user' ? '我' : '阿禾' }}</strong>
+            <span>{{ formatTime(message.createdAt) }}</span>
+          </div>
+          <p>
+            {{ message.content
+            }}<span
+              v-if="message.streaming"
+              class="vu-ai-chat__caret"
+              aria-hidden="true"
+            />
+          </p>
+        </article>
+
+        <p v-if="conversation.messages.length === 0" class="vu-ai-chat__empty">
+          与{{ SCENE_NAME }}的 AI 居民阿禾聊聊吧 —— 问问大院里的事、查查好友或留下留言。
+        </p>
+
+        <p v-if="statusLabel" class="vu-ai-chat__status" role="status">
+          <span class="vu-ai-chat__spinner" aria-hidden="true" />
+          {{ statusLabel }}
+        </p>
+
+        <!-- HITL：KIN 审批卡片 -->
+        <div
+          v-if="conversation.pendingApproval"
+          class="vu-ai-chat__approval"
+          role="dialog"
+          aria-label="需要 KIN 审批"
+        >
+          <p class="vu-ai-chat__approval-title">需要 KIN 审批</p>
+          <p class="vu-ai-chat__approval-body">
+            阿禾请求执行以下操作：{{ approvalToolNames }}。此操作需要管理方（KIN）确认后方可执行。
+          </p>
+          <div class="vu-ai-chat__approval-actions">
+            <button
+              type="button"
+              class="vu-ai-chat__approval-allow"
+              :disabled="conversation.loading"
+              @click="handleApproval(true)"
+            >
+              批准
+            </button>
+            <button
+              type="button"
+              class="vu-ai-chat__approval-deny"
+              :disabled="conversation.loading"
+              @click="handleApproval(false)"
+            >
+              拒绝
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="conversation.error" class="vu-ai-chat__error" role="alert">
+        {{ conversation.error }}
+      </p>
+
+      <form class="vu-ai-chat__form" @submit.prevent="submitMessage">
+        <input
+          v-model="input"
+          maxlength="200"
+          :placeholder="loggedIn ? '输入消息，与 AI 居民对话' : '登录后启用 AI 对话'"
+          :disabled="conversation.loading || !loggedIn"
+          @keydown.enter.prevent="submitMessage"
+        />
+        <button
+          type="submit"
+          :disabled="conversation.loading || !loggedIn || !input.trim()"
+        >
+          {{ conversation.loading ? '…' : '发送' }}
+        </button>
+      </form>
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.vu-ai-chat {
+  position: fixed;
+  right: 22px;
+  bottom: 96px;
+  z-index: 36;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.vu-ai-chat__trigger,
+.vu-ai-chat__panel {
+  box-shadow: 0 12px 34px rgba(13, 29, 27, 0.24);
+}
+
+.vu-ai-chat__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  background: #6d2e5c;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vu-ai-chat__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffd166;
+  animation: vu-ai-pulse 1s ease-in-out infinite;
+}
+
+@keyframes vu-ai-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.vu-ai-chat__panel {
+  width: min(380px, calc(100vw - 28px));
+  height: min(520px, 70vh);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  overflow: hidden;
+  border: 1px solid rgba(28, 62, 54, 0.22);
+  border-radius: 8px;
+  background: #f7f5ef;
+  color: #243d37;
+}
+
+.vu-ai-chat__panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #dfe4dc;
+  background: #fff;
+}
+
+.vu-ai-chat__panel header strong {
+  display: block;
+  margin-top: 2px;
+}
+
+.vu-ai-chat__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.vu-ai-chat__actions button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 50%;
+  background: #edf1eb;
+  color: #41564f;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vu-ai-chat__login-hint {
+  margin: 0;
+  padding: 8px 14px;
+  background: #fff8e6;
+  border-bottom: 1px solid #efe3c4;
+  color: #8a6d2f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.vu-ai-chat__messages {
+  overflow: auto;
+  padding: 12px;
+}
+
+.vu-ai-chat__message {
+  margin-bottom: 10px;
+  max-width: 86%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.vu-ai-chat__message.is-user {
+  margin-left: auto;
+  background: #2d6c5c;
+  color: #fff;
+}
+
+.vu-ai-chat__message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vu-ai-chat__message.is-user .vu-ai-chat__message-head {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.vu-ai-chat__message-head span {
+  color: #89958f;
+  font-size: 10px;
+}
+
+.vu-ai-chat__message.is-user .vu-ai-chat__message-head span {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.vu-ai-chat__message p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.vu-ai-chat__caret {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #6d2e5c;
+  animation: vu-ai-blink 0.8s step-end infinite;
+}
+
+.vu-ai-chat__message.is-user .vu-ai-chat__caret {
+  background: #fff;
+}
+
+@keyframes vu-ai-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.vu-ai-chat__empty {
+  color: #8b9791;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+  padding: 16px 8px;
+}
+
+.vu-ai-chat__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  color: #6d2e5c;
+  font-size: 12px;
+}
+
+.vu-ai-chat__spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid rgba(109, 46, 92, 0.25);
+  border-top-color: #6d2e5c;
+  border-radius: 50%;
+  animation: vu-ai-spin 0.8s linear infinite;
+}
+
+@keyframes vu-ai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vu-ai-chat__approval {
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid #e8c35a;
+  border-radius: 8px;
+  background: #fff8e6;
+}
+
+.vu-ai-chat__approval-title {
+  margin: 0 0 4px;
+  color: #8a6d2f;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.vu-ai-chat__approval-body {
+  margin: 0;
+  color: #8a6d2f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.vu-ai-chat__approval-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vu-ai-chat__approval-actions button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vu-ai-chat__approval-allow {
+  background: #2d6c5c;
+  color: #fff;
+}
+
+.vu-ai-chat__approval-deny {
+  background: #fff;
+  border: 1px solid #cfd8d0 !important;
+  color: #243d37;
+}
+
+.vu-ai-chat__approval-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.vu-ai-chat__error {
+  margin: 0;
+  padding: 8px 14px;
+  background: #fdecea;
+  border-top: 1px solid #f0d3cf;
+  color: #b03a2c;
+  font-size: 12px;
+}
+
+.vu-ai-chat__form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  padding: 10px;
+  border-top: 1px solid #dfe4dc;
+  background: #fff;
+}
+
+.vu-ai-chat__form input {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #cfd8d0;
+  border-radius: 5px;
+  font: inherit;
+}
+
+.vu-ai-chat__form button {
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 5px;
+  background: #6d2e5c;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vu-ai-chat__form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 760px) {
+  .vu-ai-chat {
+    right: 12px;
+    bottom: 84px;
+  }
+
+  .vu-ai-chat__panel {
+    height: min(480px, 65vh);
+  }
+}
+</style>
