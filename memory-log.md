@@ -1558,3 +1558,12 @@
 - conversationRegistry 为内存态（重启即失）——重启后旧 conversationId 归属丢失，非 admin 恢复被拒（admin 不受影响）；如需跨重启持久可落 SQLite（后续项）。
 - owner 恢复自己的会话 = 本人确认（HITL 审批通道对 owner 开放）；KIN 审批仍优先 admin 通道（权限矩阵不变，admin 可审批任意会话）。
 - 归属注册仅在 handle/handleStream 的持久会话路径（带 conversationId）发生；ephemeral 会话（无 conversationId）本就不可恢复，不注册。
+
+## 2026-09-26 P5.1 四项完善（用户拍板逐项推进，全部闭环 ✅）
+- **① 3D 世界登录文案（commit 561b368）**：新增 Phase5AccountInactiveError（403 PHASE5_ACCOUNT_INACTIVE）；phase5 登录「密码正确但 status!=active」按状态抛专用错误（pending→申请待 KIN 审批/disabled→已驳回/moved_out→已迁出），密码错保持 401 PHASE5_UNAUTHORIZED。phase6 httpClient 透传 code+message，前端 worldStore 直接 throw 显示 message（无需改前端）。新增 	ests/phase5LoginStatus.test.js 3 例（pending 403/错密 401/active 200）。后端全量 **86/86**。
+- **② 管理后台纳入 start-all（commit 95370ca）**：SERVICES 增 admin-frontend（frontend/src/phase6、5174、health 双地址）。
+- **③ 3D 世界 hash 路由脱节（无代码改动）**：根因=**frontend/node_modules/.vite 依赖预打包缓存损坏**（服务被杀/重启后 vue-router 预打包模块失效 → hashchange 不触发 → 任何路由都渲染首页 PortalView）。清 .vite 缓存重启 vite 即修复。实测：注册成功→「返回登录」立即切换、提交入驻申请/3D世界链接全通。**预防：服务重启后若路由全失效，先删 frontend/node_modules/.vite**。
+- **④ start-all detached 化（commit be33cbb）**：全部子进程 detached:true + 日志重定向（logs/）+ PID 文件（.run/<name>.pid，chroma 复用 .chroma-data/chroma.pid 与 chroma.mjs 共用）+ 
+ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 child.unref()，否则父进程事件循环被子进程句柄持有、start-all 永不退出**。验证：start→主进程退出→7 服务存活；stop 全停；stop→start 循环；3D 世界登录页正常。7 服务一键编排（3300/3400/8000/3000/5173/5175/5174）。
+- **测试口径坑**：3D 世界注册/登录均 sha256Hex 传输、库内 scrypt(sha256(明文))；**API 直连测试注册须传 sha256Hex 密码**，传明文注册会造出 sha256 登录不匹配的账号（401 假象）。
+- 相关文件：backend/src/phase5/{errors,httpServer}.js、backend/tests/phase5LoginStatus.test.js、scripts/start-all.mjs、.gitignore（.run/）。
