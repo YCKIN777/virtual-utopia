@@ -1,0 +1,27 @@
+# 虚拟乌托邦 全栈后端镜像（phase5/phase6/scene 共用，入口由 compose command 指定）
+#
+# 构建（本机无 Docker 未实测，模板供生产参考）：
+#   docker build -f deploy/Dockerfile.backend -t virtual-utopia-backend .
+FROM node:24-alpine
+
+# pnpm（corepack 随 node 发行版自带，锁定 workspace 解析）
+RUN corepack enable
+
+WORKDIR /app
+
+# 先拷 workspace 清单（利用缓存层：清单不变则不重装）
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY backend/package.json ./backend/package.json
+COPY frontend/package.json ./frontend/package.json
+COPY scripts ./scripts
+
+# frozen-lockfile：严格按锁文件安装，缺锁或漂移直接失败
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+COPY backend ./backend
+COPY migrations ./migrations
+
+ENV NODE_ENV=production
+
+# 默认入口 scene；phase5/phase6 由 compose 覆盖 command
+CMD ["node", "backend/src/server.js"]

@@ -26,7 +26,7 @@ services:
       # CHROMA_AUTHN_TRANSPORT_HEADER: "X-Chroma-Token"
       ANONYMIZED_TELEMETRY: "False"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/v2/heartbeat"]
       interval: 10s
       timeout: 3s
       retries: 5

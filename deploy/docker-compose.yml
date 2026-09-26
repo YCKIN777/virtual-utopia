@@ -1,0 +1,127 @@
+# 虚拟乌托邦 全栈编排（P5.3-⑩）
+#
+# 说明：
+#   - 本机无 Docker，模板未实测（与 deploy/chroma.docker-compose.yml 相同定位：生产参考）。
+#   - 服务：chroma(8000) + phase5(3300) + phase6(3400) + scene(3000) + frontend-nginx(80)。
+#   - 数据卷持久化：phase5/6 业务库（H:\BP2\data）与 scene 运行库（backend/data）。
+#   - 生产必改：所有 change-me / changeme 占位（DEEPSEEK_API_KEY、PHASE5_AUTH_SECRET、
+#     PHASE5_SERVICE_TOKEN、PHASE5_BOOTSTRAP_ADMIN_PASSWORD、chroma AUTH）。
+#   - 前端经 nginx 同源反代：/api → scene、/phase6-api → phase6。
+#
+# 用法：
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   docker compose -f deploy/docker-compose.yml ps
+#   docker compose -f deploy/docker-compose.yml logs -f scene
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9
+    container_name: virtual-utopia-chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+    environment:
+      # 生产按需启用鉴权（chromadb 1.5+ 支持 CHROMA_SERVER_AUTHN_CREDENTIALS）
+      # CHROMA_SERVER_AUTHN_CREDENTIALS: "change-me"
+      # CHROMA_AUTHN_TRANSPORT_HEADER: "X-Chroma-Token"
+      ANONYMIZED_TELEMETRY: "False"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  phase5:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: virtual-utopia-backend
+    container_name: virtual-utopia-phase5
+    restart: unless-stopped
+    command: ["node", "backend/src/phase5/server.js"]
+    ports:
+      - "3300:3300"
+    environment:
+      PHASE5_AUTH_SECRET: "change-me-please"
+      PHASE5_SERVICE_TOKEN: "change-me-please"
+      PHASE5_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: "change-me-please"
+      PHASE5_DB_PATH: "/data/phase5/virtual_utopia_phase5.sqlite"
+      PHASE5_ENABLED: "true"
+    volumes:
+      - phase5-data:/data/phase5
+    depends_on:
+      - chroma
+
+  phase6:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: virtual-utopia-backend
+    container_name: virtual-utopia-phase6
+    restart: unless-stopped
+    command: ["node", "backend/src/phase6/server.js"]
+    ports:
+      - "3400:3400"
+    environment:
+      PHASE5_SERVICE_TOKEN: "change-me-please"
+      PHASE5_BASE_URL: "http://phase5:3300"
+      # phase6 业务库统一放 /data/phase6（可用 PHASE6_*_DB_PATH 逐一覆盖，默认相对 backend 目录）
+    volumes:
+      - phase6-data:/data/phase6
+    depends_on:
+      - phase5
+
+  scene:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: virtual-utopia-backend
+    container_name: virtual-utopia-scene
+    restart: unless-stopped
+    command: ["node", "backend/src/server.js"]
+    ports:
+      - "3000:3000"
+    environment:
+      DEEPSEEK_API_KEY: "change-me"
+      DEEPSEEK_BASE_URL: "https://api.deepseek.com"
+      DEEPSEEK_MODEL: "deepseek-chat"
+      AI_LLM_BACKEND: "langchain"
+      AI_RAG_BACKEND: "langchain"
+      USE_LANGGRAPH: "1"
+      AI_HITL_ENABLED: "true"
+      AI_APPROVAL_TOOLS: "guestbook_write"
+      PHASE6_BASE_URL: "http://phase6:3400"
+      CHROMA_URL: "http://chroma:8000"
+      CHROMA_COLLECTION: "virtual_utopia_rag"
+      # 生产可选：LangSmith Developer 层追踪
+      # LANGSMITH_TRACING: "true"
+      # LANGSMITH_API_KEY: "lsv2_..."
+      # LANGSMITH_PROJECT: "virtual-utopia"
+    volumes:
+      - scene-data:/app/backend/data
+    depends_on:
+      - phase6
+      - chroma
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        VITE_PHASE6_API_BASE_URL: "/phase6-api"
+    image: virtual-utopia-frontend
+    container_name: virtual-utopia-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - scene
+      - phase6
+
+volumes:
+  chroma-data:
+  phase5-data:
+  phase6-data:
+  scene-data:
