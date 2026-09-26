@@ -187,3 +187,7 @@
 - **⑪ LangSmith**：`langsmith`（0.10.5，注意包名非 @langchain/langsmith）；环境变量驱动零代码；`.env.example` 有开启步骤。
 - **⑫ env**：`.env.example` 生产强随机提示 + 补 PHASE5_ENABLED/PHASE6_HOME_SOCIAL_DB_PATH/PORT/CORS_ORIGIN。
 - 回归：101/101。
+### P5.4-⑬ 3D 世界 AI 对话（2026-09-27，commit 79d94b5）
+- 文件：services/sceneClient.js、stores/aiChatStore.js、components/AiChatPanel.vue、WorldView.vue 挂载、vite.config.js /scene-api 代理。
+- 认证：virtual-utopia.phase5.token（sessionStorage）同一 token 直通 scene Bearer。
+- 代理：vite /scene-api → http://localhost:3000（dev 同源免 CORS）；生产需 nginx /scene-api/ → scene（deploy/nginx.conf 待补，模板未实测）。

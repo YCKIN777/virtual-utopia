@@ -1613,3 +1613,14 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
   - 验证：用 .env.example 原样（无 key）临时起 scene → /api/scenes 200（新环境照单配置可起）。
 - **回归**：后端全量 101/101（P5.3 无后端逻辑改动，纯构建/部署/观测/配置层）。
 - **自检清单**：✔ 后端全量回归 101/101 ✔ build-all all 全绿（build+preview 三入口）✔ env.example 冒烟 200 ✔ LangSmith 加载不崩 ✔ memory 三件套 + 规划文档 P5.3 标 ✅ ✔ 逐项 git 提交（b56b26f/3512b01/6ae66bb/4928508）
+## 2026-09-27 P5.4-⑬ 启动：3D 世界接入 AI 对话（用户新需求，commit 79d94b5）
+- **需求**：① 外壳 shell 界面不要，功能植入 3D 世界（用户认为 3D 世界就是主界面）；② 3D 世界当前「对不了话」。
+- **根因**：3D 世界聊天面板全是居民社交频道（phase6 /chat/world、/chat/resident），从未接 scene 3000 的 LangGraph AI 对话；AI 对话只在 shell 场景页（SceneConversationPanel → conversationStore → sceneApi）。
+- **改造（前端 only，后端零改动）**：
+  - `frontend/src/virtual-utopia/services/sceneClient.js`（新）：3D 版 scene 客户端（SSE stream / route / resume），baseUrl=/scene-api（vite proxy），token 读 virtual-utopia.phase5.token（同一 phase6 token 后端经 /auth/me 解析身份，无需二次登录）。
+  - `frontend/src/virtual-utopia/stores/aiChatStore.js`（新）：对话状态（流式打字机 + thinking/tool_calling/tool_result + pendingApproval + resume），单场景 yard。
+  - `frontend/src/virtual-utopia/components/AiChatPanel.vue`（新）：3D 世界右下角 AI 对话浮层（未登录禁用提示、流式光标、KIN 审批批准/拒绝卡片、新话题）。
+  - `views/WorldView.vue`：挂载 AiChatPanel；`vite.config.js`：加 /scene-api → 3000 同源代理。
+- **坑**：① aiChatStore 编辑遗留 messageSequence 重复声明 → rollup 报「Identifier has already been declared」（三入口 build 抓出）；② Start-Process vite 相对路径 Cannot find module → 必须绝对路径 H:\BP2\node_modules\vite\bin\vite.js（已知坑复现）；③ AiChatPanel 误用 worldStore.state.toast → 实际 API 是 worldStore.notify(message, tone)。
+- **验证**：三入口 build 全通过；node 经 5175 /scene-api 代理 login+stream 收到阿禾真实回复；浏览器实测（bu）：5175 → #/world → AI 对话按钮 → 面板 → admin 登录 → 输入「你好，介绍一下大院吧」→ 阿禾流式回复完整展示。
+- **遗留**：shell（5173）服务/代码保留（主体结构不动），入口已移至 3D 世界；shell 是否从 start-all 移除待用户拍板。
