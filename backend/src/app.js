@@ -27,6 +27,8 @@ export const createApp = ({
     maxCount: env.session.maxCount,
   }),
   conversationRegistry = createConversationRegistry(),
+  // P5.2-⑥：captchaService 可注入（测试/回退用单例内存；生产 server.js 传持久化实例）。
+  captchaService: captcha = captchaService,
 } = {}) => {
   const app = express();
   const sceneOrchestrator =
@@ -70,12 +72,12 @@ export const createApp = ({
   );
   // 待办⑤：外层壳注册 + 验证码（公开端点；sceneAuth 对无 token 游客放行）。
   // 验证码校验通过后转发 phase5 注册，phase5 零改动。
-  app.use('/api', createCaptchaRouter({ service: captchaService }));
+  app.use('/api', createCaptchaRouter({ service: captcha }));
   app.use(
     '/api',
     createRegisterRouter({
       phase5BaseUrl: env.phase5.baseUrl,
-      captcha: captchaService,
+      captcha,
     }),
   );
 
