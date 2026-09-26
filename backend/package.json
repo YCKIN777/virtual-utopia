@@ -19,6 +19,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "langsmith": "^0.10.5",
     "zod": "4.6.5"
   },
   "devDependencies": {

@@ -84,6 +84,9 @@ export const env = Object.freeze({
   ai: Object.freeze({
     llmBackend: process.env.AI_LLM_BACKEND || 'langchain',
     ragBackend: process.env.AI_RAG_BACKEND || 'langchain',
+    // P5.3-⑪：LangSmith 可观测。LangChain/LangGraph tracing 由环境变量驱动
+    // （LANGSMITH_TRACING=true + LANGSMITH_API_KEY + LANGSMITH_PROJECT，dotenv 已载入
+    // process.env → @langchain/core 自动上传），无需代码改动；此处仅暴露开关供逻辑判断。
     langsmithTracing: toBoolean(process.env.LANGSMITH_TRACING),
     useLanggraph: process.env.USE_LANGGRAPH !== '0',
     // P4: HITL（KIN 审批）—— 命中敏感工具时 interrupt 暂停等审批。
