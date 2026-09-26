@@ -13,6 +13,7 @@ import { createStreamRouter } from './routes/stream.js';
 import { createResumeRouter } from './routes/resume.js';
 import { createCaptchaRouter } from './routes/captcha.js';
 import { createRegisterRouter } from './routes/register.js';
+import { createSceneAuditStore } from './services/sceneAuditStore.js';
 import { captchaService } from './services/captchaService.js';
 import { createConversationRegistry } from './services/conversationRegistry.js';
 import { createSceneAuthMiddleware } from './middleware/sceneAuth.js';
@@ -29,6 +30,8 @@ export const createApp = ({
   conversationRegistry = createConversationRegistry(),
   // P5.2-⑥：captchaService 可注入（测试/回退用单例内存；生产 server.js 传持久化实例）。
   captchaService: captcha = captchaService,
+  // P5.2-⑧：KIN 审批（HITL resume）决策审计存储（测试/回退内存；生产 server.js 传持久化实例）。
+  sceneAuditStore = createSceneAuditStore(),
 } = {}) => {
   const app = express();
   const sceneOrchestrator =
@@ -68,6 +71,8 @@ export const createApp = ({
     createResumeRouter({
       orchestrator: sceneOrchestrator,
       conversationRegistry,
+      // P5.2-⑧：审批决策审计（resume 成功后留痕）
+      sceneAuditStore,
     }),
   );
   // 待办⑤：外层壳注册 + 验证码（公开端点；sceneAuth 对无 token 游客放行）。

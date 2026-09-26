@@ -7,6 +7,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { createCaptchaService } from './services/captchaService.js';
 import { createConversationRegistry } from './services/conversationRegistry.js';
+import { createSceneAuditStore } from './services/sceneAuditStore.js';
 import { createBusinessToolSet } from './ai/tools/factory.js';
 import { createConfiguredMemoryGateway } from './ai/memory/memoryGateway.js';
 
@@ -21,12 +22,17 @@ const captchaService = createCaptchaService({
 const conversationRegistry = createConversationRegistry({
   databasePath: path.join(dataDir, 'conversation-registry.db'),
 });
+// P5.2-⑧：KIN 审批决策审计持久化（管理后台/审计可跨重启查询）。
+const sceneAuditStore = createSceneAuditStore({
+  databasePath: path.join(dataDir, 'scene-audit.db'),
+});
 
 const app = createApp({
   tools: createBusinessToolSet(),
   memoryGateway: createConfiguredMemoryGateway(),
   captchaService,
   conversationRegistry,
+  sceneAuditStore,
 });
 
 app.listen(env.port, () => {

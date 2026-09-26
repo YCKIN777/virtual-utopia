@@ -9,7 +9,12 @@
 //      无归属记录或归属不符 → 403（防伪造 conversationId 越权恢复他人会话）。
 import { Router } from 'express';
 
-export const createResumeRouter = ({ orchestrator, conversationRegistry }) => {
+export const createResumeRouter = ({
+  orchestrator,
+  conversationRegistry,
+  // P5.2-⑧：审批决策审计存储（resume 成功后留痕；GET /audit 供 admin 查询）。
+  sceneAuditStore = null,
+}) => {
   const router = Router();
 
   const assertResumePermission = (userContext, conversationId) => {
@@ -73,6 +78,25 @@ export const createResumeRouter = ({ orchestrator, conversationRegistry }) => {
 
       const payload = await orchestrator.resume(request.body);
 
+      // P5.2-⑧：审批决策审计留痕 —— 谁在何时对哪个会话批准/拒绝。
+      if (sceneAuditStore && request.body?.decision) {
+        try {
+          sceneAuditStore.record({
+            conversationId,
+            actorUserId: request.userContext?.userId ?? null,
+            actorUsername: request.userContext?.username ?? null,
+            actorRole: request.userContext?.role ?? null,
+            approved: request.body.decision.approved === true,
+            reason: request.body.decision.reason ?? null,
+            ipAddress: request.ip,
+            userAgent: request.get('user-agent') ?? null,
+          });
+        } catch (error) {
+          // 审计失败不阻断审批主流程（留痕尽力而为）
+          console.warn(`[scene-audit] record failed: ${error.message}`);
+        }
+      }
+
       response.json(payload);
     } catch (error) {
       const statusCode = error.statusCode || 400;
@@ -82,6 +106,36 @@ export const createResumeRouter = ({ orchestrator, conversationRegistry }) => {
         message: error.message || '恢复请求失败',
       });
     }
+  });
+
+  // P5.2-⑧：审批审计查询（admin 可见）—— GET /api/scene/route/audit?approved=1&limit=100
+  router.get('/scene/route/audit', (request, response) => {
+    const userContext = request.userContext;
+
+    if (userContext?.role !== 'admin') {
+      return response.status(403).json({
+        error: 'FORBIDDEN',
+        message: '仅 KIN（管理员）可查看审批审计',
+      });
+    }
+
+    if (!sceneAuditStore) {
+      return response.status(500).json({
+        error: 'AUDIT_UNAVAILABLE',
+        message: '审批审计存储未启用',
+      });
+    }
+
+    const approved =
+      request.query.approved === undefined
+        ? undefined
+        : request.query.approved === '1' || request.query.approved === 'true';
+    const limit = Number.parseInt(request.query.limit, 10) || 100;
+    const offset = Number.parseInt(request.query.offset, 10) || 0;
+
+    response.json({
+      events: sceneAuditStore.list({ approved, limit, offset }),
+    });
   });
 
   return router;
