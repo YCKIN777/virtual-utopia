@@ -6,7 +6,8 @@
  *   node scripts/start-all.mjs
  *
  * 启动顺序：phase5(3300) -> phase6(3400) -> chroma(8000, 可选) -> scene(3000)
- *           -> 外层壳 frontend(5173) -> 3D 世界 virtual-utopia(5175)。
+ *           -> 外层壳 frontend(5173) -> 3D 世界 virtual-utopia(5175)
+ *           -> 管理后台 phase6-admin(5174)。
  *
  * 环境变量：
  *   PHASE5_AUTH_SECRET / PHASE5_BOOTSTRAP_ADMIN_PASSWORD 可覆盖 phase5 默认值
@@ -105,6 +106,18 @@ const SERVICES = [
     health: [
       'http://localhost:5175/',
       'http://127.0.0.1:5175/',
+    ],
+    required: true,
+  },
+  {
+    // P5.1-②：管理后台（phase6 入驻申请审批）—— 此前唯一手工 Start-Process 的服务
+    name: 'admin-frontend',
+    entry: VITE_BIN,
+    args: ['--host', '0.0.0.0'],
+    cwd: 'frontend/src/phase6',
+    health: [
+      'http://localhost:5174/',
+      'http://127.0.0.1:5174/',
     ],
     required: true,
   },
