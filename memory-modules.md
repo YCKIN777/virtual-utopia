@@ -148,11 +148,12 @@
 - 验证：`tests/conversationRegistry.test.js`（5）+ `tests/resumeRoute.test.js`（6）；后端 83/83。
 - 局限：registry 内存态（重启即失，非 admin 恢复需重新 handle）；owner 恢复=本人确认（KIN 审批仍 admin 优先）。
 
-### 审批清单扩展（2026-09-26 落地）
-- 默认 `AI_APPROVAL_TOOLS=guestbook_write,query_friends`（写入类 + 隐私查询类；其余 3 查询工具低敏不审批）。
-- 审批判定为配置驱动：`routeAfterBranch` 检查 `env.ai.approvalTools.includes(call.name)`（已 export 供单测）；新增敏感工具仅改配置，零代码。
-- 验证：`tests/approvalRouting.test.js` 7/7（无工具→finalize / 敏感→approval / 非敏感→execute_tools / 混合→approval / 多值解析）。
-- 局限：审批粒度工具级（整轮暂停），无参数级审批；居民查「自己的好友列表」也需 KIN 确认（宁可多批）。
+### 审批清单（P5.2-⑤ 2026-09-26 收窄为写入类）
+- **当前默认 `AI_APPROVAL_TOOLS=guestbook_write`**（写入类）；query_friends 为无参数、仅查本人数据的只读工具，**移出审批**（避免「查自己好友也卡 KIN 审批」扰民；未来涉他人隐私工具配置驱动加回）。
+- 审批判定配置驱动：`routeAfterBranch` 检查 `env.ai.approvalTools.includes(call.name)`（已 export 供单测）；新增敏感工具仅改配置，零代码。
+- 验证：`tests/approvalRouting.test.js` 7/7（query_friends→execute_tools / guestbook_write→approval / 混合→approval / 多值解析）；verify-hitl 场景 A 实测 query_friends 直接执行不审批（thinking→tool_calling→tool_result）。
+- 行为记录：DeepSeek 对 guestbook_write 写入类受场景人设「写入须先确认/审批」约束倾向文本澄清不调工具（verify-hitl 场景 B/C 记录为模型行为，非框架缺陷；脚本为行为自适应 E2E，路由正确性由单测覆盖）。
+- 局限：审批粒度工具级（整轮暂停），无参数级审批。
 
 ### 外层壳注册 + 图形验证码（2026-09-26 落地）
 - 验证码：`src/services/captchaService.js`（4 位数字 SVG + 干扰线；内存 Map 5 分钟过期、一次性、上限 1000 自动清理）+ `GET /api/scene/route/captcha`（公开）。
@@ -168,3 +169,15 @@
 - 生产部署：`deploy/chroma.docker-compose.yml`（chromadb/chroma:1.5.9 + 数据卷 + healthcheck；本机无 Docker 未实测）；`CHROMA_URL` 指向远端即可（https 自动 ssl）；`.env.example` 补 `CHROMA_URL/CHROMA_COLLECTION/RAG_DOCS_DIR`。
 - **关键坑（4 层排障）**：① 旧 `.chroma-data` SQLite 未干净关闭（进程被强杀）→ chroma 打印 listening 后静默退出 → reset-data 备份重建；② chromadb 1.5.9（Rust 版）API 路径 `/api/v1/*` 全 410 Gone，正确为 `/api/v2/*`（心跳/collections 走 `/api/v2/tenants/default_tenant/databases/default_database/collections`）；③ node spawn 子进程在父退出时被 Job Object 终止 → 必须 `detached:true`；④ 本环境 node 子进程 PATH 精简（无 powershell/netstat）→ 进程管理用 PID 文件 + process.kill。
 - 验证：chroma.mjs 全链路 start→status→reset→stop 通过（父退出后服务存活）；start-all 冒烟 phase5/phase6/chroma 三就绪、停止后端口全释放；后端回归 54/54。
+
+### P5.2 安全与治理四项（2026-09-26 落地）
+- **⑥ captcha/conversationRegistry 落 SQLite**：`captchaService.js` / `conversationRegistry.js` 存储层从内存 Map 迁至 `node:sqlite`（WAL）：`backend/data/captcha.db`（captcha_entries：一次性/5min 过期/上限清理）、`backend/data/conversation-registry.db`（conversation_owners：ON CONFLICT 保留 created_at、FIFO 上限清理）。
+  - 分层：模块单例默认 `:memory:`（多测试进程并发打开同一持久化文件会 `database is locked`）；**生产装配在 `server.js` 显式注入持久化实例**（`createApp` 增 `captchaService` 注入参数）。
+  - 跨重启：captchaId 未过期仍可校验、resume 归属仍可校验（测试 close→reopen 覆盖）。
+  - 测试：`tests/persistenceServices.test.js` 9 例（一次性/过期/上限/文件跨重启）。
+- **⑦ 账号与测试数据清理**：`scripts/cleanup-test-data.mjs`（可复现，--dry-run 预览；ESM 顶层禁 return，须 if/else）。已删 smoke_*/probe*/p5probe 5 账号 + chroma corrupt 备份 2 目录（0.6MB）；保留真实/演示账号 + ui_zzzz（用户已批准）+ moved_out/disabled 历史（保 phase6 外键）。
+- **⑧ KIN 审批决策审计留痕**：`src/services/sceneAuditStore.js`（`backend/data/scene-audit.db`，表 scene_audit_events：conversation_id/actor_user_id/actor_username/actor_role/approved/reason/ip/user_agent/created_at，索引 created+id，排序 `ORDER BY created_at DESC, id DESC` 防同毫秒不稳）。
+  - resume 路由：决策成功后 record（审计失败 console.warn 不阻断主流程）；403/失败不写；`GET /api/scene/route/audit`（admin 查询，approved 过滤 + limit/offset，limit 钳 500）。
+  - 测试：`tests/sceneAudit.test.js` 3 例 + `tests/resumeRoute.test.js` 新增 3 例（admin 批准留痕/owner 拒绝留痕/403 不写）。
+- 回归：后端全量 **101/101**；E2E：admin 查审计 200 / 非 admin 403 / 验证码端点 200 / verify-hitl 通过。
+- commit 链：e9176c4（⑤）→ 753b726（⑥）→ 9430f28（⑦）→ d7ed2b1（⑧）。

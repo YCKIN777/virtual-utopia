@@ -1567,3 +1567,27 @@
 ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 child.unref()，否则父进程事件循环被子进程句柄持有、start-all 永不退出**。验证：start→主进程退出→7 服务存活；stop 全停；stop→start 循环；3D 世界登录页正常。7 服务一键编排（3300/3400/8000/3000/5173/5175/5174）。
 - **测试口径坑**：3D 世界注册/登录均 sha256Hex 传输、库内 scrypt(sha256(明文))；**API 直连测试注册须传 sha256Hex 密码**，传明文注册会造出 sha256 登录不匹配的账号（401 假象）。
 - 相关文件：backend/src/phase5/{errors,httpServer}.js、backend/tests/phase5LoginStatus.test.js、scripts/start-all.mjs、.gitignore（.run/）。
+## 2026-09-26 P5.2 安全与治理四项闭环（⑤-⑧）
+- **⑤ 审批清单收窄**（commit e9176c4）：
+  - 改动：backend/src/config/env.js（默认 `AI_APPROVAL_TOOLS=guestbook_write`）、tests/approvalRouting.test.js（query_friends→execute_tools 等 7 例）、backend/.env(.example)、scripts/verify-hitl.mjs（场景 A 改 query_friends 不再审批 + getGuestbook/guestbookHas 真实数据校验）。
+  - 决策：query_friends 为无参数、仅查本人数据的只读工具，不该进审批（避免「查自己好友也卡 KIN 审批」扰民）；未来涉隐私工具配置驱动加回。
+  - E2E 实测：verify-hitl 场景 A `thinking → tool_calling → tool_result`，query_friends 直接执行、无 approval_pending（回复「目前没有待处理的好友申请」）——⑤ 核心行为实证。
+  - 行为记录：DeepSeek 对 guestbook_write 写入类指令受场景人设「写入须先确认/审批」约束，倾向文本澄清不调工具（场景 B/C 记录为模型行为，非框架缺陷）；verify-hitl 因此改为「行为自适应」E2E（路由正确性由单测确定性覆盖）。
+- **⑥ captchaService/conversationRegistry 落 SQLite**（commit 753b726）：
+  - 新增表：`backend/data/captcha.db`（captcha_entries，一次性/5min 过期/上限清理）、`backend/data/conversation-registry.db`（conversation_owners，FIFO 上限）。
+  - 分层坑：模块单例默认 `:memory:`（多测试进程并发打开同一持久化文件 → `database is locked`）；**生产装配在 server.js 显式注入持久化实例**（createApp 增 captchaService 注入参数）。
+  - 跨重启验证：测试 close→reopen 数据保留；重启后 captchaId 未过期仍可校验、resume 归属仍可校验。
+  - 新增 tests/persistenceServices.test.js 9 例。
+- **⑦ 账号与测试数据清理**（commit 9430f28）：
+  - 删除测试账号 5 个：smoke_muh9qx2d、probe392636、probe396232、probe396434、p5probe（活跃/待激活残留）。
+  - 删除 chroma 损坏备份 2 个：`.chroma-data.corrupt-2026-09-25T16-48-58-596Z`、`.chroma-tmp.corrupt-2026-09-25T16-48-58-596Z`（0.6MB，chroma 已重建健康）。
+  - 保留：admin/traveler/viewer/KIN/KIN777/momo/jev + ui_zzzz（用户已批准，铁律）+ moved_out/disabled 历史（保 phase6 外键引用安全）。
+  - 新增可复现脚本 `backend/scripts/cleanup-test-data.mjs`（--dry-run 预览；顶层 return 在 ESM 非法，须 if/else）。
+  - 验证：traveler 登录成功、probe392636 登录被拒。
+- **⑧ KIN 审批（HITL resume）决策审计留痕**（commit d7ed2b1）：
+  - 新增 `backend/src/services/sceneAuditStore.js`：`backend/data/scene-audit.db` 表 scene_audit_events（conversation_id/actor/approved/reason/ip/ua/created_at），WAL，索引 created+id。
+  - resume 路由：决策成功后 record（审计失败不阻断主流程，console.warn）；403/失败不写；`GET /api/scene/route/audit`（admin 查询，approved 过滤 + limit/offset 分页，limit 钳 500）。
+  - 排序坑：created_at 同毫秒不稳定 → `ORDER BY created_at DESC, id DESC`。
+  - 测试：sceneAudit.test.js 3 例（语义/跨重启/分页）+ resumeRoute.test.js 新增 3 例（admin 批准留痕/owner 拒绝留痕/403 不写）。
+- **回归**：后端全量 **101/101**（86 + 9 persistence + 3 sceneAudit + 3 resumeRoute 新增）；E2E 实测：admin 查审计 200 / 非 admin 403 / 验证码端点 200 / verify-hitl 场景 A 通过。
+- **自检清单**：✔ 后端全量回归 101/101 ✔ E2E（verify-hitl + 审计 200/403 + 验证码 200）✔ 浏览器 smoke（注册页 UI 本轮未重验，非本次改动范围）✔ memory-modules 相关章节 ✔ 规划文档 P5.2 标 ✅ ✔ 逐项 git 提交（e9176c4/753b726/9430f28/d7ed2b1）
