@@ -35,3 +35,6 @@ release/
 # .chroma-data*/ 同时覆盖损坏备份目录（.chroma-data.corrupt-*，2026-09-26）
 .chroma-data*/
 .workbuddy/
+
+# P5.1-4 服务 PID 文件（start-all detached 管理）
+.run/
