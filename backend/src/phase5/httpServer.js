@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import {
+  Phase5AccountInactiveError,
   Phase5Error,
   Phase5ForbiddenError,
   Phase5NotFoundError,
@@ -200,8 +201,22 @@ export const createPhase5App = ({ repositories, config, database }) => {
         );
       }
 
-      if (!passwordMatches || user.status !== 'active') {
+      if (!passwordMatches) {
         throw new Phase5UnauthorizedError('invalid username or password');
+      }
+
+      // P5.1-①：凭据正确但账号状态不允许登录 —— 区分提示（pending/disabled/moved_out）
+      if (user.status !== 'active') {
+        const statusMessages = {
+          pending: '申请待 KIN 审批，审核通过后方可登录',
+          disabled: '入驻申请已被驳回，请联系 KIN 管理员',
+          moved_out: '该居民已迁出乌托邦，无法登录',
+        };
+
+        throw new Phase5AccountInactiveError(
+          statusMessages[user.status] || '账号当前不可用，请联系 KIN 管理员',
+          { status: user.status },
+        );
       }
 
       repositories.users.updateLastLogin(user.id);
