@@ -181,3 +181,9 @@
   - 测试：`tests/sceneAudit.test.js` 3 例 + `tests/resumeRoute.test.js` 新增 3 例（admin 批准留痕/owner 拒绝留痕/403 不写）。
 - 回归：后端全量 **101/101**；E2E：admin 查审计 200 / 非 admin 403 / 验证码端点 200 / verify-hitl 通过。
 - commit 链：e9176c4（⑤）→ 753b726（⑥）→ 9430f28（⑦）→ d7ed2b1（⑧）。
+### P5.3 生产化四项（2026-09-27 落地）
+- **⑨ 构建**：`scripts/build-all.mjs`（build/preview/all）；三入口 dist 产物：frontend/dist、frontend/src/virtual-utopia/dist、frontend/src/phase6/dist；preview 默认端口 4173/5176/5177（dev 端口被占用时用）。
+- **⑩ Docker**：`deploy/` 全家桶（docker-compose.yml + Dockerfile.backend + Dockerfile.frontend + nginx.conf）；chroma 模板 healthcheck 已修正 /api/v2。未实测（无 Docker）。
+- **⑪ LangSmith**：`langsmith`（0.10.5，注意包名非 @langchain/langsmith）；环境变量驱动零代码；`.env.example` 有开启步骤。
+- **⑫ env**：`.env.example` 生产强随机提示 + 补 PHASE5_ENABLED/PHASE6_HOME_SOCIAL_DB_PATH/PORT/CORS_ORIGIN。
+- 回归：101/101。

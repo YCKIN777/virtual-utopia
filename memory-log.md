@@ -1591,3 +1591,25 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
   - 测试：sceneAudit.test.js 3 例（语义/跨重启/分页）+ resumeRoute.test.js 新增 3 例（admin 批准留痕/owner 拒绝留痕/403 不写）。
 - **回归**：后端全量 **101/101**（86 + 9 persistence + 3 sceneAudit + 3 resumeRoute 新增）；E2E 实测：admin 查审计 200 / 非 admin 403 / 验证码端点 200 / verify-hitl 场景 A 通过。
 - **自检清单**：✔ 后端全量回归 101/101 ✔ E2E（verify-hitl + 审计 200/403 + 验证码 200）✔ 浏览器 smoke（注册页 UI 本轮未重验，非本次改动范围）✔ memory-modules 相关章节 ✔ 规划文档 P5.2 标 ✅ ✔ 逐项 git 提交（e9176c4/753b726/9430f28/d7ed2b1）
+## 2026-09-27 P5.3 生产化四项闭环（⑨-⑫）
+- **⑨ 三入口生产构建验证**（commit b56b26f）：
+  - 新增 `scripts/build-all.mjs`（build/preview/all 三子命令；spawnSync build + spawn preview 冒烟 + 自动停）。
+  - 实测：外层壳（frontend/dist，js 146KB）/ 3D 世界（virtual-utopia/dist）/ 管理后台（phase6/dist，js 152KB）build 全成功；preview 三入口（4173/5176/5177）200 OK。dist 已被根 .gitignore（dist/ 与 **/dist/）忽略。
+- **⑩ 全栈 Docker 编排模板**（commit 3512b01）：
+  - `deploy/Dockerfile.backend`：node:24-alpine + corepack pnpm + frozen-lockfile（根 workspace 锁）；phase5/phase6/scene 共用镜像、compose 覆盖 command。
+  - `deploy/Dockerfile.frontend`：多阶段（三入口 vite build → nginx:1.27），ARG VITE_PHASE6_API_BASE_URL=/phase6-api。
+  - `deploy/nginx.conf`：/ → shell、/world/、/admin/（try_files fallback）、/api/ → scene（SSE proxy_buffering off + read_timeout 3600s）、/phase6-api/ → phase6。
+  - `deploy/docker-compose.yml`：chroma+phase5+phase6+scene+frontend，四数据卷，生产 change-me 占位标注。
+  - 修正 `chroma.docker-compose.yml` healthcheck `/api/v1/heartbeat` → `/api/v2`（chromadb 1.5.9 实际路径）。
+  - **本机无 Docker，未实测**（与 chroma 模板同定位：生产参考）。
+- **⑪ LangSmith Developer 层接入**（commit 6ae66bb）：
+  - **坑：`@langchain/langsmith` 包不存在（registry 404）——正确包名是 `langsmith`**（同 `@langchain/chroma` 404 一类：集成包在 @langchain/community 或独立包）。
+  - 安装 `langsmith 0.10.5`（backend deps，pnpm --filter @virtual-utopia/backend add）。
+  - LangChain/LangGraph tracing 由环境变量驱动（LANGSMITH_TRACING=true + LANGSMITH_API_KEY + LANGSMITH_PROJECT），dotenv 载入后 @langchain/core 自动上传 → **零代码改动**；env.js 注释说明开关语义。
+  - 验证：LANGSMITH_TRACING=true + 假 key 下 graphOrchestrator 加载不崩；**真实上传需用户配 Developer key（5000 traces/月）后实测**。
+- **⑫ env 治理**（commit 4928508）：
+  - .env.example 头部补「生产强随机提示」：PHASE5_AUTH_SECRET/SERVICE_TOKEN `openssl rand -hex 32`、BOOTSTRAP_ADMIN_PASSWORD 16 位混合、API key 平台签发。
+  - 补缺项：PHASE5_ENABLED、PHASE6_HOME_SOCIAL_DB_PATH、PORT(3000)、CORS_ORIGIN。
+  - 验证：用 .env.example 原样（无 key）临时起 scene → /api/scenes 200（新环境照单配置可起）。
+- **回归**：后端全量 101/101（P5.3 无后端逻辑改动，纯构建/部署/观测/配置层）。
+- **自检清单**：✔ 后端全量回归 101/101 ✔ build-all all 全绿（build+preview 三入口）✔ env.example 冒烟 200 ✔ LangSmith 加载不崩 ✔ memory 三件套 + 规划文档 P5.3 标 ✅ ✔ 逐项 git 提交（b56b26f/3512b01/6ae66bb/4928508）
