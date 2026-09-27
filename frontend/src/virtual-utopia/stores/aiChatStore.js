@@ -6,6 +6,15 @@ import * as sceneClient from '../services/sceneClient.js';
 
 const DEFAULT_SCENE_ID = 'yard';
 
+// P5.4-15：场景分支元信息（后端 agents/branches 已注册 5 分支，sceneIds 见 registry）
+export const SCENE_META = Object.freeze({
+  yard: { name: '大院', agent: '阿禾', hint: '问问大院里的事、查查好友或留下留言' },
+  cabin: { name: '林间木屋', agent: '风禾', hint: '山林生活、木屋营造与邻里手艺活' },
+  library: { name: '藏书楼', agent: '素安', hint: '典籍、见闻与安静整理的场所' },
+  pavilion: { name: '凉亭', agent: '虚白', hint: '闲谈、赏景与不急不慢的商议' },
+  'resource-wall': { name: '资源墙', agent: '知予', hint: '物资清单、访客名额与资源盘点' },
+});
+
 let messageSequence = 0;
 
 const createMessage = (role, content, meta = null) => {
@@ -132,9 +141,22 @@ export function resetConversation() {
   state.pendingApproval = null;
 }
 
+// P5.4-15：切换场景分支（大院/木屋/藏书楼/凉亭/资源墙），切换即开新话题。
+export function setScene(sceneId) {
+  if (!SCENE_META[sceneId]) {
+    return;
+  }
+  if (state.sceneId === sceneId) {
+    return;
+  }
+  state.sceneId = sceneId;
+  resetConversation();
+}
+
 export const aiChatStore = Object.freeze({
   state,
   sendStream,
   resolveApproval,
   resetConversation,
+  setScene,
 });

@@ -1,24 +1,34 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
-import { aiChatStore } from '../stores/aiChatStore.js';
+import { aiChatStore, SCENE_META } from '../stores/aiChatStore.js';
 import { isAiChatAvailable } from '../services/sceneClient.js';
 import { worldStore } from '../stores/worldStore.js';
 
 const open = ref(false);
 const input = ref('');
 const listRef = ref(null);
-const SCENE_NAME = '大院';
 
 const loggedIn = computed(() => isAiChatAvailable());
 const conversation = computed(() => aiChatStore.state);
+const sceneMeta = computed(
+  () => SCENE_META[conversation.value.sceneId] || SCENE_META.yard,
+);
+const sceneOptions = computed(() =>
+  Object.entries(SCENE_META).map(([id, meta]) => ({ id, ...meta })),
+);
 
 const statusLabel = computed(() => {
   const { loading, status, statusDetail } = conversation.value;
   if (!loading) return '';
   if (status === 'tool_calling') return `正在查询${statusDetail || ''}…`;
   if (status === 'tool_result') return '已获取数据，正在整理回答…';
-  return `${SCENE_NAME}的伙伴正在思考…`;
+  return `${sceneMeta.value.name}的伙伴正在思考…`;
 });
+
+const switchScene = (event) => {
+  aiChatStore.setScene(event.target.value);
+  void scrollToBottom();
+};
 
 const approvalToolNames = computed(() =>
   (conversation.value.pendingApproval?.approval?.toolCalls ?? [])
@@ -97,7 +107,7 @@ onBeforeUnmount(() => {
       <header>
         <div>
           <span class="vu-kicker">AI RESIDENT</span>
-          <strong>{{ SCENE_NAME }} · 阿禾</strong>
+          <strong>{{ sceneMeta.name }} · {{ sceneMeta.agent }}</strong>
         </div>
         <div class="vu-ai-chat__actions">
           <button type="button" title="新话题" aria-label="新话题" @click="resetChat">
@@ -106,6 +116,25 @@ onBeforeUnmount(() => {
           <button type="button" aria-label="关闭" @click="open = false">×</button>
         </div>
       </header>
+
+      <!-- P5.4-15：场景分支切换（大院/木屋/藏书楼/凉亭/资源墙，切换即新话题） -->
+      <label class="vu-ai-chat__scene">
+        <span>场景</span>
+        <select
+          :value="conversation.sceneId"
+          :disabled="conversation.loading"
+          aria-label="切换 AI 居民场景"
+          @change="switchScene"
+        >
+          <option
+            v-for="option in sceneOptions"
+            :key="option.id"
+            :value="option.id"
+          >
+            {{ option.name }} · {{ option.agent }}
+          </option>
+        </select>
+      </label>
 
       <p v-if="!loggedIn" class="vu-ai-chat__login-hint">
         请先登录（右上角「登录」）后，再与 AI 居民对话。
@@ -119,7 +148,7 @@ onBeforeUnmount(() => {
           :class="message.role === 'user' ? 'is-user' : 'is-assistant'"
         >
           <div class="vu-ai-chat__message-head">
-            <strong>{{ message.role === 'user' ? '我' : '阿禾' }}</strong>
+            <strong>{{ message.role === 'user' ? '我' : sceneMeta.agent }}</strong>
             <span>{{ formatTime(message.createdAt) }}</span>
           </div>
           <p>
@@ -133,7 +162,8 @@ onBeforeUnmount(() => {
         </article>
 
         <p v-if="conversation.messages.length === 0" class="vu-ai-chat__empty">
-          与{{ SCENE_NAME }}的 AI 居民阿禾聊聊吧 —— 问问大院里的事、查查好友或留下留言。
+          与{{ sceneMeta.name }}的 AI 居民{{ sceneMeta.agent }}聊聊吧 ——
+          {{ sceneMeta.hint }}
         </p>
 
         <p v-if="statusLabel" class="vu-ai-chat__status" role="status">
@@ -150,7 +180,7 @@ onBeforeUnmount(() => {
         >
           <p class="vu-ai-chat__approval-title">需要 KIN 审批</p>
           <p class="vu-ai-chat__approval-body">
-            阿禾请求执行以下操作：{{ approvalToolNames }}。此操作需要管理方（KIN）确认后方可执行。
+            {{ sceneMeta.agent }}请求执行以下操作：{{ approvalToolNames }}。此操作需要管理方（KIN）确认后方可执行。
           </p>
           <div class="vu-ai-chat__approval-actions">
             <button
@@ -247,7 +277,7 @@ onBeforeUnmount(() => {
   width: min(380px, calc(100vw - 28px));
   height: min(520px, 70vh);
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-rows: auto auto auto 1fr auto auto;
   overflow: hidden;
   border: 1px solid rgba(28, 62, 54, 0.22);
   border-radius: 8px;
@@ -294,6 +324,31 @@ onBeforeUnmount(() => {
   color: #8a6d2f;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.vu-ai-chat__scene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #dfe4dc;
+  background: #fff;
+  font-size: 12px;
+}
+
+.vu-ai-chat__scene span {
+  color: #8b9791;
+}
+
+.vu-ai-chat__scene select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid #cfd8d0;
+  border-radius: 5px;
+  background: #fbfcfa;
+  color: #243d37;
+  font: inherit;
 }
 
 .vu-ai-chat__messages {
