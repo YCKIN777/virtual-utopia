@@ -11,6 +11,11 @@ const isObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const validateValue = (value, schema, path) => {
+  // 防御：schema 缺省（null/undefined）时跳过校验，仅要求已成功 JSON.parse。
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return value;
+  }
+
   if (schema.enum && !schema.enum.includes(value)) {
     throw new StructuredOutputError(
       `${path} must be one of: ${schema.enum.join(', ')}`,

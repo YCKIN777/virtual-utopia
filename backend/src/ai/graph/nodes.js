@@ -184,10 +184,23 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
       state.tools.length > 0 &&
       !hasToolContext(state)
     ) {
-      const toolResponse = await modelClient.createToolCallResponse({
-        messages,
-        tools: state.tools,
-      });
+      // P5.5-2：优先流式工具轮（打字机即时生效）——有流式上下文且客户端支持时
+      // 走 createToolCallResponseStream（bindTools + .stream，无工具则 content 流式推送），
+      // 否则回退原有非流式 invoke。
+      const streamContext = streamingContextStorage.getStore();
+      const useStream =
+        streamContext?.onToken &&
+        typeof modelClient.createToolCallResponseStream === 'function';
+      const toolResponse = useStream
+        ? await modelClient.createToolCallResponseStream({
+            messages,
+            tools: state.tools,
+            onToken: streamContext.onToken,
+          })
+        : await modelClient.createToolCallResponse({
+            messages,
+            tools: state.tools,
+          });
       if (env.ai.toolsDebug) {
         console.error(
           `[debug-branch] tool round: toolCalls=${toolResponse.toolCalls.length} contentLen=${toolResponse.content.length}`,

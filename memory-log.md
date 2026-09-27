@@ -1665,3 +1665,20 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - ④ docker wrapper：scripts/docker.cmd（用户级安装 CLI 不在 PATH；纯 ASCII 注释避免 bat 编码乱码）。
 - 新坑：容器 corepack 下载 pnpm 直连 registry.npmjs.org 超时 → 两 Dockerfile 加 COREPACK_NPM_REGISTRY + npm_config_registry=https://registry.npmmirror.com。
 - 容器版数据卷持久化验证：重建容器后 phase5 登录态保留（卷生效）。
+## 2026-09-27 P5.5-2 方向②延迟优化闭环（打字机修复 + 流式接口 + reply 提取）
+- **目标**：LangSmith trace 显示 P99 1.61s 全在 ChatDeepSeek；修复「流式打字机从未生效」+ 流式接口 bug，让 TTFT 可感知。
+- **实证根因（SSE dump 替换旧判断）**：
+  - 根因 1：普通对话首轮走工具轮（bindTools + 非流式 invoke，createToolCallResponse），模型未调工具 → 直接解析 content 返回 → SSE 全程仅 status+done 两事件、无 reply_chunk → **打字机从未生效**。
+  - 根因 2（误报澄清）：probe-stream 曾报 Cannot read properties of null (reading 'enum')——真实来源是 probe 传 responseSchema: null → validateValue(null) 访问 schema.enum 崩溃（不是 LangChain response_format 的 bug）；但 .stream + response_format json_object 在 LangChain ChatDeepSeek 有兼容风险，仍按计划去掉（提示词约束 + 回退更稳）。
+- **修复（3 文件）**：
+  - backend/src/ai/graph/nodes.js：branch 首轮优先 createToolCallResponseStream（有 streamContext.onToken 且客户端支持时），否则回退非流式。
+  - backend/src/ai/langchainModelClient.js：① 新增 createToolCallResponseStream（bindTools + .stream，增量合并 tool_calls，content 经 reply 提取器推送）；② createStructuredResponseStream 去掉 stream 的 response_format + 解析失败回退非流式 invoke（attempts:2）；③ 新增 createReplyExtractor（非贪婪匹配 "reply": 值 + 部分解码，跨 chunk 转义等待；JSON 壳字符不推送，自然语言流原样透传）。
+  - backend/src/services/structuredOutput.js：validateValue 加 schema null/非对象防御（parseStructuredOutput 无 schema 时仅要求 JSON 解析成功）。
+- **实证数据（backend/scripts/ 探针留存）**：
+  - SSE 事件：2 → 37（普通对话 35 个逐字干净 reply_chunk）/ 84（工具轮 82 个）——零 JSON 壳。
+  - 延迟基线（latency-baseline.mjs）：status 272→72ms，TTFT N/A → 656ms（首字「你好」可见），done 1800→1519ms。
+  - 工具轮回归（tool-regress.mjs）：留言写入意图 → HITL 审批确认流程正常（模型先请求确认再写入），流式全程干净。
+  - 浏览器实测（容器版 http://localhost/ 3D 世界）：多轮对话回复干净完整（阿禾大院视角、其他区域推给对应管理方），打字机逐字（SSE 实证）+ done 覆盖完整。
+- **新坑**：① 容器 scene 与本地 scene 3000 端口互斥（起容器前先停本地 .run\scene.pid）；② PowerShell here-string 转义再次失败 → 本轮全部用 Edit 工具落地（上轮已记）；③ latency-baseline/probe 早期用 console 输出被 PowerShell 包装吞字 → 一律 writeFileSync 到 H:\BP2\*.txt 再 Read。
+- **自检清单**：✔ SSE dump 逐字干净 ✔ TTFT/done 双指标对比 ✔ 工具轮 HITL 回归 ✔ 浏览器容器版多轮对话 ✔ 语法检查 3 文件通过 ✔ memory 三件套（log 本条 + core 更新 + modules 延迟优化节）
+- **遗留**：验收总结文档（F:\2026\KIN）早期写的「意图识别 0.67s + 对话 1.4s 两次调用」判断已被证实不准确（route 是纯函数、单次 LLM 调用）——待下次文档更新时修正补延迟对比小节。
