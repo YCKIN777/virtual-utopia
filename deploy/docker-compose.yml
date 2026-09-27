@@ -46,11 +46,12 @@ services:
       - "3300:3300"
     environment:
       PHASE5_HOST: "0.0.0.0"
-      PHASE5_AUTH_SECRET: "change-me-please"
-      PHASE5_SERVICE_TOKEN: "change-me-please"
+      # 生产必改：在 deploy/.env 或宿主环境注入 PHASE5_AUTH_SECRET / PHASE5_SERVICE_TOKEN
+      PHASE5_AUTH_SECRET: "${PHASE5_AUTH_SECRET:-change-me-please}"
+      PHASE5_SERVICE_TOKEN: "${PHASE5_SERVICE_TOKEN:-change-me-please}"
       PHASE5_BOOTSTRAP_ADMIN_USERNAME: "admin"
       # 实测沿用本地 start-all 默认（admin/utopia2026）；生产必改
-      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: "utopia2026"
+      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: "${PHASE5_BOOTSTRAP_ADMIN_PASSWORD:-utopia2026}"
       PHASE5_DB_PATH: "/data/phase5/virtual_utopia_phase5.sqlite"
       PHASE5_ENABLED: "true"
     volumes:
@@ -70,7 +71,7 @@ services:
       - "3400:3400"
     environment:
       PHASE6_HOST: "0.0.0.0"
-      PHASE5_SERVICE_TOKEN: "change-me-please"
+      PHASE5_SERVICE_TOKEN: "${PHASE5_SERVICE_TOKEN:-change-me-please}"
       PHASE5_BASE_URL: "http://phase5:3300"
       # phase6 业务库统一放 /data/phase6（可用 PHASE6_*_DB_PATH 逐一覆盖，默认相对 backend 目录）
     volumes:

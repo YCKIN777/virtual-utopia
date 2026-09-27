@@ -11,6 +11,10 @@ FROM node:24-alpine
 # better-sqlite3 native build 依赖（node-gyp: python3 + make + g++）
 RUN apk add --no-cache python3 make g++ libc6-compat
 
+# 容器内无代理：corepack 下载 pnpm 与 pnpm 拉包均走国内镜像（registry.npmjs.org 直连超时）
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
+
 # pnpm（corepack 随 node 发行版自带，锁定 workspace 解析）
 RUN corepack enable
 

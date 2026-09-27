@@ -13,10 +13,15 @@ const logout = () => {
   router.push({ name: 'home' });
 };
 
-// 管理后台端口来自 vite 注入；缺省 5174（与 frontend/src/phase6/vite.config.js 对齐）。
+// 管理后台地址：容器/生产经 VITE_ADMIN_BASE_URL 注入同源相对路径（如 /admin/），
+// 本地开发缺省回退 localhost:5174（与 frontend/src/phase6/vite.config.js 对齐）。
+const adminBase =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ADMIN_BASE_URL) || '';
 const adminPort =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ADMIN_PORT) || '5174';
-const adminUrl = computed(() => `http://localhost:${adminPort}/#/applications`);
+const adminUrl = computed(() =>
+  adminBase ? `${adminBase}#/applications` : `http://localhost:${adminPort}/#/applications`,
+);
 </script>
 
 <template>

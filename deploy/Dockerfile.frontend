@@ -7,6 +7,9 @@
 # （本地开发默认 http://localhost:3400，生产经 nginx 统一入口，避免跨域）。
 FROM node:24-alpine AS build
 
+# 容器内无代理：corepack 下载 pnpm 与 pnpm 拉包均走国内镜像（registry.npmjs.org 直连超时）
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
 RUN corepack enable
 WORKDIR /app
 
@@ -22,6 +25,9 @@ COPY frontend ./frontend
 # 双入口生产构建（node_modules 为 pnpm workspace hoisted 到根；shell 产物已下线不构建）
 ARG VITE_PHASE6_API_BASE_URL=/phase6-api
 ENV VITE_PHASE6_API_BASE_URL=${VITE_PHASE6_API_BASE_URL}
+# 容器版管理后台走 nginx 同源 /admin/（本地开发缺省 localhost:5174）
+ARG VITE_ADMIN_BASE_URL=/admin/
+ENV VITE_ADMIN_BASE_URL=${VITE_ADMIN_BASE_URL}
 
 RUN node node_modules/vite/bin/vite.js build --config frontend/src/virtual-utopia/vite.config.js \
  && node node_modules/vite/bin/vite.js build --config frontend/src/phase6/vite.config.js
