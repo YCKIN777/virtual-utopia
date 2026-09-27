@@ -1633,3 +1633,8 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - 前端此前硬编码 yard/阿禾。本次：aiChatStore 新增 SCENE_META（5 场景名称/角色/引导语）+ setScene（切换即 resetConversation）；AiChatPanel header 下新增场景下拉（loading 中禁用），角色名/思考文案/空态引导/审批文案随场景动态化。
 - 验证：三入口 build 全过；浏览器实测切凉亭→虚白以议事亭人设真实回复（「不负责介绍景观导览…帮你把话题拆成事实、观点、分歧」——与阿禾风格区分明显）。
 - 后端零改动。
+## 2026-09-27 P5.4-⑯ shell 下线（commit f352c36）
+- 用户拍板：shell 界面不要、入口已在 3D 世界 → 从 start-all 编排移除 shell-frontend(5173)。
+- SERVICES 移除（注释保留+恢复方法）；停止 shell 进程（5173 无监听）；frontend 代码保留可回退。
+- 验证：start-all 重排后 6 服务全在线（phase5/phase6/chroma/scene/world-3d/admin-frontend），shell 不再编排；3D 世界 5175 浏览器冒烟正常（登录态/AI 对话/挥手按钮完好）。
+- 唯一入口：http://localhost:5175。
