@@ -1682,3 +1682,16 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **新坑**：① 容器 scene 与本地 scene 3000 端口互斥（起容器前先停本地 .run\scene.pid）；② PowerShell here-string 转义再次失败 → 本轮全部用 Edit 工具落地（上轮已记）；③ latency-baseline/probe 早期用 console 输出被 PowerShell 包装吞字 → 一律 writeFileSync 到 H:\BP2\*.txt 再 Read。
 - **自检清单**：✔ SSE dump 逐字干净 ✔ TTFT/done 双指标对比 ✔ 工具轮 HITL 回归 ✔ 浏览器容器版多轮对话 ✔ 语法检查 3 文件通过 ✔ memory 三件套（log 本条 + core 更新 + modules 延迟优化节）
 - **遗留**：验收总结文档（F:\2026\KIN）早期写的「意图识别 0.67s + 对话 1.4s 两次调用」判断已被证实不准确（route 是纯函数、单次 LLM 调用）——待下次文档更新时修正补延迟对比小节。
+## 2026-09-27 公网上线（方案 A：cpolar）+ 生产安全加固（P5.6-1）
+- **方案 A 落地（cpolar 内网穿透）**：cpolar 3.3.12 解压至 H:\BP2\cpolar\app\cpolar\cpolar.exe（官方 zip→msiexec /a 提取；静默安装失败未污染系统）。环境坑：spawn 隐藏窗口/后台启动报 termbox.Init error、--log 重定向为空——**必须真实交互终端运行** `cpolar http 80`（用户桌面窗口手动运行成功：Tunnel Status online / Account YCKIN777 Free / Forwarding https://36087f0f.r2.cpolar.top -> http://localhost:80）。账号 yckin777/yckin777@outlook.com，token 已存 C:\Users\Administrator\.cpolar\cpolar.yml。**勿停用户终端里的隧道进程**（cpolar.pid 24212 已停，用户自己终端在跑）。
+- **公网地址（当前有效）**：https://36087f0f.r2.cpolar.top——cpolar Free 随机域名，**重启隧道地址会变**；变更须同步两处 CORS 白名单（backend/.env 的 CORS_ORIGIN + PHASE6_ALLOWED_ORIGINS 两行、deploy/docker-compose.yml 的 phase6 默认值）。
+- **CORS 修复（手机端 origin is not allowed）**：env.js corsOrigin 支持逗号分隔多来源（cors 包传数组）；backend/.env 追加 CORS_ORIGIN/PHASE6_ALLOWED_ORIGINS 含公网域名；compose phase6 显式注入 PHASE6_ALLOWED_ORIGINS（${VAR:-默认含公网域名}）。带公网 Origin 三路验证 200。
+- **生产安全加固（user 点名询问「做了吗」后执行）**：
+  - ① PHASE5_AUTH_SECRET / PHASE5_SERVICE_TOKEN：change-me-please → 强随机 64 hex（写入 backend/.env + deploy/.env；phase5/6 容器重建后注入生效，docker exec 验证 len=64）。
+  - ② admin 密码：utopia2026 → `Utopia@9d212cdb834dKx`（存 H:\BP2\admin-new-password.txt，已 gitignore）。**改密走直改库**（PUT /auth/password 有坑）：phase5 口令口径=scrypt(sha256(明文))，登录端点兼容明文/sha256 双口径，但**改密端点 currentPassword 只按原值校验**（明文和 sha256 都 401——疑似端点 bug）→ 绕过 API：备份 sqlite（卷内 backup-*.sqlite）→ docker exec UPDATE users SET password_hash=hashPassword(sha256Hex(newPw)) WHERE id=1 → 双口径登录验证 200。
+  - ③ chroma 暴露收敛：**chroma v1.0+ 已移除内置鉴权**（legacy CHROMA_SERVER_AUTHN_PROVIDER/CREDENTIALS/TRANSPORT_HEADER 全被忽略，日志无 auth 组件；官方 server-env-vars 明确 legacy auth 是历史遗留）→ 改「不暴露」策略：compose 移除 8000 宿主端口映射，仅容器内网可达（scene http://chroma:8000 heartbeat OK）；宿主 8000 连接拒绝。需要本地直连时临时 docker run -p 8000:8000。
+  - ④ phase5 CORS 收紧：origin:true（全放）→ 无 Origin（服务端调用）+ 本机回环白名单；外部 Origin 实测被拒（HTTP 500 cors error）。
+  - ⑤ 备份脚本正式化：backend/scripts/backup.mjs（phase5 sqlite 单文件 + phase6 /app/backend/data 全部库 tar + chroma 容器内 tar /data → H:\BP2\backup\，已实测跑通三件套）。
+- **验证口径（加固后全链路）**：phase6 登录(新密码) 200、scene /api/scenes 200、phase5 登录(新密码) 200、nginx 80 登录(公网 Origin) 200、chroma 无 token 宿主不可达。
+- **遗留建议（未做，需 user 拍板）**：① phase5/6/scene 宿主端口 3300/3400/3000 也收敛（仅 80 暴露，cpolar 只转 80——影响本地直连调试习惯）；② cpolar 实名认证/固定域名（免费随机域名变更要同步 CORS）；③ phase5 改密端点双口径 bug（前端登录发 sha256 而 currentPassword 只验原值——后续修）。
+- **新坑**：① chroma 1.5.9 API 前缀是 /api/v2（v1 返回 410 deprecated）且 collections 端点 404 空 body——调试用 JS 客户端（chromadb 包）最准；② Docker Desktop 的 docker run 拉 alpine 失败（docker-credential-desktop 不在 PATH）→ 备份用容器内 tar + docker cp；③ PowerShell 嵌套 node -e 转义崩——一律写临时 .mjs 或 sh -c 单引号。

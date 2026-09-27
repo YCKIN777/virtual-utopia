@@ -16,6 +16,9 @@ const toInteger = (value, fallback, minimum = 0) => {
 
 export const ragConfig = Object.freeze({
   chromaUrl: process.env.CHROMA_URL || 'http://localhost:8000',
+  // P5.6-1 生产安全加固：Chroma 鉴权 token（chromadb 1.5+，header: X-Chroma-Token）。
+  // 容器 chroma 侧以 CHROMA_SERVER_AUTHN_CREDENTIALS 校验同值；未配置则不带请求头。
+  chromaAuthToken: process.env.CHROMA_AUTH_TOKEN || '',
   collectionName: process.env.CHROMA_COLLECTION || 'virtual_utopia_rag',
   port: toInteger(process.env.RAG_PORT, 3100, 1),
   docsDirectory: path.resolve(

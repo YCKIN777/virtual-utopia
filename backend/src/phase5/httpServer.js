@@ -123,7 +123,29 @@ export const createPhase5App = ({ repositories, config, database }) => {
   app.disable('x-powered-by');
   app.use(
     cors({
-      origin: true,
+      // P5.6-1 生产安全加固：origin:true（全放）收紧为「无 Origin（服务端调用）+ 本机回环」。
+      // phase5 仅被 phase6 容器内调用（无 Origin 头）与 nginx 同域反代；浏览器直连 3300 仅限本机调试。
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        try {
+          const { hostname } = new URL(origin);
+          if (
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '::1' ||
+            hostname === '[::1]'
+          ) {
+            callback(null, true);
+            return;
+          }
+        } catch {
+          /* 非法 Origin 一律拒绝 */
+        }
+        callback(new Error('origin is not allowed'));
+      },
     }),
   );
   app.use(express.json({ limit: '2mb' }));

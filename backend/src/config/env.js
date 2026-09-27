@@ -35,7 +35,13 @@ export const env = Object.freeze({
   nodeEnv,
   isProduction: nodeEnv === 'production',
   port: Number(process.env.PORT) || 3000,
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // P5.6-1 上线适配：CORS_ORIGIN 支持逗号分隔多来源（cors 包 origin 可传数组），
+  // 公网隧道域名经 backend/.env 追加，无需改代码。
+  corsOrigin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : 'http://localhost:5173',
   databaseUrl: process.env.DATABASE_URL || '',
   codeGenerationEnabled:
     nodeEnv !== 'production' &&

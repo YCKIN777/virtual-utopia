@@ -19,14 +19,14 @@ services:
     image: chromadb/chroma:1.5.9
     container_name: virtual-utopia-chroma
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # P5.6-1 生产安全加固：chroma 1.0+ 已移除内置鉴权（legacy auth 变量无效）。
+    # 采用「不暴露」策略：移除宿主端口映射，仅容器内网可达（scene 经 http://chroma:8000），
+    # 宿主/公网均无法直连。需要本地直连 chroma 时临时 docker run -p 8000:8000 映射即可。
+    # ports:
+    #   - "8000:8000"
     volumes:
       - chroma-data:/data
     environment:
-      # 生产按需启用鉴权（chromadb 1.5+ 支持 CHROMA_SERVER_AUTHN_CREDENTIALS）
-      # CHROMA_SERVER_AUTHN_CREDENTIALS: "change-me"
-      # CHROMA_AUTHN_TRANSPORT_HEADER: "X-Chroma-Token"
       ANONYMIZED_TELEMETRY: "False"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/v2/heartbeat"]
@@ -73,6 +73,8 @@ services:
       PHASE6_HOST: "0.0.0.0"
       PHASE5_SERVICE_TOKEN: "${PHASE5_SERVICE_TOKEN:-change-me-please}"
       PHASE5_BASE_URL: "http://phase5:3300"
+      # P5.6-1 上线适配：CORS 白名单（逗号分隔；公网隧道域名变更时改 deploy/.env 或此默认）
+      PHASE6_ALLOWED_ORIGINS: "${PHASE6_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:5175,https://36087f0f.r2.cpolar.top}"
       # phase6 业务库统一放 /data/phase6（可用 PHASE6_*_DB_PATH 逐一覆盖，默认相对 backend 目录）
     volumes:
       - phase6-data:/data/phase6

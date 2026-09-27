@@ -10,11 +10,14 @@ import { HashEmbeddings } from './embeddings.js';
 
 const toChromaClient = () => {
   const url = new URL(ragConfig.chromaUrl);
+  const authToken = ragConfig.chromaAuthToken;
 
   return new ChromaClient({
     host: url.hostname,
     port: Number(url.port) || 8000,
     ssl: url.protocol === 'https:',
+    // P5.6-1：Chroma 鉴权（与服务端 CHROMA_SERVER_AUTHN_CREDENTIALS 配对）
+    ...(authToken ? { headers: { 'X-Chroma-Token': authToken } } : {}),
   });
 };
 

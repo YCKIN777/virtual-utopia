@@ -38,3 +38,14 @@ release/
 
 # P5.1-4 服务 PID 文件（start-all detached 管理）
 .run/
+
+# P5.6-1 生产安全加固：明文密钥/密码文件（绝不允许入库）
+admin-new-password.txt
+security-patch.txt
+pw-change.txt
+hash-check.txt
+chroma-token.txt
+cpolar-token.txt
+cpolar-dl.txt
+cloudflared-dl.txt
+cpolar-tunnel-result.txt

@@ -4,10 +4,13 @@ import { embedText } from './embedding.js';
 import { RagError } from './errors.js';
 
 const chromaUrl = new URL(ragConfig.chromaUrl);
+const authToken = ragConfig.chromaAuthToken;
 const chromaClient = new ChromaClient({
   host: chromaUrl.hostname,
   port: Number(chromaUrl.port) || 8000,
   ssl: chromaUrl.protocol === 'https:',
+  // P5.6-1：Chroma 鉴权（与服务端 CHROMA_SERVER_AUTHN_CREDENTIALS 配对）
+  ...(authToken ? { headers: { 'X-Chroma-Token': authToken } } : {}),
 });
 
 const wrapVectorStoreError = (message, error) => {
