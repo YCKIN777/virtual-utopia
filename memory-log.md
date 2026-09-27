@@ -1658,3 +1658,10 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - 浏览器回归本地+Docker 双模式全通过；Docker 5 容器全 200。
 - 验收总结文档：F:\2026\KIN\虚拟乌托邦·LangGraph重构验收总结.md（8 节：结论/架构/功能/部署/Docker 修复记录/限制/历史/结论）。
 - 剩余非阻塞优化：3D 模型资源路径容器化指向 5175（应相对路径）、管理后台链接硬编码 5174（应 /admin/）、Docker 生产密钥 change-me、docker 命令 PATH 固化。
+## 2026-09-27 P5.5-1 工程完善（Docker 适配 4 项，commit 967f5eb）
+- ① 3D 模型路径：验证结论=无需修改（vite build 已把 .glb 重写为 /assets/*.glb，nginx 200；此前 network_requests 的 5175 请求是浏览器缓冲/多标签误判——bu.network_requests 会混合缓冲，勿据此下结论）。
+- ② 管理后台链接：AppHeader.vue 支持 VITE_ADMIN_BASE_URL（容器 build 注入 /admin/，本地缺省 localhost:5174）→ 容器版 /admin/#/applications。
+- ③ Docker 密钥：compose 占位改 ${VAR:-default} 插值（deploy/.env 可覆盖生产值，不破坏一键 up）。
+- ④ docker wrapper：scripts/docker.cmd（用户级安装 CLI 不在 PATH；纯 ASCII 注释避免 bat 编码乱码）。
+- 新坑：容器 corepack 下载 pnpm 直连 registry.npmjs.org 超时 → 两 Dockerfile 加 COREPACK_NPM_REGISTRY + npm_config_registry=https://registry.npmmirror.com。
+- 容器版数据卷持久化验证：重建容器后 phase5 登录态保留（卷生效）。
