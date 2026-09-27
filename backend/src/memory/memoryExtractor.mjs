@@ -77,13 +77,35 @@ export const createMemoryExtractor = ({ db, llmClient, embeddingGenerator } = {}
   };
 
   const callLlmForFacts = async (messages) => {
-    if (llmClient && llmClient.enabled) {
-      const parsed = await llmClient.completeJson([
-        { role: 'system', content: EXTRACT_PROMPT },
-        ...messages,
-      ]);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && Array.isArray(parsed.facts)) return parsed.facts;
+    if (llmClient) {
+      try {
+        let parsed = null;
+        if (typeof llmClient.completeJson === 'function') {
+          parsed = await llmClient.completeJson([
+            { role: 'system', content: EXTRACT_PROMPT },
+            ...messages,
+          ]);
+        } else if (typeof llmClient.createStructuredResponse === 'function') {
+          const response = await llmClient.createStructuredResponse({
+            messages: [
+              { role: 'system', content: EXTRACT_PROMPT },
+              ...messages,
+            ],
+            responseSchema: {
+              type: 'object',
+              properties: { facts: { type: 'array' } },
+            },
+          });
+          parsed = response?.data;
+        }
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && Array.isArray(parsed.facts)) return parsed.facts;
+      } catch (error) {
+        console.warn(
+          '[memory-extractor] LLM 提炼失败，回退启发式:',
+          error?.message,
+        );
+      }
     }
     return heuristicExtract(messages);
   };
@@ -91,7 +113,8 @@ export const createMemoryExtractor = ({ db, llmClient, embeddingGenerator } = {}
   const heuristicExtract = (messages) => {
     const facts = [];
     const patterns = [
-      { re: /我(?:喜欢|偏好|最爱|想要|希望)[：:，,\s]*([^。！？!?\n]{2,40})/g, category: 'preference' },
+      { re: /我(?:喜欢|偏好|最爱|想要|希望|也喜欢|就爱)[：:，,\s]*([^。！？!?\n]{2,40})/g, category: 'preference' },
+      { re: /我(?:每天|每周|每年|常常|经常|习惯|平时|一向)[：:，,\s]*([^。！？!?\n]{2,40})/g, category: 'preference' },
       { re: /我是([^。！？!?\n]{1,20})/g, category: 'identity' },
     ];
     for (const m of messages || []) {

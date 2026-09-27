@@ -10,6 +10,7 @@ import { createConversationRegistry } from './services/conversationRegistry.js';
 import { createSceneAuditStore } from './services/sceneAuditStore.js';
 import { createBusinessToolSet } from './ai/tools/factory.js';
 import { createConfiguredMemoryGateway } from './ai/memory/memoryGateway.js';
+import { createModelClient } from './ai/modelClientFactory.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(currentDir, '../data');
@@ -27,9 +28,13 @@ const sceneAuditStore = createSceneAuditStore({
   databasePath: path.join(dataDir, 'scene-audit.db'),
 });
 
+// P5.4-14：长记忆 LLM 提炼 —— modelClient 与图共享同一实例，注入 memoryGateway 供 extractor 使用。
+const modelClient = createModelClient();
+
 const app = createApp({
   tools: createBusinessToolSet(),
-  memoryGateway: createConfiguredMemoryGateway(),
+  modelClient,
+  memoryGateway: createConfiguredMemoryGateway(undefined, { modelClient }),
   captchaService,
   conversationRegistry,
   sceneAuditStore,

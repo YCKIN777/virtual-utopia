@@ -13,7 +13,7 @@ const schemaPath = join(moduleDir, 'migrate-memory.sql');
 
 const defaultDbPath = () =>
   process.env.MEMORY_DB_PATH ||
-  resolve(moduleDir, '..', '..', '..', 'data', 'virtual_utopia_memory.sqlite');
+  resolve(moduleDir, '..', '..', 'data', 'virtual_utopia_memory.sqlite');
 
 export const openMemoryDatabase = ({ databasePath } = {}) => {
   const path = databasePath || defaultDbPath();

@@ -13,7 +13,7 @@ import { createWorldStateStore } from '../../memory/worldState.mjs';
 import { createMemoryExtractor } from '../../memory/memoryExtractor.mjs';
 import { createEmbeddingGenerator } from '../../memory/embedding.mjs';
 
-export const createMemoryGateway = ({ db, enabled = true } = {}) => {
+export const createMemoryGateway = ({ db, enabled = true, llmClient } = {}) => {
   if (!enabled) {
     return null;
   }
@@ -26,7 +26,11 @@ export const createMemoryGateway = ({ db, enabled = true } = {}) => {
   });
   const worldState = createWorldStateStore({ db: database });
   // 无 LLM 配置时 extractor 走启发式提炼（不阻塞、不抛错）
-  const extractor = createMemoryExtractor({ db: database, embeddingGenerator });
+  const extractor = createMemoryExtractor({
+    db: database,
+    embeddingGenerator,
+    llmClient,
+  });
 
   const ensureUser = (userId) => {
     const existing = database
@@ -146,12 +150,13 @@ export const createMemoryGateway = ({ db, enabled = true } = {}) => {
 // 装配便捷入口：按 AI_MEMORY_ENABLED（默认开）决定是否启用；关闭返回 null（图不带记忆节点）。
 export const createConfiguredMemoryGateway = (
   environment = process.env,
+  { modelClient } = {},
 ) => {
   if (environment.AI_MEMORY_ENABLED === 'false') {
     return null;
   }
 
-  return createMemoryGateway();
+  return createMemoryGateway({ llmClient: modelClient });
 };
 
 export const buildMemoryPromptBlock = (context = {}) => {
