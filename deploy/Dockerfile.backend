@@ -1,8 +1,15 @@
 # 虚拟乌托邦 全栈后端镜像（phase5/phase6/scene 共用，入口由 compose command 指定）
 #
-# 构建（本机无 Docker 未实测，模板供生产参考）：
+# 构建：
 #   docker build -f deploy/Dockerfile.backend -t virtual-utopia-backend .
+# 说明：Docker 实测修复（2026-09-27）——better-sqlite3 为原生模块，必须编译：
+#   - 安装 python3/make/g++（node-gyp 编译链，alpine 用 musl libc）
+#   - pnpm install 去掉 --ignore-scripts（此前跳过 postinstall 导致容器内无
+#     better_sqlite3.node 二进制，backend 启动即崩溃）
 FROM node:24-alpine
+
+# better-sqlite3 native build 依赖（node-gyp: python3 + make + g++）
+RUN apk add --no-cache python3 make g++ libc6-compat
 
 # pnpm（corepack 随 node 发行版自带，锁定 workspace 解析）
 RUN corepack enable
@@ -15,8 +22,8 @@ COPY backend/package.json ./backend/package.json
 COPY frontend/package.json ./frontend/package.json
 COPY scripts ./scripts
 
-# frozen-lockfile：严格按锁文件安装，缺锁或漂移直接失败
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# frozen-lockfile：严格按锁文件安装，缺锁或漂移直接失败；保留 scripts 以编译原生模块
+RUN pnpm install --frozen-lockfile
 
 COPY backend ./backend
 COPY migrations ./migrations

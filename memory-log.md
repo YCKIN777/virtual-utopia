@@ -1644,3 +1644,12 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - 坑记录：① 用户把 LangSmith key 粘贴到了 SILICONFLOW_API_KEY 行（覆盖原值）→ 需提取到 LANGCHAIN_API_KEY 行；② 用户补回 key 时写在了注释行（# 开头不生效）→ 须去注释；③ 等号两侧空格问题为检查脚本显示误报，文件本身无空格；④ scene 须 --env-file backend/.env 启动。
 - 验证：重启 scene 后触发 4 轮对话（HTTP 200 + 阿禾真实回复），LangSmith 网页 Projects 页出现 virtual-utopia：8 traces / 错误率 0% / P50 0.85s / P99 1.61s / 6.217K tokens / 成本 $0.000（免费层）。
 - 复用：backend/scripts/trace-verify.mjs 已验证后删除；验证口径=login(P6 3400) → POST /api/scene/route/stream(SC 3000) SSE，检查含 event: done + reply。
+## 2026-09-27 Docker 全栈容器化实测闭环（P5.3-⑩ 落地）
+- 用户同意装 Docker：发现本机 Docker Desktop 4.84.0 已装（用户级，%LOCALAPPDATA%\Programs\DockerDesktop，WSL2 后端，docker 命令不在 PATH → 用 resources\bin\docker.exe 全路径）。
+- 镜像源坑：daemon.json 里 registry-mirrors 指向已失效的 ustc/163（DNS 解析失败）→ 实测仅 docker.1panel.live 可用（200）→ 替换并重启 Docker Desktop 引擎生效。
+- 构建修复：Dockerfile.backend 原 --ignore-scripts 跳过 postinstall → 容器内 better-sqlite3 无 native binding 启动即崩 → 加 apk python3/make/g++ 编译链 + 去掉 --ignore-scripts。
+- 端口不可达修复：phase5 硬编码 app.listen(port,'localhost')、phase6 config 默认 localhost → 容器内 docker-proxy 转发不可达（本机回环 OK 但外部连不上）→ phase5 httpServer.js 支持 PHASE5_HOST 环境变量（默认 localhost 不变）；compose 注入 PHASE5_HOST/PHASE6_HOST=0.0.0.0。
+- nginx 缺口：3D 世界对话走 /scene-api 同源代理，容器 nginx 无此 location → 404 → 补 /scene-api/ → scene:3000 反代（SSE proxy_buffering off）。
+- 对齐 P5.4-⑯：nginx 根入口改为 3D 世界（shell 下线）、Dockerfile.frontend 去 shell build（world+admin 双入口）。
+- 最终验证全通过：5 容器 Up（chroma 8000/phase5 3300/phase6 3400/scene 3000/frontend 80 全 200）；浏览器回归：3D 世界登录（admin/utopia2026）→ AI 对话阿禾真实回复 → 管理后台 /admin/ 登录+文档管理。
+- 一键：docker compose -f deploy/docker-compose.yml up -d --build；停止/清理：down [-v]。真实密钥经 env_file ../backend/.env 注入（不入库）。

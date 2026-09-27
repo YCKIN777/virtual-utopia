@@ -1,17 +1,19 @@
-# 虚拟乌托邦 全栈编排（P5.3-⑩）
+# 虚拟乌托邦 全栈编排（P5.3-⑩ 模板 · P5.4-⑯ 对齐：shell 下线、唯一入口 3D 世界）
 #
 # 说明：
-#   - 本机无 Docker，模板未实测（与 deploy/chroma.docker-compose.yml 相同定位：生产参考）。
-#   - 服务：chroma(8000) + phase5(3300) + phase6(3400) + scene(3000) + frontend-nginx(80)。
-#   - 数据卷持久化：phase5/6 业务库（H:\BP2\data）与 scene 运行库（backend/data）。
-#   - 生产必改：所有 change-me / changeme 占位（DEEPSEEK_API_KEY、PHASE5_AUTH_SECRET、
-#     PHASE5_SERVICE_TOKEN、PHASE5_BOOTSTRAP_ADMIN_PASSWORD、chroma AUTH）。
-#   - 前端经 nginx 同源反代：/api → scene、/phase6-api → phase6。
+#   - Docker 实测完成（本机 Docker Desktop 4.84+ / WSL2）；服务：chroma(8000) + phase5(3300)
+#     + phase6(3400) + scene(3000) + frontend-nginx(80)。frontend 根入口为 3D 世界（world），
+#     管理后台走 /admin/（shell 已下线，nginx.conf 注释保留回退方法）。
+#   - scene 真实密钥经 env_file 注入（../backend/.env：DEEPSEEK_API_KEY / LANGCHAIN 三行 /
+#     AI_* 配置），.env 在 gitignore 中不入库。
+#   - 数据卷持久化：phase5/6 业务库与 scene 运行库（backend/data）、chroma 向量数据。
+#   - 生产必改：change-me 占位（PHASE5_AUTH_SECRET / PHASE5_SERVICE_TOKEN）、chroma AUTH。
 #
 # 用法：
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #   docker compose -f deploy/docker-compose.yml ps
 #   docker compose -f deploy/docker-compose.yml logs -f scene
+#   停止/清理：docker compose -f deploy/docker-compose.yml down [-v]
 services:
   chroma:
     image: chromadb/chroma:1.5.9
@@ -43,10 +45,12 @@ services:
     ports:
       - "3300:3300"
     environment:
+      PHASE5_HOST: "0.0.0.0"
       PHASE5_AUTH_SECRET: "change-me-please"
       PHASE5_SERVICE_TOKEN: "change-me-please"
       PHASE5_BOOTSTRAP_ADMIN_USERNAME: "admin"
-      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: "change-me-please"
+      # 实测沿用本地 start-all 默认（admin/utopia2026）；生产必改
+      PHASE5_BOOTSTRAP_ADMIN_PASSWORD: "utopia2026"
       PHASE5_DB_PATH: "/data/phase5/virtual_utopia_phase5.sqlite"
       PHASE5_ENABLED: "true"
     volumes:
@@ -65,6 +69,7 @@ services:
     ports:
       - "3400:3400"
     environment:
+      PHASE6_HOST: "0.0.0.0"
       PHASE5_SERVICE_TOKEN: "change-me-please"
       PHASE5_BASE_URL: "http://phase5:3300"
       # phase6 业务库统一放 /data/phase6（可用 PHASE6_*_DB_PATH 逐一覆盖，默认相对 backend 目录）
@@ -83,22 +88,15 @@ services:
     command: ["node", "backend/src/server.js"]
     ports:
       - "3000:3000"
+    # 真实密钥经 env_file 注入（DEEPSEEK_API_KEY / LANGCHAIN 三行 / AI_* 配置），
+    # .env 在 gitignore 中不入库；Docker 实测时直接复用本机 backend/.env。
+    env_file:
+      - ../backend/.env
     environment:
-      DEEPSEEK_API_KEY: "change-me"
-      DEEPSEEK_BASE_URL: "https://api.deepseek.com"
-      DEEPSEEK_MODEL: "deepseek-chat"
-      AI_LLM_BACKEND: "langchain"
-      AI_RAG_BACKEND: "langchain"
-      USE_LANGGRAPH: "1"
-      AI_HITL_ENABLED: "true"
-      AI_APPROVAL_TOOLS: "guestbook_write"
+      # 容器内服务发现：覆盖 backend/.env 里 localhost 默认值
       PHASE6_BASE_URL: "http://phase6:3400"
       CHROMA_URL: "http://chroma:8000"
       CHROMA_COLLECTION: "virtual_utopia_rag"
-      # 生产可选：LangSmith Developer 层追踪
-      # LANGSMITH_TRACING: "true"
-      # LANGSMITH_API_KEY: "lsv2_..."
-      # LANGSMITH_PROJECT: "virtual-utopia"
     volumes:
       - scene-data:/app/backend/data
     depends_on:

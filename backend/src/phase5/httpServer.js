@@ -801,7 +801,9 @@ export const createPhase5App = ({ repositories, config, database }) => {
 
 export const startPhase5HttpServer = async ({ app, port }) =>
   new Promise((resolve, reject) => {
-    const server = app.listen(port, 'localhost');
+    // 默认绑定 localhost（本机安全默认）；Docker 容器内注入 PHASE5_HOST=0.0.0.0 以接受端口映射转发
+    const host = process.env.PHASE5_HOST || 'localhost';
+    const server = app.listen(port, host);
 
     server.once('listening', () => resolve(server));
     server.once('error', reject);
