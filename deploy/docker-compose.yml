@@ -42,8 +42,10 @@ services:
     container_name: virtual-utopia-phase5
     restart: unless-stopped
     command: ["node", "backend/src/phase5/server.js"]
-    ports:
-      - "3300:3300"
+    # P5.6-1 生产收敛：移除宿主端口映射，仅容器内网可达（phase6 经 http://phase5:3300、nginx 同域反代）。
+    # 本地直连调试时临时取消注释即可。
+    # ports:
+    #   - "3300:3300"
     environment:
       PHASE5_HOST: "0.0.0.0"
       # 生产必改：在 deploy/.env 或宿主环境注入 PHASE5_AUTH_SECRET / PHASE5_SERVICE_TOKEN
@@ -67,8 +69,9 @@ services:
     container_name: virtual-utopia-phase6
     restart: unless-stopped
     command: ["node", "backend/src/phase6/server.js"]
-    ports:
-      - "3400:3400"
+    # P5.6-1 生产收敛：移除宿主端口映射，仅容器内网可达（nginx 同域反代 /phase6-api -> phase6:3400）。
+    # ports:
+    #   - "3400:3400"
     environment:
       PHASE6_HOST: "0.0.0.0"
       PHASE5_SERVICE_TOKEN: "${PHASE5_SERVICE_TOKEN:-change-me-please}"
@@ -89,8 +92,9 @@ services:
     container_name: virtual-utopia-scene
     restart: unless-stopped
     command: ["node", "backend/src/server.js"]
-    ports:
-      - "3000:3000"
+    # P5.6-1 生产收敛：移除宿主端口映射，仅容器内网可达（nginx 同域反代 /scene-api -> scene:3000）。
+    # ports:
+    #   - "3000:3000"
     # 真实密钥经 env_file 注入（DEEPSEEK_API_KEY / LANGCHAIN 三行 / AI_* 配置），
     # .env 在 gitignore 中不入库；Docker 实测时直接复用本机 backend/.env。
     env_file:

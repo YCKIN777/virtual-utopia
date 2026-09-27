@@ -1695,3 +1695,8 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **验证口径（加固后全链路）**：phase6 登录(新密码) 200、scene /api/scenes 200、phase5 登录(新密码) 200、nginx 80 登录(公网 Origin) 200、chroma 无 token 宿主不可达。
 - **遗留建议（未做，需 user 拍板）**：① phase5/6/scene 宿主端口 3300/3400/3000 也收敛（仅 80 暴露，cpolar 只转 80——影响本地直连调试习惯）；② cpolar 实名认证/固定域名（免费随机域名变更要同步 CORS）；③ phase5 改密端点双口径 bug（前端登录发 sha256 而 currentPassword 只验原值——后续修）。
 - **新坑**：① chroma 1.5.9 API 前缀是 /api/v2（v1 返回 410 deprecated）且 collections 端点 404 空 body——调试用 JS 客户端（chromadb 包）最准；② Docker Desktop 的 docker run 拉 alpine 失败（docker-credential-desktop 不在 PATH）→ 备份用容器内 tar + docker cp；③ PowerShell 嵌套 node -e 转义崩——一律写临时 .mjs 或 sh -c 单引号。
+
+## 2026-09-27 P5.6-1b 生产收敛：宿主端口全部收掉（仅 80 对外，user 拍板「1」）
+- **动作**：docker-compose.yml 注释 phase5(3300)/phase6(3400)/scene(3000) 三段宿主端口映射（chroma 8000 上轮已收）→ **只有 frontend nginx 80 暴露**；容器内网互访不受影响（phase6->phase5 http://phase5:3300、nginx->scene http://scene:3000、nginx->phase6 http://phase6:3400、scene->chroma http://chroma:8000）。
+- **验证**：宿主 3300/3400/3000/8000 全部连接拒绝 ✓；nginx 80 登录（公网 Origin）200 ✓、/scene-api/api/scenes 200 ✓；cpolar 公网入口 https://36087f0f.r2.cpolar.top 未动、仍在线。
+- **影响/注意**：本地直连 3300/3400/3000 调试方式失效（探针脚本需改走 nginx 80 路径或 docker exec）；需要直连时临时取消 compose ports 注释 + up -d 即可（服务重启会换新进程，登录限流随之清零）。
