@@ -194,3 +194,6 @@
 ### P5.4-⑬⑭ 多人协作动作 + 长记忆（2026-09-27）
 - ⑬ action 通道：phase6 /api/phase6/presence 接受 action（一次性，心跳覆盖）；前端 presenceClient.sendAction('wave')；ThreeWorld record.waveUntil + animateAvatars 挥手。
 - ⑭ memory 链路：server.js createModelClient 共享 → createConfiguredMemoryGateway(undefined,{modelClient}) → extractor 走 createStructuredResponse（responseSchema {facts:[...]}）；记忆库 backend/data/virtual_utopia_memory.sqlite（MEMORY_DB_PATH 可覆盖）；verify-long-memory.mjs 可重复验证。
+### P5.4-⑮ 场景分支切换（2026-09-27，commit 58b92d1）
+- aiChatStore：SCENE_META 导出 + setScene(sceneId)；AiChatPanel 场景下拉；会话按 sceneId 路由（后端 registry 支持 5 分支）。
+- 角色：yard=阿禾、cabin=风禾、library=素安、pavilion=虚白、resource-wall=知予。

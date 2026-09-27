@@ -1628,3 +1628,8 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **⑭ 长记忆体验修复**（6af59cf）：实测发现记忆从未被召回（模型明说无记录）。双根因：① extractor 期望 llmClient.completeJson、实际 modelClient 接口是 createStructuredResponse，且 memoryGateway 从未传 llmClient（一直走窄启发式，漏抓「我每天早上六点晨跑」语料）→ user_memory 0 产出；② database.mjs defaultDbPath 多退一层，记忆库落在 H:\BP2\data 而非 backend\data。修复：extractor 兼容双接口 + LLM 失败回退启发式 + 启发式扩展（我每天/常常/习惯/也喜欢）+ createConfiguredMemoryGateway 接收 modelClient（server.js 与图共享）+ 路径归位（旧库已迁移，162 条消息保留）。验证：memory 专项 6/6；verify-long-memory.mjs 注入偏好→新会话召回（晨跑+咖啡）→重启 scene 后仍召回。新增 backend/scripts/verify-long-memory.mjs。
 - **⑬ 多人 avatar 动作协作**（a17c843）：presence 位置/远程 avatar 同步已有，补协作动作。后端 presenceStore + app.js 透传一次性 action（wave 等，心跳覆盖自动清空）；前端 presenceClient.sendAction（复用 updatePresence 通道）；ThreeWorld 挥手动画（wave 窗口 1.6s：左臂高举 + 右臂摆动，自然回归）；WorldView 在线漫游者列表「打招呼」按钮。验证：API 透传（wave→列表返回→普通心跳清空）；三入口 build 全过；浏览器点击 toast「已向 Phase5 Administrator 挥手打招呼」。
 - **多端验证提示**：远程 avatar 挥手直观效果需双窗口/双账号同时在线。
+## 2026-09-27 P5.4-⑮ 更多场景分支（commit 58b92d1）
+- 后端 agents/branches 已注册 5 分支（ahe→yard 阿禾、fenghe→cabin 风禾、suian→library 素安、xubai→pavilion 虚白、zhiyu→resource-wall 知予），registry 按 sceneId 路由天然支持。
+- 前端此前硬编码 yard/阿禾。本次：aiChatStore 新增 SCENE_META（5 场景名称/角色/引导语）+ setScene（切换即 resetConversation）；AiChatPanel header 下新增场景下拉（loading 中禁用），角色名/思考文案/空态引导/审批文案随场景动态化。
+- 验证：三入口 build 全过；浏览器实测切凉亭→虚白以议事亭人设真实回复（「不负责介绍景观导览…帮你把话题拆成事实、观点、分歧」——与阿禾风格区分明显）。
+- 后端零改动。
