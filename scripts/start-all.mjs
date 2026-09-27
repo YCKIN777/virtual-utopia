@@ -8,8 +8,8 @@
  *   node scripts/start-all.mjs status     # 按 PID 文件检查服务存活
  *
  * 启动顺序：phase5(3300) -> phase6(3400) -> chroma(8000, 可选) -> scene(3000)
- *           -> 外层壳 frontend(5173) -> 3D 世界 virtual-utopia(5175)
- *           -> 管理后台 phase6-admin(5174)。
+ *           -> 3D 世界 virtual-utopia(5175) -> 管理后台 phase6-admin(5174)。
+ *           （shell-frontend 5173 已于 P5.4-16 下线，入口迁移至 3D 世界。）
  *
  * P5.1-④：全部子进程 detached:true + 日志重定向 + PID 文件管理。
  * 主进程启动完即退出，服务不随会话终止被级联杀死（此前 run_in_background /
@@ -100,17 +100,19 @@ const SERVICES = [
     envFile: BACKEND_ENV,
     required: true,
   },
-  {
-    name: 'shell-frontend',
-    entry: VITE_BIN,
-    args: ['--host', '0.0.0.0'],
-    cwd: 'frontend',
-    health: [
-      'http://localhost:5173/',
-      'http://127.0.0.1:5173/',
-    ],
-    required: true,
-  },
+  // P5.4-16：shell（5173）已下线 —— 入口迁移至 3D 世界（5175），shell 界面不再编排。
+  // 恢复方法：取消下方注释并删除 world-3d 前的说明即可。
+  // {
+  //   name: 'shell-frontend',
+  //   entry: VITE_BIN,
+  //   args: ['--host', '0.0.0.0'],
+  //   cwd: 'frontend',
+  //   health: [
+  //     'http://localhost:5173/',
+  //     'http://127.0.0.1:5173/',
+  //   ],
+  //   required: true,
+  // },
   {
     name: 'world-3d',
     entry: VITE_BIN,
