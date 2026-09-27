@@ -13,6 +13,7 @@ const serialize = (payload) => JSON.stringify(payload);
 export const createToolSet = ({
   stores,
   getContext = () => toolContextStorage.getStore() ?? null,
+  worldState = null,
 } = {}) => {
   const { friendStore, guestbookStore, plotStore, quotaStore, cardStore } =
     stores ?? {};
@@ -158,6 +159,66 @@ export const createToolSet = ({
             '查询指定居民公开展示的卡片（介绍/收藏/作品等，residents 权限）。返回卡片列表。',
           schema: z.object({
             userId: z.number().int().describe('目标居民的用户 ID'),
+          }),
+        },
+      ),
+    );
+  }
+
+  // 6) P5.7 约伴移动：居民角色聚会到指定场景（写入 world_state，3D 前端轮询呈现）
+  if (worldState) {
+    tools.push(
+      tool(
+        async ({ targetSceneId, withResidentIds }) => {
+          const current = context();
+          const auth = checkToolRole({ name: 'gather_move', context: current });
+
+          if (!auth.ok) return serialize(auth);
+
+          const sceneIds = [
+            'yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest',
+          ];
+          if (!sceneIds.includes(targetSceneId)) {
+            return serialize({ ok: false, error: `目标场景必须是：${sceneIds.join('、')}` });
+          }
+
+          const targets = withResidentIds?.length
+            ? withResidentIds.filter((id) => sceneIds.length) // 保留名单
+            : [];
+          // 至少让当前对话的居民角色移动；withResidentIds 缺省时由当前角色带头
+          const residentIds =
+            targets.length > 0 ? targets : [String(current.username || 'ahe')];
+
+          const now = new Date().toISOString();
+          const moved = [];
+          for (const residentId of residentIds) {
+            worldState.set({
+              key: `npc:${residentId}`,
+              kind: 'npc',
+              payload: { sceneId: targetSceneId, updatedAt: now },
+            });
+            moved.push(residentId);
+          }
+
+          return serialize({
+            ok: true,
+            targetSceneId,
+            moved,
+            note: `已发起聚会：${moved.join('、')} 前往「${targetSceneId}」`,
+          });
+        },
+        {
+          name: 'gather_move',
+          description:
+            '发起一场居民聚会移动：把一位或多位居民移动到指定场景（yard 大院 / pavilion 凉亭 / resource-wall 资源墙 / library 书屋 / cabin 小屋 / far-forest 远林）。当访客说「我们去某处聚一聚/玩/聊」且你愿意响应时调用；withResidentIds 填同行居民 id（缺省只移当前角色）。',
+          schema: z.object({
+            targetSceneId: z
+              .enum(['yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest'])
+              .describe('聚会目标场景'),
+            withResidentIds: z
+              .array(z.string())
+              .optional()
+              .describe('同行的居民 id 列表，缺省只移动当前对话的居民'),
           }),
         },
       ),

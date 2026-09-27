@@ -25,6 +25,7 @@ import {
 import {
   RESIDENT_CHAT_DISTANCE,
   seedResidents,
+  dialogueResidents,
 } from '../data/residents.js';
 
 const containerRef = ref(null);
@@ -104,6 +105,7 @@ const spacePanel = reactive({
 });
 const searchOpen = ref(false);
 let socialTimer = null;
+let gatherPollTimer = null;
 let residentBubbleClock = '';
 let positionSyncTimer = null;
 let worldChatChannelTimer = null;
@@ -626,9 +628,35 @@ onMounted(async () => {
     });
     seedResidents.forEach((resident) => world.addResidentAvatar(resident));
     world.restoreResidentAvatarStates(worldStore.state.residentStates || []);
+    dialogueResidents.forEach((resident) => world.addResidentAvatar(resident));
+
+    // P5.7：轮询后端 npc 位置（公开端点），把对话居民移动到对应场景聚点
+    const pollNpcLocations = async () => {
+      try {
+        const response = await fetch(
+          '/scene-api/api/scene/world/npc-locations',
+          { signal: AbortSignal.timeout(6000) },
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        const locations = payload?.locations || [];
+        const sceneById = new Map(
+          locations.map((item) => [item.residentId, item.sceneId]),
+        );
+        dialogueResidents.forEach((resident) => {
+          const sceneId = sceneById.get(resident.avatarId);
+          world.moveResidentToScene(resident.avatarId, sceneId || null);
+        });
+      } catch {
+        // 后端不可用/游客场景：保持居民在原位，不打断世界
+      }
+    };
     residentSyncTimer = setInterval(() => {
       worldStore.setResidentStates(world.getResidentAvatarStates());
     }, 3000);
+    // P5.7 约伴移动：轮询后端 npc 位置，让对话居民走到场景聚点（或回家）
+    gatherPollTimer = setInterval(pollNpcLocations, 8000);
+    void pollNpcLocations();
     residentProximityTimer = setInterval(() => {
       nearResidents.value = world.getResidentsNearLocal(RESIDENT_CHAT_DISTANCE);
     }, 600);
@@ -728,6 +756,10 @@ onBeforeUnmount(() => {
   if (worldChatChannelTimer) {
     clearInterval(worldChatChannelTimer);
     worldChatChannelTimer = null;
+  }
+  if (gatherPollTimer) {
+    clearInterval(gatherPollTimer);
+    gatherPollTimer = null;
   }
   if (visitNotifyTimer) {
     clearInterval(visitNotifyTimer);

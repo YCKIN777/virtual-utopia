@@ -7,7 +7,7 @@ import {
 } from './materials/manorMaterials.js';
 import { buildCourtyardDecor } from './decorations/courtyardDecor.js';
 import { buildMountainEnv, updateMountainEnvMist } from './decorations/mountainEnv.js';
-import { seedResidents } from '../data/residents.js';
+import { seedResidents, getGatherPoint } from '../data/residents.js';
 import {
   bridgeNetwork,
   crossGroupBridges,
@@ -6056,6 +6056,52 @@ export class ThreeWorld {
     }
 
     return record;
+  }
+
+  // P5.7 约伴移动：把居民角色移动到场景聚点（sceneId 为 null/未知 → 回家）。
+  moveResidentToScene(avatarId, sceneId) {
+    const record = this.avatarObjects.get(avatarId);
+
+    if (!record || !record.isResident) {
+      return false;
+    }
+
+    const home = getHomeById(record.residentHomePlotId || '');
+    const point = getGatherPoint(sceneId || '');
+
+    // 回 home：恢复初始家的漫步范围并走回家门口
+    if (!point || !home) {
+      if (home) {
+        const radius = RESIDENT_ROAM_RADIUS;
+        record.roaming.home = { x: home.x, z: home.z };
+        record.roaming.bounds = {
+          minX: home.x - radius,
+          maxX: home.x + radius,
+          minZ: home.z - radius,
+          maxZ: home.z + radius,
+        };
+        record.roaming.radius = radius;
+        record.roaming.atHome = true;
+        record.roaming.idleTimer = 0;
+        this.setRoamingTarget(record, home.x, home.z, { atHome: true });
+      }
+      return true;
+    }
+
+    // 走到聚点：把漫步范围切换到聚点周围，到场后在小范围活动
+    const radius = RESIDENT_ROAM_RADIUS;
+    record.roaming.home = { x: point.x, z: point.z };
+    record.roaming.bounds = {
+      minX: point.x - radius,
+      maxX: point.x + radius,
+      minZ: point.z - radius,
+      maxZ: point.z + radius,
+    };
+    record.roaming.radius = radius;
+    record.roaming.atHome = false;
+    record.roaming.idleTimer = 0;
+    this.setRoamingTarget(record, point.x, point.z, { atHome: false });
+    return true;
   }
 
   getResidentAvatarStates() {

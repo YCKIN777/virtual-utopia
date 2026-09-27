@@ -101,6 +101,8 @@ export const createIntentNode = ({ memoryGateway } = {}) => async (state) => {
     memoryContext = memoryGateway.before({
       userId: state.userContext?.userId,
       query: state.inputContent,
+      // P5.7：按当前对话的居民角色召回「TA 对你的印象」
+      residentId: branchAgent.id,
     });
   }
 

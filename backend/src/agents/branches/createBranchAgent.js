@@ -2,6 +2,8 @@ const formatList = (items) => items.map((item) => `- ${item}`).join('\n');
 const formatTaskFlow = (items) =>
   items.map((item, index) => `${index + 1}. ${item}`).join('\n');
 
+import { buildPersonaBlock } from '../../ai/personas.js';
+
 export const createBranchAgent = ({
   id,
   name,
@@ -25,6 +27,8 @@ export const createBranchAgent = ({
       return [
         `身份：你是虚拟乌托邦的${name}（${id}）。`,
         `人设：${persona}`,
+        `人设档案（务必遵循说话风格与口头禅）：`,
+        buildPersonaBlock(id),
         `当前场景：${request.sceneName}（${request.sceneId}）。`,
         `识别意图：${dispatch.intent}。`,
         `输入风险：${dispatch.inputRisk.level}。`,

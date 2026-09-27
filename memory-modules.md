@@ -198,3 +198,10 @@
 ### P5.4-⑮ 场景分支切换（2026-09-27，commit 58b92d1）
 - aiChatStore：SCENE_META 导出 + setScene(sceneId)；AiChatPanel 场景下拉；会话按 sceneId 路由（后端 registry 支持 5 分支）。
 - 角色：yard=阿禾、cabin=风禾、library=素安、pavilion=虚白、resource-wall=知予。
+### P5.7 居民人设 + 印象记忆 + 语音 + 约伴移动（2026-09-27，进行中——Docker 阻塞未最终闭环）
+- **人设一致**：backend/src/ai/personas.js（5 居民档案：ahe 阿禾/yard、zhiyu 知予/resource-wall、xubai 叙白/pavilion、suian 岁安/library、fenghe 风禾/cabin；voice/catchphrase/background/likes/dislikes）；buildPersonaBlock 注入 createBranchAgent prompt；约伴行动指令（访客明确约伴→立即调 gather_move，去谁家→用该居民常待场景）。
+- **印象记忆**：backend/src/memory/impression.mjs（规则式：积极词+1 上限 2 / 消极词-1 下限 -2 / 主题词 tag 最多 8；world_state key=impression:<residentId>:<userId>，**kind 必须 'global'**——CHECK 约束仅 scene/npc/global）；memoryGateway before/after residentId + buildMemoryPromptBlock 印象块（关系标签/次数/话题/上次日期）。
+- **约伴移动（后端）**：tools/index.js gather_move（第 6 工具：6 场景 enum + withResidentIds，写 worldState kind='npc'，仅 worldState 注入注册）；auth.js 'public' 分支（任何身份含游客）；factory.js worldState 透传；app.js 装配 + GET /api/scene/world/npc-locations（公开）；**约伴自动兜底**：memoryGateway.after detectGatherScene（场景别名+行动词→写 npc:<id>；犹豫词：还是/要不要/等谁/什么时候/时辰/再说/回头/先不/改天/商量——**勿加「你看/？」**，阿禾口头禅误杀）。
+- **约伴移动（前端）**：residents.js +5 对话 NPC（ahe 等，homePlotId plot-3/8/20/35/45）+ SCENE_GATHER_POINTS（yard/pavilion/resource-wall/library/cabin/far-forest → 广场 (0,3.6,22.6) 周边 ±10m 坐标）；ThreeWorld.moveResidentToScene（聚点改 roaming.bounds+setRoamingTarget / null 回原 home）；WorldView gatherPollTimer 8s 轮询 → move（**必须 let 声明，否则 ReferenceError 横幅**）。
+- **语音**：AiChatPanel.vue SpeechRecognition（zh-CN，🎤 麦克风按钮）+ SpeechSynthesis（🔊 朗读开关，watch 新 assistant 消息自动读，默认关）。
+- **坑**：world_state kind CHECK（impression 用 global）；Docker build 层缓存（hash 相同≠产物新，--no-cache 才保险；build 后 --force-recreate）；gatherPollTimer 忘声明；浏览器旧 JS 缓存（硬刷新）；模型口头约伴不调工具（自动兜底解决）。

@@ -10,10 +10,11 @@ import { createGuestbookStore } from '../../phase6/guestbookStore.js';
 import { createFriendStore } from '../../phase6/friendStore.js';
 import { createToolSet } from './index.js';
 
-export const createBusinessToolSet = ({ stores, getContext } = {}) => {
+export const createBusinessToolSet = ({ stores, getContext, worldState } = {}) => {
   const config = readPhase6Config();
 
   return createToolSet({
+    worldState,
     stores:
       stores ??
       Object.freeze({

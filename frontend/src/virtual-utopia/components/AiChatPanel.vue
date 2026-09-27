@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { aiChatStore, SCENE_META } from '../stores/aiChatStore.js';
 import { isAiChatAvailable } from '../services/sceneClient.js';
 import { worldStore } from '../stores/worldStore.js';
@@ -86,8 +86,100 @@ const formatTime = (value) => {
   }
 };
 
+// ---- P5.7 语音输入 + 语音回复 ----
+const voiceReply = ref(false);
+const recording = ref(false);
+const micSupported =
+  typeof window !== 'undefined' &&
+  Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+let recognition = null;
+let lastSpokenKey = null;
+
+const initRecognition = () => {
+  if (recognition) return recognition;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const text = event.results?.[0]?.[0]?.transcript || '';
+    if (text) input.value = text;
+  };
+  recognition.onend = () => {
+    recording.value = false;
+  };
+  recognition.onerror = () => {
+    recording.value = false;
+  };
+  return recognition;
+};
+
+const toggleMic = () => {
+  if (!micSupported) {
+    worldStore.notify('当前浏览器不支持语音输入', 'info');
+    return;
+  }
+  if (recording.value) {
+    try {
+      recognition?.stop();
+    } catch {
+      // 忽略停止异常
+    }
+    recording.value = false;
+    return;
+  }
+  try {
+    const rec = initRecognition();
+    recording.value = true;
+    rec.start();
+  } catch {
+    recording.value = false;
+    worldStore.notify('无法启动麦克风，请检查浏览器权限', 'info');
+  }
+};
+
+const speak = (text) => {
+  if (!text || !voiceReply.value) return;
+  try {
+    window.speechSynthesis?.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.05;
+    window.speechSynthesis?.speak(utterance);
+  } catch {
+    // TTS 不可用时静默降级
+  }
+};
+
+// 居民回复到来时自动朗读（仅当语音回复开启）
+watch(
+  () => conversation.value.messages,
+  (messages) => {
+    if (!voiceReply.value) return;
+    const last = messages?.[messages.length - 1];
+    if (
+      last &&
+      last.role === 'assistant' &&
+      !last.streaming &&
+      last.id !== lastSpokenKey
+    ) {
+      lastSpokenKey = last.id;
+      speak(last.content);
+    }
+  },
+  { deep: true },
+);
+
 onBeforeUnmount(() => {
   // 面板关闭不销毁会话（LangGraph 服务端状态保留）
+  try {
+    recognition?.abort();
+  } catch {
+    // 忽略
+  }
+  window.speechSynthesis?.cancel();
 });
 </script>
 
@@ -110,6 +202,15 @@ onBeforeUnmount(() => {
           <strong>{{ sceneMeta.name }} · {{ sceneMeta.agent }}</strong>
         </div>
         <div class="vu-ai-chat__actions">
+          <button
+            type="button"
+            :title="voiceReply ? '关闭语音回复' : '开启语音回复'"
+            :aria-label="voiceReply ? '关闭语音回复' : '开启语音回复'"
+            :class="{ 'is-on': voiceReply }"
+            @click="voiceReply = !voiceReply"
+          >
+            {{ voiceReply ? '🔊' : '🔇' }}
+          </button>
           <button type="button" title="新话题" aria-label="新话题" @click="resetChat">
             新话题
           </button>
@@ -215,6 +316,17 @@ onBeforeUnmount(() => {
           :disabled="conversation.loading || !loggedIn"
           @keydown.enter.prevent="submitMessage"
         />
+        <button
+          type="button"
+          class="vu-ai-chat__mic"
+          :title="micSupported ? '按住说话（语音输入）' : '当前浏览器不支持语音输入'"
+          :aria-label="micSupported ? '语音输入' : '不支持语音输入'"
+          :class="{ 'is-recording': recording }"
+          :disabled="conversation.loading || !loggedIn"
+          @click="toggleMic"
+        >
+          {{ recording ? '◉' : '🎤' }}
+        </button>
         <button
           type="submit"
           :disabled="conversation.loading || !loggedIn || !input.trim()"
@@ -537,6 +649,29 @@ onBeforeUnmount(() => {
   color: #fff;
   font: inherit;
   cursor: pointer;
+}
+
+.vu-ai-chat__actions button.is-on {
+  background: #2d6c5c;
+  color: #fff;
+}
+
+.vu-ai-chat__mic {
+  padding: 8px 10px !important;
+  background: #edf1eb !important;
+  color: #41564f !important;
+  font-size: 15px !important;
+}
+
+.vu-ai-chat__mic.is-recording {
+  background: #b03a2c !important;
+  color: #fff !important;
+  animation: vu-ai-pulse 1s ease-in-out infinite;
+}
+
+.vu-ai-chat__mic:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .vu-ai-chat__form button:disabled {

@@ -49,3 +49,7 @@ cpolar-token.txt
 cpolar-dl.txt
 cloudflared-dl.txt
 cpolar-tunnel-result.txt
+
+# P5.7：后端 PID 文件与一次性补丁脚本（不入库）
+backend/*.pid
+backend/scripts/patch-*.mjs

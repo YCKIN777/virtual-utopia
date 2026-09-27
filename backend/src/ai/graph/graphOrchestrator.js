@@ -157,6 +157,8 @@ export const createSceneGraphOrchestrator = ({
         userId: userContext.userId,
         conversationId: body.conversationId,
         sceneId: request.sceneId,
+        // P5.7：记录是哪个居民角色在和你对话（印象按居民维度积累）
+        residentId: finalState.branchAgent?.id,
         userContent: request.input.content,
         reply: finalState.reply,
       });

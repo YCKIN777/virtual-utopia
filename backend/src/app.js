@@ -63,6 +63,23 @@ export const createApp = ({
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/api', apiRouter);
+  // P5.7 约伴移动：居民 NPC 当前位置（公开读，供 3D 世界轮询呈现聚会）
+  if (memoryGateway?.worldState) {
+    app.get('/api/scene/world/npc-locations', (_request, response) => {
+      try {
+        const locations = memoryGateway.worldState
+          .list({ kind: 'npc' })
+          .map((record) => ({
+            residentId: record.key.replace(/^npc:/, ''),
+            sceneId: record.payload?.sceneId || null,
+            updatedAt: record.payload?.updatedAt || record.updatedAt,
+          }));
+        response.json({ locations });
+      } catch (error) {
+        response.status(503).json({ error: 'world_state_unavailable' });
+      }
+    });
+  }
   app.use('/api/scene/route', sceneAuth);
   app.use('/api', createSceneRouter({ orchestrator: sessionBoundary }));
   app.use('/api', createStreamRouter({ orchestrator: sceneOrchestrator }));
@@ -106,7 +123,12 @@ export const createApp = ({
   return app;
 };
 
+// P5.7：装配 worldState（记忆库世界状态）给工具集，供 gather_move 写入居民位置
+const __memoryGateway = createConfiguredMemoryGateway();
+
 export default createApp({
-  tools: createBusinessToolSet(),
-  memoryGateway: createConfiguredMemoryGateway(),
+  tools: createBusinessToolSet({
+    worldState: __memoryGateway?.worldState ?? null,
+  }),
+  memoryGateway: __memoryGateway,
 });

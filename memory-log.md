@@ -1700,3 +1700,19 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **动作**：docker-compose.yml 注释 phase5(3300)/phase6(3400)/scene(3000) 三段宿主端口映射（chroma 8000 上轮已收）→ **只有 frontend nginx 80 暴露**；容器内网互访不受影响（phase6->phase5 http://phase5:3300、nginx->scene http://scene:3000、nginx->phase6 http://phase6:3400、scene->chroma http://chroma:8000）。
 - **验证**：宿主 3300/3400/3000/8000 全部连接拒绝 ✓；nginx 80 登录（公网 Origin）200 ✓、/scene-api/api/scenes 200 ✓；cpolar 公网入口 https://36087f0f.r2.cpolar.top 未动、仍在线。
 - **影响/注意**：本地直连 3300/3400/3000 调试方式失效（探针脚本需改走 nginx 80 路径或 docker exec）；需要直连时临时取消 compose ports 注释 + up -d 即可（服务重启会换新进程，登录限流随之清零）。
+## 2026-09-27 P5.7 居民人设 + 印象记忆 + 语音 + 约伴移动（1+2+5 + 用户追加诉求）
+- **需求**：用户点名 1+2+5——① 记忆深化（居民记得访客）② 人设一致（5 位居民性格/口吻/口头禅）③ 语音体验（语音输入/回复）；随后追加核心诉求「约伴移动」：对话说「我们去凉亭/去谁家玩」→ 居民真实移动到场景聚点（动作与言行匹配，3D 世界里看得见聚会）。
+- **后端（全部 node --check 通过；scene 容器已重建含全部代码，但 Docker 引擎故障致未最终浏览器闭环）**：
+  - `backend/src/ai/personas.js`（新）：5 居民人设档案（ahe 阿禾/yard、zhiyu 知予/resource-wall、xubai 叙白/pavilion、suian 岁安/library、fenghe 风禾/cabin；voice/catchphrase/background/likes/dislikes）+ buildPersonaBlock 注入分支 prompt；约伴行动指令强化（访客明确约伴→立即调 gather_move，含「去谁家」映射规则）。
+  - `backend/src/memory/impression.mjs`（新）：规则式印象档案（world_state 表，key=impression:<residentId>:<userId>，payload={tags,relation:-2..+2,count,lastTalk}；积极词+1 上限 2/消极词-1 下限 -2/主题词 tag 最多 8）。**坑：world_state 表 CHECK 约束 kind IN ('scene','npc','global') → impression 用 kind='global'（'impression' 被拒，实测日志报 CHECK constraint failed）**。
+  - memoryGateway.js：before/after 传 residentId、buildMemoryPromptBlock 加「你对这位访客的印象」块；**约伴自动兜底**：detectGatherScene(reply)（场景别名+行动词→sceneId；犹豫词排除：还是/要不要/等谁/什么时候/时辰/再说/回头/先不/改天/商量——**不能含「你看」「？」**：阿禾口头禅「你看呢」高频，实测误杀）→ 回复表达行动即自动 worldState.set(npc:<id>)（模型不调工具时兜底，双保险）。
+  - tools/index.js 第 6 工具 gather_move（zod enum 6 场景 + withResidentIds；写 worldState kind='npc'；仅 worldState 注入时注册）；auth.js gather_move:'public'（任何身份含游客放行，checkToolRole 加 public 分支）；factory.js 透传 worldState；app.js 装配 worldState + 公开路由 GET /api/scene/world/npc-locations（list kind='npc' → [{residentId,sceneId,updatedAt}]，nginx /scene-api/api/scene/world/npc-locations 200 实测）。
+- **前端（vite build 全过；浏览器实测 UI 到位）**：
+  - residents.js：+5 对话居民 NPC（ahe/zhiyu/xubai/suian/fenghe，homePlotId plot-3/8/20/35/45，getResidentByAvatarId 合并匹配）+ SCENE_GATHER_POINTS（5 场景聚点坐标，广场 (0,3.6,22.6) 周边 ±10m）+ getGatherPoint。
+  - ThreeWorld.js：moveResidentToScene(avatarId, sceneId)（聚点→改 roaming.bounds/home 到聚点±半径 + setRoamingTarget；null/未知→恢复原 home 漫游；isResident 守卫）。
+  - WorldView.vue：dialogueResidents.forEach(addResidentAvatar)；gatherPollTimer 每 8s GET /scene-api/api/scene/world/npc-locations → moveResidentToScene（**坑：gatherPollTimer 忘声明 let → ReferenceError 世界初始化报错横幅；另 Docker 层缓存导致旧产物反复——build 后必须 --force-recreate 且浏览器清缓存，hash 相同≠产物新，最终 --no-cache build 解决**）。
+  - AiChatPanel.vue：语音输入（SpeechRecognition zh-CN 麦克风按钮 🎤）+ 语音回复（SpeechSynthesis 朗读开关 🔊，watch 新 assistant 消息自动读，默认关避免打扰）。
+- **验证**：浏览器实测 admin 登录→3D 世界 AI 对话→阿禾真实回复（人设口吻到位：商量语气+口头禅「邻里的事，就是咱们的事」）；印象写入库实测（impression:ahe:1 kind=global relation=1 count=1）；npc-locations 路由 200；detectGatherScene 单测通过（去凉亭→pavilion / 犹豫→null / 无场景→null）。**约伴全链路未最终闭环**：Docker Desktop 因 C 盘 0GB 剩余（99.4/99.4GB）→ containerd meta.db 只读 → 引擎无法启动 → 容器全停 → 公网 502。已做 L1 清理（临时文件/Edge 缓存/着色器/WER/微信 xwechat log 1.2GB 等 ~2GB）仍 0.31GB；**需用户腾 ≥2-3GB（回收站 0.36GB / 卸载 C 盘大程序 / 磁盘清理）后重启 Docker Desktop**。
+- **自检清单**：✔ 后端 8 文件 node --check 全过 ✔ detectGatherScene 单测 4 例 ✔ 前端 vite build 全过（--no-cache）✔ 浏览器 UI（语音按钮/人设口吻/印象落库）✔ npc-locations 200 ✔ memory-log 本条（core/modules 待补——本轮阻塞未完整收尾）✘ 约伴浏览器闭环（待 Docker 恢复）✘ git 提交（待 Docker 恢复后一并）
+- **未决**：① gather_move 默认 withResidentIds 用 current.username（游客用户名≠居民 id，缺省=仅当前角色移动，多人同行依赖模型传 id 或后续前端按钮）；② 场景聚点为前端坐标定义（yard/pavilion/…各对应广场周边一点，非真实建筑）；③ 语音需 https 环境麦克风权限（容器 nginx 80 已 https 经 cpolar）。
+

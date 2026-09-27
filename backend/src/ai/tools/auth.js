@@ -8,6 +8,8 @@ export const TOOL_ROLE_RULES = Object.freeze({
   plot_lookup: ['viewer', 'resident', 'editor', 'admin'], // 宅院查询：公开
   quota_overview: ['viewer', 'resident', 'editor', 'admin'], // 名额统计：公开
   resident_card_lookup: ['viewer', 'resident', 'editor', 'admin'], // 居民卡片公开读
+  // P5.7 约伴移动：公开体验动作（任何身份含游客可触发，仅写居民 NPC 位置）
+  gather_move: 'public',
 });
 
 export const checkToolRole = ({ name, context }) => {
@@ -18,6 +20,11 @@ export const checkToolRole = ({ name, context }) => {
       ok: false,
       error: `unknown tool: ${name}`,
     };
+  }
+
+  // P5.7：'public' 标记的工具对任何身份（含游客）放行
+  if (allowedRoles === 'public') {
+    return { ok: true };
   }
 
   const role = context?.role ?? null;
