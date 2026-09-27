@@ -1653,3 +1653,8 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - 对齐 P5.4-⑯：nginx 根入口改为 3D 世界（shell 下线）、Dockerfile.frontend 去 shell build（world+admin 双入口）。
 - 最终验证全通过：5 容器 Up（chroma 8000/phase5 3300/phase6 3400/scene 3000/frontend 80 全 200）；浏览器回归：3D 世界登录（admin/utopia2026）→ AI 对话阿禾真实回复 → 管理后台 /admin/ 登录+文档管理。
 - 一键：docker compose -f deploy/docker-compose.yml up -d --build；停止/清理：down [-v]。真实密钥经 env_file ../backend/.env 注入（不入库）。
+## 2026-09-27 整体验收总结闭环（全量测试 + 项目文档）
+- 后端全量测试 101/101 通过（7.7s，0 失败）；前端 build-all 三入口构建全过（shell 仍保留构建产物可回退）。
+- 浏览器回归本地+Docker 双模式全通过；Docker 5 容器全 200。
+- 验收总结文档：F:\2026\KIN\虚拟乌托邦·LangGraph重构验收总结.md（8 节：结论/架构/功能/部署/Docker 修复记录/限制/历史/结论）。
+- 剩余非阻塞优化：3D 模型资源路径容器化指向 5175（应相对路径）、管理后台链接硬编码 5174（应 /admin/）、Docker 生产密钥 change-me、docker 命令 PATH 固化。
