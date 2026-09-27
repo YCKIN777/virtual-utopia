@@ -1638,3 +1638,9 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - SERVICES 移除（注释保留+恢复方法）；停止 shell 进程（5173 无监听）；frontend 代码保留可回退。
 - 验证：start-all 重排后 6 服务全在线（phase5/phase6/chroma/scene/world-3d/admin-frontend），shell 不再编排；3D 世界 5175 浏览器冒烟正常（登录态/AI 对话/挥手按钮完好）。
 - 唯一入口：http://localhost:5175。
+## 2026-09-27 P5.3-⑪ LangSmith 真实上传验证闭环
+- 用户注册 LangSmith（Developer 免费层 5000 traces/月），orgId=939b3d5b-40ad-41ee-a94d-2f1dfd8b4419，项目 LANGCHAIN_PROJECT=virtual-utopia。
+- backend/.env 最终配置（.env 在 gitignore，不入库）：LANGCHAIN_TRACING_V2=true / LANGCHAIN_API_KEY=lsv2_pt_66…816c / LANGCHAIN_PROJECT=virtual-utopia；SILICONFLOW_API_KEY 补回生效（sk-gge…ftao）。
+- 坑记录：① 用户把 LangSmith key 粘贴到了 SILICONFLOW_API_KEY 行（覆盖原值）→ 需提取到 LANGCHAIN_API_KEY 行；② 用户补回 key 时写在了注释行（# 开头不生效）→ 须去注释；③ 等号两侧空格问题为检查脚本显示误报，文件本身无空格；④ scene 须 --env-file backend/.env 启动。
+- 验证：重启 scene 后触发 4 轮对话（HTTP 200 + 阿禾真实回复），LangSmith 网页 Projects 页出现 virtual-utopia：8 traces / 错误率 0% / P50 0.85s / P99 1.61s / 6.217K tokens / 成本 $0.000（免费层）。
+- 复用：backend/scripts/trace-verify.mjs 已验证后删除；验证口径=login(P6 3400) → POST /api/scene/route/stream(SC 3000) SSE，检查含 event: done + reply。
