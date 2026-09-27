@@ -55,6 +55,8 @@ export const createPresenceStore = ({ now = Date.now } = {}) => {
       z: position.z,
       rotation: position.rotation,
       animationState: position.animationState,
+      // P5.4-13：一次性协作动作透传（如 wave 打招呼），下次心跳无 action 自动清空。
+      action: position.action || null,
       updatedAt: new Date(currentTime).toISOString(),
       lastSeen: currentTime,
     };

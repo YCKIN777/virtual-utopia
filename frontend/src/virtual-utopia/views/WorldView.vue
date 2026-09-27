@@ -402,6 +402,18 @@ const startPresence = () => {
   void worldStore.loadVisitorQuota();
 };
 
+/**
+ * P5.4-13锛氬悜鍦ㄧ嚎灞呮皯鎸ユ墜鎵撴嫑鍛硷紙骞挎挱涓€娆℃€у崗浣滃姩浣滐級銆? * 鍚庣 presence 閫氶亾杞彂 action锛屽叾浠栧湪绾跨帺瀹?3D 涓栫晫閲岀殑杩滅▼ avatar 鎾斁鎸ユ墜鍔ㄧ敾銆? */
+const sendWave = (user) => {
+  if (!presenceClient) {
+    return;
+  }
+
+  presenceClient
+    .sendAction('wave')
+    .catch(() => null);
+  worldStore.notify(`已向「${user.displayName}」挥手打招呼`, 'success');
+};
 const layoutValidation = validateHomeLayout();
 
 const router = useRouter();
@@ -978,6 +990,15 @@ watch(currentUser, () => {
           <i aria-hidden="true" :style="{ background: user.color }" />
           <span>{{ user.displayName }}</span>
           <small>{{ user.role }}</small>
+          <button
+            type="button"
+            class="vu-online-wave"
+            :aria-label="'向 ' + user.displayName + ' 挥手打招呼'"
+            title="打招呼"
+            @click="sendWave(user)"
+          >
+            打招呼
+          </button>
         </li>
       </ul>
       <p v-if="presenceStatus === 'connecting'">正在同步位置…</p>
@@ -1291,6 +1312,21 @@ watch(currentUser, () => {
 .vu-world-online li small,
 .vu-world-online p {
   color: rgba(243, 247, 244, 0.68);
+}
+
+.vu-online-wave {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 230, 184, 0.5);
+  border-radius: 999px;
+  background: rgba(255, 230, 184, 0.16);
+  color: #ffe6b8;
+  font-size: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.vu-online-wave:hover {
+  background: rgba(255, 230, 184, 0.28);
 }
 
 .vu-world-online p {

@@ -5588,6 +5588,14 @@ export class ThreeWorld {
     );
     record.targetRotation = Number(avatar.rotation) || 0;
     record.animationState = avatar.animationState === 'walk' ? 'walk' : 'idle';
+    // P5.4-13: 一次性协作动作（wave 打招呼）——设置挥手窗口，animateAvatars 播放 1.6s。
+    if (avatar.action === 'wave') {
+      const nowMs = Date.now();
+      record.waveUntil =
+        !record.waveUntil || nowMs >= record.waveUntil
+          ? nowMs + 1600
+          : record.waveUntil;
+    }
     return record.group;
   }
 
@@ -5774,10 +5782,14 @@ export class ThreeWorld {
         ? Math.sin(cycle) * 0.48
         : Math.sin(cycle) * 0.045;
 
+      // P5.4-13: 挥手协作动作——左臂高举，右臂快速摆动，1.6s 窗口后自然回归。
+      const waving = record.waveUntil && Date.now() < record.waveUntil;
       record.limbs.leftLeg.rotation.x = swing;
       record.limbs.rightLeg.rotation.x = -swing;
-      record.limbs.leftArm.rotation.x = -armSwing;
-      record.limbs.rightArm.rotation.x = armSwing;
+      record.limbs.leftArm.rotation.x = waving ? -2.7 : -armSwing;
+      record.limbs.rightArm.rotation.x = waving
+        ? Math.sin(elapsed * 16) * 0.6
+        : armSwing;
       record.body.rotation.z = walking ? Math.sin(cycle * 2) * 0.025 : 0;
       position.y =
         target.y +

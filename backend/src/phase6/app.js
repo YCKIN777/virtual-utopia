@@ -138,6 +138,11 @@ const readPresencePosition = (body) => {
     rotation: ((values.rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
     animationState: values.animationState,
     appearance: values.appearance,
+    // P5.4-13: 一次性协作动作（wave 打招呼等），非字符串忽略。
+    action:
+      typeof body?.action === 'string' && body.action.length > 0
+        ? body.action.slice(0, 16)
+        : null,
   };
 };
 

@@ -58,9 +58,41 @@ export const createPresenceClient = ({
     }
   };
 
+  /**
+   * P5.4-13：发送一次性协作动作（如 wave 打招呼）。
+   * 复用 updatePresence 通道，action 随本次心跳上送；
+   * 后端每次 update 覆盖 action，下一次普通心跳自动清空（动作不持久）。
+   */
+  const sendAction = async (action) => {
+    if (stopped || !token || inFlight) {
+      return;
+    }
+
+    const position = positionProvider();
+
+    if (!position) {
+      return;
+    }
+
+    inFlight = true;
+
+    try {
+      const payload = await client.updatePresence(token, {
+        ...position,
+        action,
+      });
+      onUpdate(payload?.users || []);
+    } catch (error) {
+      onError(error);
+    } finally {
+      inFlight = false;
+    }
+  };
+
   return Object.freeze({
     start,
     stop,
     sync,
+    sendAction,
   });
 };
