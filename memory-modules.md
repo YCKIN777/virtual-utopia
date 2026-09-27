@@ -191,3 +191,6 @@
 - 文件：services/sceneClient.js、stores/aiChatStore.js、components/AiChatPanel.vue、WorldView.vue 挂载、vite.config.js /scene-api 代理。
 - 认证：virtual-utopia.phase5.token（sessionStorage）同一 token 直通 scene Bearer。
 - 代理：vite /scene-api → http://localhost:3000（dev 同源免 CORS）；生产需 nginx /scene-api/ → scene（deploy/nginx.conf 待补，模板未实测）。
+### P5.4-⑬⑭ 多人协作动作 + 长记忆（2026-09-27）
+- ⑬ action 通道：phase6 /api/phase6/presence 接受 action（一次性，心跳覆盖）；前端 presenceClient.sendAction('wave')；ThreeWorld record.waveUntil + animateAvatars 挥手。
+- ⑭ memory 链路：server.js createModelClient 共享 → createConfiguredMemoryGateway(undefined,{modelClient}) → extractor 走 createStructuredResponse（responseSchema {facts:[...]}）；记忆库 backend/data/virtual_utopia_memory.sqlite（MEMORY_DB_PATH 可覆盖）；verify-long-memory.mjs 可重复验证。

@@ -1624,3 +1624,7 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **坑**：① aiChatStore 编辑遗留 messageSequence 重复声明 → rollup 报「Identifier has already been declared」（三入口 build 抓出）；② Start-Process vite 相对路径 Cannot find module → 必须绝对路径 H:\BP2\node_modules\vite\bin\vite.js（已知坑复现）；③ AiChatPanel 误用 worldStore.state.toast → 实际 API 是 worldStore.notify(message, tone)。
 - **验证**：三入口 build 全通过；node 经 5175 /scene-api 代理 login+stream 收到阿禾真实回复；浏览器实测（bu）：5175 → #/world → AI 对话按钮 → 面板 → admin 登录 → 输入「你好，介绍一下大院吧」→ 阿禾流式回复完整展示。
 - **遗留**：shell（5173）服务/代码保留（主体结构不动），入口已移至 3D 世界；shell 是否从 start-all 移除待用户拍板。
+## 2026-09-27 P5.4-⑬⑭ 闭环（commit 6af59cf + a17c843）
+- **⑭ 长记忆体验修复**（6af59cf）：实测发现记忆从未被召回（模型明说无记录）。双根因：① extractor 期望 llmClient.completeJson、实际 modelClient 接口是 createStructuredResponse，且 memoryGateway 从未传 llmClient（一直走窄启发式，漏抓「我每天早上六点晨跑」语料）→ user_memory 0 产出；② database.mjs defaultDbPath 多退一层，记忆库落在 H:\BP2\data 而非 backend\data。修复：extractor 兼容双接口 + LLM 失败回退启发式 + 启发式扩展（我每天/常常/习惯/也喜欢）+ createConfiguredMemoryGateway 接收 modelClient（server.js 与图共享）+ 路径归位（旧库已迁移，162 条消息保留）。验证：memory 专项 6/6；verify-long-memory.mjs 注入偏好→新会话召回（晨跑+咖啡）→重启 scene 后仍召回。新增 backend/scripts/verify-long-memory.mjs。
+- **⑬ 多人 avatar 动作协作**（a17c843）：presence 位置/远程 avatar 同步已有，补协作动作。后端 presenceStore + app.js 透传一次性 action（wave 等，心跳覆盖自动清空）；前端 presenceClient.sendAction（复用 updatePresence 通道）；ThreeWorld 挥手动画（wave 窗口 1.6s：左臂高举 + 右臂摆动，自然回归）；WorldView 在线漫游者列表「打招呼」按钮。验证：API 透传（wave→列表返回→普通心跳清空）；三入口 build 全过；浏览器点击 toast「已向 Phase5 Administrator 挥手打招呼」。
+- **多端验证提示**：远程 avatar 挥手直观效果需双窗口/双账号同时在线。
