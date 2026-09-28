@@ -188,17 +188,32 @@ const GATHER_SCENES = [
   ['小屋', '木屋', 'cabin'],
   ['远林', '山林', '森林', 'far-forest'],
 ];
+// 任意别名数量：末位为 sceneId，其余均为别名（修复固定 [a1,a2,sceneId] 解构导致
+// 资源墙/far-forest 返回 undefined、书屋/远林 错位返回别名的 bug）
+const matchGatherScene = (reply) => {
+  for (const entry of GATHER_SCENES) {
+    const sceneId = entry[entry.length - 1];
+    const aliases = entry.slice(0, -1);
+    if (aliases.some((alias) => alias && reply.includes(alias))) return sceneId;
+  }
+  return null;
+};
 const GATHER_ACTION_WORDS = ['去', '到', '聚', '走', '见', '来', '集合', '会合', '坐', '等', '动身', '一起', '出发'];
+// 确定行动词：含这些词的句子视为「已定下聚会」，即使句尾带口头询问也不判犹豫
+// （如阿禾「我这就把聚会定在凉亭…要不要招呼几位老邻居？」——「定在」命中，不应被「要不要」否决）
+const GATHER_FIRM_WORDS = ['定在', '约在', '这就去', '马上到', '这就到', '动身', '集合', '会合', '出发', '这就走'];
 const GATHER_HESITATE_WORDS = ['还是', '要不要', '等谁', '什么时候', '时辰', '再说', '回头', '先不', '改天', '商量', '回头再说'];
 
 export const detectGatherScene = (reply = '') => {
   if (!reply) return null;
+  const hasFirm = GATHER_FIRM_WORDS.some((word) => reply.includes(word));
+  if (hasFirm) {
+    // 确定行动优先：只认场景，不再被犹豫词否决
+    return matchGatherScene(reply);
+  }
   if (GATHER_HESITATE_WORDS.some((word) => reply.includes(word))) return null;
   if (!GATHER_ACTION_WORDS.some((word) => reply.includes(word))) return null;
-  for (const [alias1, alias2, sceneId] of GATHER_SCENES) {
-    if (reply.includes(alias1) || reply.includes(alias2)) return sceneId;
-  }
-  return null;
+  return matchGatherScene(reply);
 };
 
 export const createConfiguredMemoryGateway = (

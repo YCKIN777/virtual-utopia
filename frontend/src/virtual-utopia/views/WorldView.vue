@@ -337,6 +337,46 @@ const sendFriendAction = (user) => {
 };
 
 const currentUser = computed(() => worldStore.state.user);
+const isWorldAdmin = computed(() => currentUser.value?.role === 'admin');
+
+// shell 功能植入 3D：身份/登录 HUD（不跳传统壳页面，登录弹层内嵌 3D 世界）
+const adminBaseUrl =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ADMIN_BASE_URL) || '';
+const adminWorldUrl = computed(() =>
+  adminBaseUrl ? adminBaseUrl + '#/applications' : 'http://localhost:5174/#/applications',
+);
+const loginPanelOpen = ref(false);
+const loginForm = reactive({ username: '', password: '' });
+const loginBusy = ref(false);
+const loginError = ref('');
+
+const doLogin = async () => {
+  const username = loginForm.username.trim();
+  const password = loginForm.password;
+  if (!username || !password) {
+    loginError.value = '请输入用户名和密码';
+    return;
+  }
+  loginBusy.value = true;
+  loginError.value = '';
+  try {
+    await worldStore.login({ username, password });
+    loginPanelOpen.value = false;
+    loginForm.username = '';
+    loginForm.password = '';
+  } catch (error) {
+    loginError.value =
+      error?.code === 'INVALID_CREDENTIALS' || error?.code === 'PHASE5_UNAUTHORIZED'
+        ? '用户名或密码错误，请重试'
+        : error?.message || '登录失败，请稍后重试';
+  } finally {
+    loginBusy.value = false;
+  }
+};
+
+const logoutFromWorld = () => {
+  void worldStore.logout();
+};
 
 const getAvatarColor = (userId) => {
   const colors = [
@@ -791,10 +831,40 @@ watch(currentUser, () => {
         <h1>五十户山林庄园城镇</h1>
         <p>第三人称漫游 · 木构连廊 · 生态庄园</p>
       </div>
-      <div class="vu-world-stats">
-        <span>{{ stats.homes }}/50 庄园</span>
-        <span>4 组团 · 50 户</span>
-        <span>{{ stats.trees }} 树木实例</span>
+      <div class="vu-world-header__right">
+        <div class="vu-world-stats">
+          <span>{{ stats.homes }}/50 庄园</span>
+          <span>4 组团 · 50 户</span>
+          <span>{{ stats.trees }} 树木实例</span>
+        </div>
+        <div class="vu-world-account">
+          <template v-if="currentUser">
+            <span class="vu-world-account__user" :title="currentUser.displayName || currentUser.username">
+              <span
+                class="vu-world-account__avatar"
+                :style="{ background: getAvatarColor(currentUser.phase5UserId || currentUser.id) }"
+              >{{ (currentUser.displayName || currentUser.username || '?').slice(0, 1) }}</span>
+              {{ currentUser.displayName || currentUser.username }}
+            </span>
+            <a
+              v-if="isWorldAdmin"
+              :href="adminWorldUrl"
+              target="_blank"
+              rel="noopener"
+              class="vu-world-account__btn"
+              title="管理台与主世界使用独立登录会话；新标签打开"
+            >管理后台</a>
+            <button type="button" class="vu-world-account__btn" @click="logoutFromWorld">退出</button>
+          </template>
+          <template v-else>
+            <button
+              type="button"
+              class="vu-world-account__btn vu-world-account__btn--primary"
+              @click="loginPanelOpen = true"
+            >登录</button>
+            <button type="button" class="vu-world-account__btn" @click="router.push({ name: 'register' })">注册</button>
+          </template>
+        </div>
       </div>
     </header>
 
@@ -1152,6 +1222,41 @@ watch(currentUser, () => {
     />
 
     <WorldChatPanel v-if="currentUser" @select-resident="openResidentChat" />
+
+    <!-- shell 功能植入 3D：登录弹层（不跳传统壳页面） -->
+    <div v-if="loginPanelOpen" class="vu-login-overlay" @click.self="loginPanelOpen = false">
+      <form class="vu-login-card" @submit.prevent="doLogin">
+        <button
+          type="button"
+          class="vu-login-card__close"
+          aria-label="关闭登录"
+          @click="loginPanelOpen = false"
+        >×</button>
+        <h2>登录虚拟乌托邦</h2>
+        <p class="vu-login-card__hint">登录后可与 AI 居民对话、启用世界记忆与持久化</p>
+        <label class="vu-login-card__field">
+          <span>用户名</span>
+          <input v-model="loginForm.username" autocomplete="username" placeholder="用户名" />
+        </label>
+        <label class="vu-login-card__field">
+          <span>密码</span>
+          <input
+            v-model="loginForm.password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="密码"
+          />
+        </label>
+        <p v-if="loginError" class="vu-login-card__error">{{ loginError }}</p>
+        <button type="submit" class="vu-login-card__submit" :disabled="loginBusy">
+          {{ loginBusy ? '登录中…' : '进入世界' }}
+        </button>
+        <p class="vu-login-card__alt">
+          还没有账号？
+          <button type="button" @click="router.push({ name: 'register' })">去注册</button>
+        </p>
+      </form>
+    </div>
 
     <!-- P5 前端改造：3D 世界 AI 对话（scene 3000 LangGraph stream + KIN 审批） -->
     <AiChatPanel />

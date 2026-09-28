@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import LoginView from '../views/LoginView.vue';
-import PortalView from '../views/PortalView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import RegisterView from '../views/RegisterView.vue';
 import SceneDetailView from '../views/SceneDetailView.vue';
@@ -11,7 +10,8 @@ export const router = createRouter({
     {
       path: '/',
       name: 'home',
-      component: PortalView,
+      // shell 下线：唯一入口为 3D 世界（WorldView 全屏沉浸）
+      redirect: { name: 'world' },
     },
     {
       path: '/scenes',
