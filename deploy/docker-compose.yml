@@ -77,7 +77,7 @@ services:
       PHASE5_SERVICE_TOKEN: "${PHASE5_SERVICE_TOKEN:-change-me-please}"
       PHASE5_BASE_URL: "http://phase5:3300"
       # P5.6-1 上线适配：CORS 白名单（逗号分隔；公网隧道域名变更时改 deploy/.env 或此默认）
-      PHASE6_ALLOWED_ORIGINS: "${PHASE6_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:5175,https://36087f0f.r2.cpolar.top}"
+      PHASE6_ALLOWED_ORIGINS: "${PHASE6_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:5175,https://4a984672.r2.cpolar.top}"
       # phase6 业务库统一放 /data/phase6（可用 PHASE6_*_DB_PATH 逐一覆盖，默认相对 backend 目录）
     volumes:
       - phase6-data:/data/phase6
