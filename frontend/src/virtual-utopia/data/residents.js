@@ -87,6 +87,7 @@ export const SCENE_GATHER_POINTS = Object.freeze({
   library: { x: 11, z: 17 },
   cabin: { x: -7, z: 31 },
   'far-forest': { x: 18, z: 34 },
+  'plaza': { x: 0, z: 22.6 },
 });
 
 export const getGatherPoint = (sceneId) => SCENE_GATHER_POINTS[sceneId] || null;

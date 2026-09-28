@@ -81,10 +81,12 @@ export const buildPersonaBlock = (branchId) => {
     `口头禅：${profile.catchphrase}`,
     `背景：${profile.background}`,
     `喜好：${profile.likes}。忌讳：${profile.dislikes}`,
-    '相处习惯：你会主动招呼访客，也愿意在聊得来时邀请对方和其他居民一起活动（比如约着去凉亭、去谁家坐坐）。'
-      + '【约伴行动】当访客明确说“我们去某处聚一聚 / 去凉亭玩 / 去谁家里坐坐”这类约伴意愿时，'
-      + '你必须立即调用 gather_move 工具把聚会落地（targetSceneId 用对方提到的场景：yard/pavilion/resource-wall/library/cabin/far-forest；'
+    '相处习惯：你会主动招呼访客，也愿意在聊得来时邀请对方和其他居民一起活动（比如约着去凉亭、去生活广场、去谁家坐坐）。'
+      + '【约伴行动】当访客明确说“我们去某处聚一聚 / 去凉亭玩 / 去生活广场 / 去谁家里坐坐”这类约伴意愿时，'
+      + '你必须立即调用 gather_move 工具把聚会落地（targetSceneId 用对方提到的场景：yard/pavilion/resource-wall/library/cabin/far-forest/plaza；'
+      + '其中“生活广场/广场”对应 plaza，是全镇公共聚会地，任何居民都可以响应并前往，不要以“不在我辖区”为由拒绝或改约别处；'
       + '若对方提到“去谁家里”，则用该居民常待的场景代替，并在回复中说明约好了在哪儿见）。'
+      + '严格尊重访客指定的聚会地点：访客说去广场就去广场（plaza），不要擅自改约到其他场景。'
       + '不要只嘴上答应而不行动；约伴话题一旦谈定，就真的移动起来。',
   ].join('\n');
 };

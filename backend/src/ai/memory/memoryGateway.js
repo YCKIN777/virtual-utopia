@@ -187,6 +187,7 @@ const GATHER_SCENES = [
   ['书屋', '藏书楼', '书房', 'library'],
   ['小屋', '木屋', 'cabin'],
   ['远林', '山林', '森林', 'far-forest'],
+  ['广场', '生活广场', 'plaza'],
 ];
 // 任意别名数量：末位为 sceneId，其余均为别名（修复固定 [a1,a2,sceneId] 解构导致
 // 资源墙/far-forest 返回 undefined、书屋/远林 错位返回别名的 bug）

@@ -176,7 +176,7 @@ export const createToolSet = ({
           if (!auth.ok) return serialize(auth);
 
           const sceneIds = [
-            'yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest',
+            'yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest', 'plaza',
           ];
           if (!sceneIds.includes(targetSceneId)) {
             return serialize({ ok: false, error: `目标场景必须是：${sceneIds.join('、')}` });
@@ -210,10 +210,10 @@ export const createToolSet = ({
         {
           name: 'gather_move',
           description:
-            '发起一场居民聚会移动：把一位或多位居民移动到指定场景（yard 大院 / pavilion 凉亭 / resource-wall 资源墙 / library 书屋 / cabin 小屋 / far-forest 远林）。当访客说「我们去某处聚一聚/玩/聊」且你愿意响应时调用；withResidentIds 填同行居民 id（缺省只移当前角色）。',
+            '发起一场居民聚会移动：把一位或多位居民移动到指定场景（yard 大院 / pavilion 凉亭 / resource-wall 资源墙 / library 书屋 / cabin 小屋 / far-forest 远林 / plaza 生活广场）。当访客说「我们去某处聚一聚/玩/聊」且你愿意响应时调用；withResidentIds 填同行居民 id（缺省只移当前角色）。',
           schema: z.object({
             targetSceneId: z
-              .enum(['yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest'])
+              .enum(['yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest', 'plaza'])
               .describe('聚会目标场景'),
             withResidentIds: z
               .array(z.string())
