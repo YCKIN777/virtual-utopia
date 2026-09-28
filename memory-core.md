@@ -106,3 +106,9 @@
     - **阻塞（Docker 引擎无法启动）**：C 盘 0GB 剩余（99.4/99.4GB）→ containerd meta.db 只读 → Docker Desktop 无法启动 → 容器全停 → **公网 502**（cpolar 隧道进程未停）。已做 L1 清理（临时文件/Edge 缓存/着色器/WER/微信 xwechat log 1.2GB 等 ~2GB）仍 0.31GB。**恢复步骤**：用户腾 C 盘 ≥2-3GB（回收站 0.36GB / 卸载 C 盘大程序 / 磁盘清理）→ 重启 Docker Desktop → 容器 restart:unless-stopped 自动拉起 → compose up -d --force-recreate --no-deps scene frontend（scene 已含 P5.7 镜像；frontend 需 --no-cache build 已做）→ 浏览器验证约伴闭环。
     - **验证现状**：印象写入库实测（impression:ahe:1 kind=global relation=1）；npc-locations 200；detectGatherScene 单测 4 例过；浏览器阿禾人设口吻到位。**约伴浏览器闭环 + git 提交待 Docker 恢复**（commit 建议 P5.7 居民人设+印象记忆+语音+约伴移动）。
     - **未决**：① gather_move 缺省 withResidentIds=current.username（≠居民 id；缺省仅移当前角色，多人同行靠模型传 id 或后续前端约伴按钮）；② 聚点是前端坐标（非真实建筑）；③ 语音 https 麦克风权限；④ scene 容器重建后会话内存态清空（SQLite checkpointer 持久化 thread，页面刷新后服务端状态仍在）。
+    - **当前交接点更新（2026-09-28 P5.7b 已完成，commit bd6c6b8）**：
+      - **shell 界面已下线、功能植入 3D**：App.vue 去壳全屏（删 AppHeader/footer）；router '/' redirect→world（唯一入口=3D 世界）；WorldView 右上 HUD（登录弹层内嵌 3D / 用户名+头像 / admin 管理后台 / 退出）；styles.css world-page 100svh。
+      - **3D 内对话已通**：容器 frontend --no-cache 重建 + 浏览器清缓存实测——admin 弹层登录 → AI 对话 → 阿禾回复（人设口吻）；「对不了话」根因已除（原入口是壳 PortalView + 登录在壳里）。
+      - **约伴移动浏览器闭环完成**：「定在凉亭，现在就出发」→ 阿禾回复确认 → npc-locations ahe→pavilion → 前端 gatherPollTimer 轮询 52 次全 200 → 阿禾移向凉亭聚点。后端修两处：GATHER_FIRM_WORDS 确定行动词优先（「要不要」不再误杀「定在」）；matchGatherScene 末位 sceneId 任意别名（修复资源墙/书屋/远林解构错位）。
+      - **环境**：C 盘 18.5GB 剩余（用户已腾），Docker 5 容器全 Up；chroma unhealthy（healthcheck 口径待查，不阻断）；cpolar 公网隧道用户终端在跑。
+      - **待办**：① 语音公网 https 麦克风实测；② 多人同行约伴（前端约伴按钮或模型传 withResidentIds）；③「去谁家」细化到 plot 级（可选）；④ chroma healthcheck。

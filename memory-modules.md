@@ -205,3 +205,8 @@
 - **约伴移动（前端）**：residents.js +5 对话 NPC（ahe 等，homePlotId plot-3/8/20/35/45）+ SCENE_GATHER_POINTS（yard/pavilion/resource-wall/library/cabin/far-forest → 广场 (0,3.6,22.6) 周边 ±10m 坐标）；ThreeWorld.moveResidentToScene（聚点改 roaming.bounds+setRoamingTarget / null 回原 home）；WorldView gatherPollTimer 8s 轮询 → move（**必须 let 声明，否则 ReferenceError 横幅**）。
 - **语音**：AiChatPanel.vue SpeechRecognition（zh-CN，🎤 麦克风按钮）+ SpeechSynthesis（🔊 朗读开关，watch 新 assistant 消息自动读，默认关）。
 - **坑**：world_state kind CHECK（impression 用 global）；Docker build 层缓存（hash 相同≠产物新，--no-cache 才保险；build 后 --force-recreate）；gatherPollTimer 忘声明；浏览器旧 JS 缓存（硬刷新）；模型口头约伴不调工具（自动兜底解决）。
+### P5.7b shell 下线植入 3D + 约伴闭环（2026-09-28，commit bd6c6b8）
+- **去壳**：App.vue 删 AppHeader/footer（RouterView 全屏 + ToastStack）；router '/' redirect→world（PortalView import 移除）；styles.css world-page 100svh。
+- **3D 内身份 HUD**：WorldView 右上 vu-world-account（登录弹层 vu-login-overlay 内嵌 3D，worldStore.login；admin 管理后台链接 VITE_ADMIN_BASE_URL；退出）。
+- **约伴后端修复**（memoryGateway.js）：GATHER_FIRM_WORDS（定在/约在/这就去/马上到/动身/集合/会合/出发/这就走）确定行动优先（不被犹豫词否决）；matchGatherScene（GATHER_SCENES 末位 sceneId + 任意别名——修复资源墙/far-forest undefined、书屋/远林 错位 bug）。
+- **实测证据链**：admin 弹层登录 ✅ → AI 对话阿禾人设回复 ✅ → npc-locations ahe→pavilion ✅ → gatherPollTimer 52 次轮询 200 ✅ → 阿禾移向凉亭聚点 ✅；广场公屏瞬时 502 自愈。

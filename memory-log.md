@@ -1715,4 +1715,20 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **验证**：浏览器实测 admin 登录→3D 世界 AI 对话→阿禾真实回复（人设口吻到位：商量语气+口头禅「邻里的事，就是咱们的事」）；印象写入库实测（impression:ahe:1 kind=global relation=1 count=1）；npc-locations 路由 200；detectGatherScene 单测通过（去凉亭→pavilion / 犹豫→null / 无场景→null）。**约伴全链路未最终闭环**：Docker Desktop 因 C 盘 0GB 剩余（99.4/99.4GB）→ containerd meta.db 只读 → 引擎无法启动 → 容器全停 → 公网 502。已做 L1 清理（临时文件/Edge 缓存/着色器/WER/微信 xwechat log 1.2GB 等 ~2GB）仍 0.31GB；**需用户腾 ≥2-3GB（回收站 0.36GB / 卸载 C 盘大程序 / 磁盘清理）后重启 Docker Desktop**。
 - **自检清单**：✔ 后端 8 文件 node --check 全过 ✔ detectGatherScene 单测 4 例 ✔ 前端 vite build 全过（--no-cache）✔ 浏览器 UI（语音按钮/人设口吻/印象落库）✔ npc-locations 200 ✔ memory-log 本条（core/modules 待补——本轮阻塞未完整收尾）✘ 约伴浏览器闭环（待 Docker 恢复）✘ git 提交（待 Docker 恢复后一并）
 - **未决**：① gather_move 默认 withResidentIds 用 current.username（游客用户名≠居民 id，缺省=仅当前角色移动，多人同行依赖模型传 id 或后续前端按钮）；② 场景聚点为前端坐标定义（yard/pavilion/…各对应广场周边一点，非真实建筑）；③ 语音需 https 环境麦克风权限（容器 nginx 80 已 https 经 cpolar）。
+## 2026-09-28 P5.7b shell 界面下线植入 3D + 3D 内登录对话 + 约伴移动浏览器闭环（commit bd6c6b8）
+- **前置**：Docker 引擎故障已解除（用户腾 C 盘至 18.5GB 剩余 → Docker Desktop 重启 → 5 容器全部拉起；chroma 仍 unhealthy 但不阻断——healthcheck 口径问题待查）。
+- **① shell 界面下线、功能植入 3D（用户核心诉求）**：
+  - App.vue：删除 AppHeader/footer 传统壳（3D 世界全屏沉浸，只留 RouterView + ToastStack）。
+  - router/index.js：'/' redirect → world（唯一入口 = 3D 世界；PortalView import 移除）。
+  - WorldView.vue：右上 HUD（vu-world-account）——未登录：「登录」（弹层）+「注册」（跳注册页）；已登录：用户名+头像、admin「管理后台」（VITE_ADMIN_BASE_URL）、「退出」；登录弹层（vu-login-overlay/card）内嵌 3D（worldStore.login，错误提示/loading 态，不跳传统登录页）。
+  - styles.css：.vu-world-page min-height calc(100svh-68px)→100svh（去壳全屏）；追加 account/登录弹层样式。
+  - **实测**：容器 --no-cache 重建 frontend → 浏览器清缓存+带参强刷 → 直接 #/world → 登录弹层 → admin 新密码登录成功 → HUD 显示 管理后台/退出 → AI 对话可用。
+- **② 3D 世界里对不了话 → 已解决**：根因=入口是传统壳 PortalView（用户看到壳而非 3D）+ 登录入口在壳里。去壳 + 3D 内登录后对话全通（实测阿禾回复人设口吻到位）。
+- **③ 约伴移动浏览器闭环 + 两处后端修复**：
+  - 实测发「我们把聚会定在凉亭吧，现在就出发」→ 阿禾回复「好嘞，那咱们这就动身去凉亭！……邻里的事，就是咱们的事」→ **npc-locations 返回 ahe→pavilion** → 前端 gatherPollTimer 8s 轮询 **52 次请求全 200** → moveResidentToScene 执行（阿禾走向凉亭聚点）。对话/移动/轮询全链路验证完成。
+  - **坑1（误杀）**：detectGatherScene 犹豫词「要不要」否决了「定在凉亭…要不要招呼邻居」——回复明确「定在凉亭」却被判犹豫 → **新增 GATHER_FIRM_WORDS（定在/约在/这就去/马上到/动身/集合/会合/出发/这就走）优先命中，不再被犹豫词否决**（单测：定在凉亭…要不要→pavilion / 要不要去凉亭？→null 全过）。
+  - **坑2（解构错位）**：GATHER_SCENES 元素长度不一（资源墙/far-forest 2 元素→sceneId=undefined；书屋/远林 4 元素→sceneId 解构成别名）→ **改为 matchGatherScene：末位为 sceneId、前面任意别名**（单测 8 例全过：含去资源墙→resource-wall、去藏书楼→library、去远林→far-forest）。
+- **其他**：广场公屏（WorldChatPanel）曾报「持久化服务请求超时/502」——为 scene 容器重建瞬间的瞬时错误，重建完成后实测公屏打开正常（自愈，无需处理）。
+- **自检清单**：✔ 前端 vite build（容器 --no-cache）✔ 浏览器实测（去壳/登录/对话/约伴）✔ npc-locations ahe→pavilion ✔ 轮询 52 次 200 ✔ detectGatherScene 单测 8+6 例全过 ✔ memory 三件套 ✔ git bd6c6b8
+- **遗留**：① gather_move 缺省 withResidentIds 语义（多人同行待前端约伴按钮或模型传 id）；② 聚点=前端坐标（非真实建筑），「去谁家」=该居民常待场景（用户已接受）；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
 
