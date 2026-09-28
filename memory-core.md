@@ -112,3 +112,7 @@
       - **约伴移动浏览器闭环完成**：「定在凉亭，现在就出发」→ 阿禾回复确认 → npc-locations ahe→pavilion → 前端 gatherPollTimer 轮询 52 次全 200 → 阿禾移向凉亭聚点。后端修两处：GATHER_FIRM_WORDS 确定行动词优先（「要不要」不再误杀「定在」）；matchGatherScene 末位 sceneId 任意别名（修复资源墙/书屋/远林解构错位）。
       - **环境**：C 盘 18.5GB 剩余（用户已腾），Docker 5 容器全 Up；chroma unhealthy（healthcheck 口径待查，不阻断）；cpolar 公网隧道用户终端在跑。
       - **待办**：① 语音公网 https 麦克风实测；② 多人同行约伴（前端约伴按钮或模型传 withResidentIds）；③「去谁家」细化到 plot 级（可选）；④ chroma healthcheck。
+    - **当前交接点更新（2026-09-28 P5.7c 公网域名已切换）**：
+      - **公网新地址（当前有效）**：https://4a984672.r2.cpolar.top（36087f0f 已被 cpolar 回收，官方 404 永久失效；**隧道再重启域名还会变**，变更须同步 backend/.env 两行 + compose phase6 默认值并重建 phase6）。
+      - 已验证：公网根 200、CORS 新域名 ACAO 放行/旧域名 403、scene API 200（ahe→pavilion 数据在）。
+      - **坑**：cpolar 必须用户真实终端跑（本机 spawn 全失败）；cpolar dashboard handoff 不可用（两次失败）——域名变更直接请用户粘贴文本。

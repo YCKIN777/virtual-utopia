@@ -1731,4 +1731,11 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **其他**：广场公屏（WorldChatPanel）曾报「持久化服务请求超时/502」——为 scene 容器重建瞬间的瞬时错误，重建完成后实测公屏打开正常（自愈，无需处理）。
 - **自检清单**：✔ 前端 vite build（容器 --no-cache）✔ 浏览器实测（去壳/登录/对话/约伴）✔ npc-locations ahe→pavilion ✔ 轮询 52 次 200 ✔ detectGatherScene 单测 8+6 例全过 ✔ memory 三件套 ✔ git bd6c6b8
 - **遗留**：① gather_move 缺省 withResidentIds 语义（多人同行待前端约伴按钮或模型传 id）；② 聚点=前端坐标（非真实建筑），「去谁家」=该居民常待场景（用户已接受）；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
+## 2026-09-28 P5.7c 公网域名切换（cpolar Free 随机域名回收事件，36087f0f → 4a984672）
+- **事件**：用户贴 cpolar 隧道窗口图 → 实测 https://36087f0f.r2.cpolar.top 返回 cpolar 官方 404「domain doesn't exist」——**旧随机域名已被回收**（cpolar Free 隧道重启域名必变 + 旧域名回收；本地 localhost 200 一切正常，纯隧道域名问题）。
+- **排查过程**：本机 Get-Process 无 cpolar 进程、9200 dashboard 不可达 → cpolar 隧道已不在运行；Start-Process / cmd start 全路径启动 cpolar.exe 均失败（TUI 需真实交互终端，已知坑）→ 尝试 bu 打开 dashboard.cpolar.com 拿新域名：/tunnels 路由 404、根路径跳登录页（blocked=auth）→ interaction.request_action browserControl handoff 两次失败（报「之前从未开启过任何网页」/ timeout——bu 会话与 handoff 通道不同步，勿再依赖）→ **最终用户直接粘贴新域名** https://4a984672.r2.cpolar.top。
+- **同步动作**：backend/.env 两行（CORS_ORIGIN/PHASE6_ALLOWED_ORIGINS）+ deploy/docker-compose.yml phase6 默认值，36087f0f → 4a984672（patch-env-newdomain.mjs，.env 不入库、compose 提交）；docker compose up -d --force-recreate --no-deps phase6。
+- **验证（全公网）**：根路径 200（3D 世界）✓；带公网 Origin GET /phase6-api/auth/me → **ACAO=https://4a984672.r2.cpolar.top（新域名放行）**、旧域名 Origin → 403 无 ACAO（白名单已替换不残留）✓；本地 5175 Origin 仍放行 ✓；/scene-api/api/scene/world/npc-locations 200（ahe→pavilion 数据仍在）✓；/scene-api/api/scenes 200 ✓。
+- **新坑**：① cpolar 旧随机域名回收后**原地址永久失效**（不是暂时故障）——隧道重启后必须拿新地址同步；② interaction.request_action 的 browserControl handoff 在本环境 bu 会话不可用（两次失败）——**公网域名类信息直接让用户粘贴文本**；③ cpolar 隧道必须用户真实终端跑（本机所有 spawn 方式失败）。
+- **自检清单**：✔ 新域名 200 ✔ CORS 新旧白名单验证（新放行/旧拒绝）✔ 公网 scene API 200 ✔ memory 三件套 ✔ git（compose+memory）
 

@@ -210,3 +210,6 @@
 - **3D 内身份 HUD**：WorldView 右上 vu-world-account（登录弹层 vu-login-overlay 内嵌 3D，worldStore.login；admin 管理后台链接 VITE_ADMIN_BASE_URL；退出）。
 - **约伴后端修复**（memoryGateway.js）：GATHER_FIRM_WORDS（定在/约在/这就去/马上到/动身/集合/会合/出发/这就走）确定行动优先（不被犹豫词否决）；matchGatherScene（GATHER_SCENES 末位 sceneId + 任意别名——修复资源墙/far-forest undefined、书屋/远林 错位 bug）。
 - **实测证据链**：admin 弹层登录 ✅ → AI 对话阿禾人设回复 ✅ → npc-locations ahe→pavilion ✅ → gatherPollTimer 52 次轮询 200 ✅ → 阿禾移向凉亭聚点 ✅；广场公屏瞬时 502 自愈。
+### P5.7c 公网域名切换（2026-09-28，36087f0f → 4a984672）
+- 同步点（两处）：backend/.env CORS_ORIGIN + PHASE6_ALLOWED_ORIGINS；deploy/docker-compose.yml phase6 PHASE6_ALLOWED_ORIGINS 默认值。改后 docker compose up -d --force-recreate --no-deps phase6（无需 build，env 注入生效）。
+- 验证口径：公网 Origin 请求 phase6 → ACAO 应为新域名；旧域名 Origin → 403 无 ACAO（证明白名单替换干净）。
