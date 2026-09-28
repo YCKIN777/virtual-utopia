@@ -1731,6 +1731,15 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **其他**：广场公屏（WorldChatPanel）曾报「持久化服务请求超时/502」——为 scene 容器重建瞬间的瞬时错误，重建完成后实测公屏打开正常（自愈，无需处理）。
 - **自检清单**：✔ 前端 vite build（容器 --no-cache）✔ 浏览器实测（去壳/登录/对话/约伴）✔ npc-locations ahe→pavilion ✔ 轮询 52 次 200 ✔ detectGatherScene 单测 8+6 例全过 ✔ memory 三件套 ✔ git bd6c6b8
 - **遗留**：① gather_move 缺省 withResidentIds 语义（多人同行待前端约伴按钮或模型传 id）；② 聚点=前端坐标（非真实建筑），「去谁家」=该居民常待场景（用户已接受）；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
+
+## P5.8 生活广场(plaza)约伴闭环（2026-09-28）
+- **背景**：用户实测「约了到生活广场还是没有动作，只能聊天」——生活广场不在约伴场景表。
+- **补三处**：backend/src/ai/tools/index.js（gather_move enum+描述+sceneIds 加 plaza）、backend/src/ai/memory/memoryGateway.js（GATHER_SCENES 加 ['广场','生活广场','plaza']）、frontend/src/virtual-utopia/data/residents.js（SCENE_GATHER_POINTS 加 plaza {x:0,z:22.6} 广场中心）。detectGatherScene 单测：「去生活广场玩吧」→plaza、「到广场集合」→plaza、犹豫句仍 null。
+- **模型不认识广场（第一版补丁后仍拒绝）**：阿禾回「生活广场这名字我这儿没对上号……你看是想去凉亭坐坐，还是去谁家串个门」——模型认为广场不在 yard 辖区且试图改约。**personas.js 两版强化**：最终版明确「plaza 是全镇公共聚会地，任何居民都可响应前往，不要以不在辖区为由拒绝或改约别处；严格尊重访客指定的聚会地点（说去广场就去广场）；不要只嘴上答应而不行动」。
+- **实测闭环（浏览器）**：发「阿禾，我们一起去生活广场走走吧」→ 阿禾回复「好啊，咱们这就去生活广场走走。那边是全镇的公共聚会地」→ 后端 npc-locations ahe→plaza（gather_move 工具调用成功）→ 3D 世界阿禾走到广场聚点（截图 preview/p58-plaza-move.png）。
+- **坑**：① 「我们去生活广场聚一聚吧」被模型误判 guestbook_write（弹审批卡，「聚一聚」触发言语/公告意图）→ 换「一起去生活广场走走吧」话术即正确触发 gather_move——约伴话术宜带明确地点+行动动词；② scene 重建后旧会话报「history contains an invalid message」（LangGraph checkpointer 旧状态与新建图不匹配）→ 点「新话题」重开会话；③ phase5 限流 429（认证链路 503→「认证服务暂不可用」）→ docker restart virtual-utopia-phase5 清计数恢复；④ sceneAuth 正确端点 = PHASE6_BASE_URL + /api/phase6/auth/me（带 /api/phase6 前缀）。
+- **遗留**：① 多人同行仍缺省只移当前角色（模型未传 withResidentIds，用户「约着一起去」多人移动待前端约伴按钮或模型传 id）；② 模型偶发把「聚一聚」话术误判留言工具（guestbook_write 审批），长期可强化工具描述；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
+
 ## 2026-09-28 P5.7c 公网域名切换（cpolar Free 随机域名回收事件，36087f0f → 4a984672）
 - **事件**：用户贴 cpolar 隧道窗口图 → 实测 https://36087f0f.r2.cpolar.top 返回 cpolar 官方 404「domain doesn't exist」——**旧随机域名已被回收**（cpolar Free 隧道重启域名必变 + 旧域名回收；本地 localhost 200 一切正常，纯隧道域名问题）。
 - **排查过程**：本机 Get-Process 无 cpolar 进程、9200 dashboard 不可达 → cpolar 隧道已不在运行；Start-Process / cmd start 全路径启动 cpolar.exe 均失败（TUI 需真实交互终端，已知坑）→ 尝试 bu 打开 dashboard.cpolar.com 拿新域名：/tunnels 路由 404、根路径跳登录页（blocked=auth）→ interaction.request_action browserControl handoff 两次失败（报「之前从未开启过任何网页」/ timeout——bu 会话与 handoff 通道不同步，勿再依赖）→ **最终用户直接粘贴新域名** https://4a984672.r2.cpolar.top。

@@ -106,6 +106,7 @@
     - **阻塞（Docker 引擎无法启动）**：C 盘 0GB 剩余（99.4/99.4GB）→ containerd meta.db 只读 → Docker Desktop 无法启动 → 容器全停 → **公网 502**（cpolar 隧道进程未停）。已做 L1 清理（临时文件/Edge 缓存/着色器/WER/微信 xwechat log 1.2GB 等 ~2GB）仍 0.31GB。**恢复步骤**：用户腾 C 盘 ≥2-3GB（回收站 0.36GB / 卸载 C 盘大程序 / 磁盘清理）→ 重启 Docker Desktop → 容器 restart:unless-stopped 自动拉起 → compose up -d --force-recreate --no-deps scene frontend（scene 已含 P5.7 镜像；frontend 需 --no-cache build 已做）→ 浏览器验证约伴闭环。
     - **验证现状**：印象写入库实测（impression:ahe:1 kind=global relation=1）；npc-locations 200；detectGatherScene 单测 4 例过；浏览器阿禾人设口吻到位。**约伴浏览器闭环 + git 提交待 Docker 恢复**（commit 建议 P5.7 居民人设+印象记忆+语音+约伴移动）。
     - **未决**：① gather_move 缺省 withResidentIds=current.username（≠居民 id；缺省仅移当前角色，多人同行靠模型传 id 或后续前端约伴按钮）；② 聚点是前端坐标（非真实建筑）；③ 语音 https 麦克风权限；④ scene 容器重建后会话内存态清空（SQLite checkpointer 持久化 thread，页面刷新后服务端状态仍在）。
+    - **P5.8**：约伴场景 enum 现含 7 个（yard/pavilion/resource-wall/library/cabin/far-forest/**plaza**）；生活广场=全镇公共聚会地，聚点坐标前端 SCENE_GATHER_POINTS.plaza={x:0,z:22.6}；personas 约伴指令已强化（plaza 不拒不改约、尊重访客指定地点）。
     - **当前交接点更新（2026-09-28 P5.7b 已完成，commit bd6c6b8）**：
       - **shell 界面已下线、功能植入 3D**：App.vue 去壳全屏（删 AppHeader/footer）；router '/' redirect→world（唯一入口=3D 世界）；WorldView 右上 HUD（登录弹层内嵌 3D / 用户名+头像 / admin 管理后台 / 退出）；styles.css world-page 100svh。
       - **3D 内对话已通**：容器 frontend --no-cache 重建 + 浏览器清缓存实测——admin 弹层登录 → AI 对话 → 阿禾回复（人设口吻）；「对不了话」根因已除（原入口是壳 PortalView + 登录在壳里）。
