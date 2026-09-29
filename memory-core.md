@@ -108,6 +108,7 @@
     - **未决**：① gather_move 缺省 withResidentIds=current.username（≠居民 id；缺省仅移当前角色，多人同行靠模型传 id 或后续前端约伴按钮）；② 聚点是前端坐标（非真实建筑）；③ 语音 https 麦克风权限；④ scene 容器重建后会话内存态清空（SQLite checkpointer 持久化 thread，页面刷新后服务端状态仍在）。
     - **P5.8**：约伴场景 enum 现含 7 个（yard/pavilion/resource-wall/library/cabin/far-forest/**plaza**）；生活广场=全镇公共聚会地，聚点坐标前端 SCENE_GATHER_POINTS.plaza={x:0,z:22.6}；personas 约伴指令已强化（plaza 不拒不改约、尊重访客指定地点）。
     - **P5.9**：多人同行——前端「同行」chips 多选（≤4）→ companions 透传 → 模型 prompt 注入【同行提示】+ gather_move 名单=companions∪对话角色 + 兜底 detectGatherScene 也写同行；实测一次调用写三人 plaza。
+    - **P5.10**：去谁家→plot 级宅院——gather_move targetPlotId（阿禾家 plot-3/知予 plot-8/叙白 plot-20/岁安 plot-35/风禾 plot-45）；家别名兜底（RESIDENT_HOME_ALIASES+「我家」→对话角色自家）；前端 moveResidentToScene 解析 plot- 前缀查 homes 坐标；实测 ahe→plot-3。
     - **当前交接点更新（2026-09-28 P5.7b 已完成，commit bd6c6b8）**：
       - **shell 界面已下线、功能植入 3D**：App.vue 去壳全屏（删 AppHeader/footer）；router '/' redirect→world（唯一入口=3D 世界）；WorldView 右上 HUD（登录弹层内嵌 3D / 用户名+头像 / admin 管理后台 / 退出）；styles.css world-page 100svh。
       - **3D 内对话已通**：容器 frontend --no-cache 重建 + 浏览器清缓存实测——admin 弹层登录 → AI 对话 → 阿禾回复（人设口吻）；「对不了话」根因已除（原入口是壳 PortalView + 登录在壳里）。

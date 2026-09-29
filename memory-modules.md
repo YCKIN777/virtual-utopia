@@ -213,6 +213,11 @@
 ### P5.7c 公网域名切换（2026-09-28，36087f0f → 4a984672）
 ### P5.8 生活广场 plaza 约伴闭环（2026-09-28）
 ### P5.9 多人同行（2026-09-29）
+### P5.10 去谁家→plot 级宅院（2026-09-29）
+- 后端：tools gather_move targetPlotId（5 家映射+正则校验）；memoryGateway RESIDENT_HOME_ALIASES + detectGatherScene 家别名最优先 + after「我家」兜底（residentId→plot）；personas 指令。
+- 前端：ThreeWorld.moveResidentToScene 处理 'plot-' 前缀 → homes（worldLayout 运行时生成）查 id 坐标。
+- 实测：ahe→plot-3（「去你家」→「我家」兜底写）。
+- 坑：patch 脚本模板字符串嵌套必崩（反引号与美元花括号插值与 join 顿号单引号）→ 用模板字符串转义或字符串拼接。
 - 前端 AiChatPanel「同行」chips（5 居民多选≤4）→ sendStream(content, companions) → sceneClient body；后端 normalizeSceneRequest 透传 → state.companions → nodes.js prompt 注入【同行提示】（COMPANION_NAMES ahe阿禾/zhiyu知予/xubai叙白/suian岁安/fenghe风禾）+ tools context（companions+residentId）→ gather_move 名单=显式∪(companions∪当前角色)；memoryGateway.after 兜底 detectGatherScene 写 companions∪对话角色。
 - 实测：勾知予+叙白 → 约广场 → 回复「把知予、叙白也叫上」→ npc 三写 plaza 同时间戳 → 3D 三人移动。
 - 坑：companions 必须进 prompt（模型不知勾选者）；phase5 429 重启即清；Docker Desktop 未启动先 Start-Process + 等 daemon。

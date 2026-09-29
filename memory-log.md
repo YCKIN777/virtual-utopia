@@ -1732,7 +1732,17 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **自检清单**：✔ 前端 vite build（容器 --no-cache）✔ 浏览器实测（去壳/登录/对话/约伴）✔ npc-locations ahe→pavilion ✔ 轮询 52 次 200 ✔ detectGatherScene 单测 8+6 例全过 ✔ memory 三件套 ✔ git bd6c6b8
 - **遗留**：① gather_move 缺省 withResidentIds 语义（多人同行待前端约伴按钮或模型传 id）；② 聚点=前端坐标（非真实建筑），「去谁家」=该居民常待场景（用户已接受）；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
 
-## P5.9 多人同行（companions 勾选同行一起移动，2026-09-29）
+## P5.10 去谁家→plot 级宅院（2026-09-29）
+- **需求**：用户「到谁家里去玩」要真的走到那家宅院门口（此前=该居民常待场景聚点，非 plot 级）。
+- **实现**：
+  - 后端 gather_move 加 targetPlotId（阿禾家 plot-3/知予 plot-8/叙白 plot-20/岁安 plot-35/风禾 plot-45，正则校验），与 targetSceneId 二选一；写 npc sceneId=targetPlotId。
+  - memoryGateway RESIDENT_HOME_ALIASES（阿禾家→plot-3 等）→ matchGatherScene 优先查；detectGatherScene 顶部家别名最优先（不受犹豫词影响）；after 补「我家/我家里」→ 对话角色自家（detectGatherScene 不识自称）。
+  - personas 约伴指令「去谁家→targetPlotId 填对应宅院 id」。
+  - 前端 ThreeWorld.moveResidentToScene：sceneId 'plot-' 前缀 → homes（worldLayout 运行时生成，固定 seed 20260922 确定性坐标）查 id 取坐标。
+- **实测闭环**：发「阿禾，我们去你家坐坐吧」→ 阿禾回复「好啊，咱们去我家坐坐……想来的就到我家门前聚」→ npc-locations ahe→plot-3（after「我家」兜底写入）→ 3D 阿禾走回家门口（截图 preview/p510-ahe-home.png）。
+- **坑**：① 模型把「去你家」当招呼性话题不调工具（回复「你看呢要不要…」）——兜底家别名优先+「我家」兜底双保险解决；② 犹豫词「要不要」曾否决家别名兜底——家检查提到最前；③ patch 脚本模板字符串嵌套（反引号与美元花括号插值与 join 顿号单引号）必崩——一律模板字符串转义或字符串拼接。
+- **遗留**：① 多人同行上限 4 人；② 语音 https 麦克风权限待公网实测；③ chroma unhealthy healthcheck 口径；④「去你家」模型常不调工具（靠兜底），长期可强化模型对家访的 gather_move 调用。
+
 - **需求**：用户「约着我们几个一起去某处」要真的多人一起动（对话与动作一致性延续）。
 - **机制**：前端 AiChatPanel 加「同行」chips（5 居民多选，最多 4 人）→ sendStream(content, companions) → sceneClient body 带 companions → normalizeSceneRequest 透传 → graph state.companions → ① branch system prompt 注入【同行提示】（模型可见勾选者，约伴时 withResidentIds 带上）② tools context 注入 companions+residentId → gather_move 名单 = 显式名单 或 companions∪当前角色 ③ memoryGateway.after 兜底 detectGatherScene 命中时也写 companions∪对话角色。
 - **实测闭环（浏览器）**：勾选 知予+叙白 → 发「阿禾，我们一起去生活广场走走吧」→ 阿禾回复「咱们这就去生活广场！我把知予、叙白也叫上」→ npc-locations 同一时间戳 ahe+zhiyu+xubai 全部 → plaza（一次 gather_move 调用写三人）→ 3D 三人走向广场（截图 preview/p59-three-companions.png）。
