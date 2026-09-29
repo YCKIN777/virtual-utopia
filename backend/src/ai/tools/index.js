@@ -169,16 +169,22 @@ export const createToolSet = ({
   if (worldState) {
     tools.push(
       tool(
-        async ({ targetSceneId, withResidentIds }) => {
+        async ({ targetSceneId, targetPlotId, withResidentIds }) => {
           const current = context();
           const auth = checkToolRole({ name: 'gather_move', context: current });
 
           if (!auth.ok) return serialize(auth);
 
+          // P5.10：targetPlotId 优先（「去谁家」→ plot 级宅院）；否则校验场景 enum
+          const sceneId = targetPlotId || targetSceneId;
           const sceneIds = [
             'yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest', 'plaza',
           ];
-          if (!sceneIds.includes(targetSceneId)) {
+          if (targetPlotId) {
+            if (!/^plot-\d{1,3}$/.test(targetPlotId)) {
+              return serialize({ ok: false, error: 'targetPlotId 必须是 plot-数字（如 plot-3）' });
+            }
+          } else if (!sceneIds.includes(targetSceneId)) {
             return serialize({ ok: false, error: `目标场景必须是：${sceneIds.join('、')}` });
           }
 
@@ -199,26 +205,31 @@ export const createToolSet = ({
             worldState.set({
               key: `npc:${residentId}`,
               kind: 'npc',
-              payload: { sceneId: targetSceneId, updatedAt: now },
+              payload: { sceneId, updatedAt: now },
             });
             moved.push(residentId);
           }
 
           return serialize({
             ok: true,
-            targetSceneId,
+            targetSceneId: sceneId,
             moved,
-            note: `已发起聚会：${moved.join('、')} 前往「${targetSceneId}」`,
+            note: `已发起聚会：${moved.join('、')} 前往「${sceneId}」`,
           });
         },
         {
           name: 'gather_move',
           description:
-            '发起一场居民聚会移动：把一位或多位居民移动到指定场景（yard 大院 / pavilion 凉亭 / resource-wall 资源墙 / library 书屋 / cabin 小屋 / far-forest 远林 / plaza 生活广场）。当访客说「我们去某处聚一聚/玩/聊」且你愿意响应时调用；withResidentIds 填同行居民 id（缺省只移当前角色）。',
+            '发起一场居民聚会移动：把一位或多位居民移动到指定场景（yard 大院 / pavilion 凉亭 / resource-wall 资源墙 / library 书屋 / cabin 小屋 / far-forest 远林 / plaza 生活广场），或移动到某位居民宅院（targetPlotId：阿禾家 plot-3 / 知予家 plot-8 / 叙白家 plot-20 / 岁安家 plot-35 / 风禾家 plot-45）。当访客说「我们去某处聚一聚/玩/聊」或「去谁家坐坐」且你愿意响应时调用；withResidentIds 填同行居民 id（缺省只移当前角色）。',
           schema: z.object({
             targetSceneId: z
               .enum(['yard', 'pavilion', 'resource-wall', 'library', 'cabin', 'far-forest', 'plaza'])
-              .describe('聚会目标场景'),
+              .optional()
+              .describe('聚会目标场景（与 targetPlotId 二选一）'),
+            targetPlotId: z
+              .string()
+              .optional()
+              .describe('目标宅院 id（访客说去谁家时填：plot-3/plot-8/plot-20/plot-35/plot-45，与 targetSceneId 二选一）'),
             withResidentIds: z
               .array(z.string())
               .optional()

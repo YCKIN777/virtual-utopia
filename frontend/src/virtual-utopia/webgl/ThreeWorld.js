@@ -6067,7 +6067,20 @@ export class ThreeWorld {
     }
 
     const home = getHomeById(record.residentHomePlotId || '');
-    const point = getGatherPoint(sceneId || '');
+
+    // P5.10：plot- 前缀 = 居民宅院（worldLayout 运行时生成 homes，按 id 查坐标）
+    let point = getGatherPoint(sceneId || '');
+    if (
+      !point &&
+      typeof sceneId === 'string' &&
+      sceneId.startsWith('plot-') &&
+      typeof homes !== 'undefined'
+    ) {
+      const targetHome = homes.find((h) => h.id === sceneId);
+      if (targetHome) {
+        point = { x: targetHome.x, z: targetHome.z };
+      }
+    }
 
     // 回 home：恢复初始家的漫步范围并走回家门口
     if (!point || !home) {

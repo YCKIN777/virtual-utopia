@@ -123,7 +123,18 @@ export const createMemoryGateway = ({ db, enabled = true, llmClient } = {}) => {
     // P5.7 约伴兜底：回复表达了「去某场景聚一聚」且模型未调 gather_move 时自动移动
     if (residentId && reply) {
       try {
-        const sceneId = detectGatherScene(reply);
+        let sceneId = detectGatherScene(reply);
+        // P5.10：回复说「我家/我家里」= 对话角色自己的宅院（detectGatherScene 不识自称）
+        const RESIDENT_HOME_BY_ID = {
+          ahe: 'plot-3',
+          zhiyu: 'plot-8',
+          xubai: 'plot-20',
+          suian: 'plot-35',
+          fenghe: 'plot-45',
+        };
+        if (!sceneId && (reply.includes('我家') || reply.includes('我家里')) && RESIDENT_HOME_BY_ID[residentId]) {
+          sceneId = RESIDENT_HOME_BY_ID[residentId];
+        }
         if (sceneId) {
           const ids = Array.from(new Set([residentId, ...(Array.isArray(companions) ? companions : [])]));
           const now = new Date().toISOString();
@@ -193,9 +204,22 @@ const GATHER_SCENES = [
   ['远林', '山林', '森林', 'far-forest'],
   ['广场', '生活广场', 'plaza'],
 ];
+// P5.10：居民宅院别名 → plot id（「去谁家」命中宅院级，前端按 homes 坐标走）
+const RESIDENT_HOME_ALIASES = [
+  ['阿禾家', '阿禾宅院', '阿禾院里', 'plot-3'],
+  ['知予家', '知予宅院', 'plot-8'],
+  ['叙白家', '叙白宅院', 'plot-20'],
+  ['岁安家', '岁安宅院', 'plot-35'],
+  ['风禾家', '风禾宅院', 'plot-45'],
+];
 // 任意别名数量：末位为 sceneId，其余均为别名（修复固定 [a1,a2,sceneId] 解构导致
 // 资源墙/far-forest 返回 undefined、书屋/远林 错位返回别名的 bug）
 const matchGatherScene = (reply) => {
+  for (const entry of RESIDENT_HOME_ALIASES) {
+    const sceneId = entry[entry.length - 1];
+    const aliases = entry.slice(0, -1);
+    if (aliases.some((alias) => alias && reply.includes(alias))) return sceneId;
+  }
   for (const entry of GATHER_SCENES) {
     const sceneId = entry[entry.length - 1];
     const aliases = entry.slice(0, -1);
@@ -211,6 +235,13 @@ const GATHER_HESITATE_WORDS = ['还是', '要不要', '等谁', '什么时候', 
 
 export const detectGatherScene = (reply = '') => {
   if (!reply) return null;
+  // P5.10：家别名最优先（「去阿禾家/知予家…」是明确地点，不受犹豫词影响）
+  for (const entry of RESIDENT_HOME_ALIASES) {
+    const aliases = entry.slice(0, -1);
+    if (aliases.some((alias) => alias && reply.includes(alias))) {
+      return entry[entry.length - 1];
+    }
+  }
   const hasFirm = GATHER_FIRM_WORDS.some((word) => reply.includes(word));
   if (hasFirm) {
     // 确定行动优先：只认场景，不再被犹豫词否决
