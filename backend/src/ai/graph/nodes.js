@@ -41,6 +41,27 @@ const buildRequest = (state) => ({
   history: state.requestHistory,
 });
 
+// P5.9：访客勾选的同行者提示（模型可见，约伴时用 withResidentIds 带上）
+const COMPANION_NAMES = {
+  ahe: '阿禾',
+  zhiyu: '知予',
+  xubai: '叙白',
+  suian: '岁安',
+  fenghe: '风禾',
+};
+const buildCompanionsHint = (companions) => {
+  const ids = Array.isArray(companions) ? companions.filter(Boolean) : [];
+  if (ids.length === 0) return '';
+  const names = ids.map((id) => COMPANION_NAMES[id] || id).join('、');
+  return (
+    '\n【同行提示】访客已勾选同行居民：' +
+    names +
+    '（id: ' +
+    ids.join('/') +
+    '）。当访客表达约伴去某处（如去生活广场/凉亭/谁家）时，gather_move 的 withResidentIds 请带上这些同行者，让大家一起移动。'
+  );
+};
+
 const buildDispatch = (state, branchAgent) => ({
   intent: state.intent,
   inputRisk: { level: state.risk, signals: state.riskSignals },
@@ -176,7 +197,8 @@ export const createBranchNode = (branchAgent, modelClient) => async (state) => {
         role: 'system',
         content:
           branchAgent.buildSystemPrompt({ request, dispatch }) +
-          buildMemoryPromptBlock(state.memoryContext),
+          buildMemoryPromptBlock(state.memoryContext) +
+          buildCompanionsHint(state.companions),
       },
       ...state.messages,
     ];
@@ -384,13 +406,19 @@ export const createToolsNode = (toolRegistry) => async (state) => {
     }
   };
 
-  // 请求用户上下文经 AsyncLocalStorage 注入，工具内 getContext 读取
+  // 请求用户上下文经 AsyncLocalStorage 注入，工具内 getContext 读取；
+  // P5.9 companions（访客勾选的同行居民 id）一并注入，gather_move 缺省名单用
   const userContext = state.userContext ?? null;
+  const toolContext = {
+    ...(userContext ?? {}),
+    companions: state.companions ?? [],
+    residentId: state.branchAgent?.id ?? null,
+  };
 
   if (userContext) {
-    toolContextStorage.run(userContext, executeInContext);
+    toolContextStorage.run(toolContext, executeInContext);
   } else {
-    await executeInContext();
+    toolContextStorage.run(toolContext, executeInContext);
   }
 
   streamingContextStorage

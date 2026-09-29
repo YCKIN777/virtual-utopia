@@ -42,7 +42,8 @@ const state = reactive({
 });
 
 // 流式发送：占位 assistant 消息实时追加 token（打字机），阶段状态写入 state.status。
-export async function sendStream(content) {
+// P5.9 companions：访客勾选的同行居民 id（缺省 [] = 只当前角色）
+export async function sendStream(content, companions = []) {
   const normalizedContent = String(content || '').trim();
   if (!normalizedContent) {
     throw new Error('消息不能为空');
@@ -64,6 +65,7 @@ export async function sendStream(content) {
       sessionId: state.sessionId || undefined,
       input: { content: normalizedContent },
       history,
+      companions: Array.isArray(companions) ? companions : [],
       onStatus: (status) => {
         state.status = status.phase;
         if (status.toolNames?.length) {

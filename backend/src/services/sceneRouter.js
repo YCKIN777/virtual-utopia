@@ -49,7 +49,7 @@ export const normalizeSceneRequest = (body) => {
     throw new SceneRequestError('request body must be an object');
   }
 
-  const { sceneId, input, history } = body;
+  const { sceneId, input, history, companions } = body;
 
   if (!Object.hasOwn(SCENE_DEFINITIONS, sceneId)) {
     throw new SceneRequestError('sceneId is not supported');
@@ -71,5 +71,8 @@ export const normalizeSceneRequest = (body) => {
       content,
     },
     history: normalizeHistory(history),
+    companions: Array.isArray(companions)
+      ? companions.filter((x) => typeof x === 'string').slice(0, 5)
+      : undefined,
   };
 };

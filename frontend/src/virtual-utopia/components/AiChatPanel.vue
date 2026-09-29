@@ -52,11 +52,33 @@ const submitMessage = async () => {
   }
   input.value = '';
   try {
-    await aiChatStore.sendStream(content);
+    await aiChatStore.sendStream(content, companions.value);
   } catch (error) {
     // 错误已写入 state.error，由浮层展示
   }
   await scrollToBottom();
+};
+
+// ---- P5.9 同行选择：勾选后约伴时同行居民一起移动（companions 透传后端 gather_move） ----
+const companions = ref([]);
+const residentCompanionOptions = [
+  { id: 'ahe', name: '阿禾' },
+  { id: 'zhiyu', name: '知予' },
+  { id: 'xubai', name: '叙白' },
+  { id: 'suian', name: '岁安' },
+  { id: 'fenghe', name: '风禾' },
+];
+const toggleCompanion = (id) => {
+  const index = companions.value.indexOf(id);
+  if (index === -1) {
+    if (companions.value.length >= 4) {
+      worldStore.notify('最多选 4 位同行', 'info');
+      return;
+    }
+    companions.value.push(id);
+  } else {
+    companions.value.splice(index, 1);
+  }
 };
 
 const handleApproval = async (approved) => {
@@ -307,6 +329,21 @@ onBeforeUnmount(() => {
       <p v-if="conversation.error" class="vu-ai-chat__error" role="alert">
         {{ conversation.error }}
       </p>
+
+      <div v-if="loggedIn" class="vu-ai-chat__companions">
+        <span class="vu-ai-chat__companions-label">同行：</span>
+        <button
+          v-for="option in residentCompanionOptions"
+          :key="option.id"
+          type="button"
+          class="vu-ai-chat__companion-chip"
+          :class="{ 'is-on': companions.includes(option.id) }"
+          :disabled="conversation.loading"
+          @click="toggleCompanion(option.id)"
+        >
+          {{ option.name }}
+        </button>
+      </div>
 
       <form class="vu-ai-chat__form" @submit.prevent="submitMessage">
         <input
@@ -624,6 +661,40 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+.vu-ai-chat__companions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 0;
+}
+.vu-ai-chat__companions-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.vu-ai-chat__companion-chip {
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.vu-ai-chat__companion-chip:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.vu-ai-chat__companion-chip.is-on {
+  background: #6d2e5c;
+  border-color: #6d2e5c;
+  color: #fff;
+}
+.vu-ai-chat__companion-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .vu-ai-chat__form {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -185,9 +185,13 @@ export const createToolSet = ({
           const targets = withResidentIds?.length
             ? withResidentIds.filter((id) => sceneIds.length) // 保留名单
             : [];
-          // 至少让当前对话的居民角色移动；withResidentIds 缺省时由当前角色带头
+          // 至少让当前对话的居民角色移动；withResidentIds 缺省时 = 访客勾选同行（P5.9）∪ 当前对话角色
+          const companions = current.companions ?? [];
+          const currentId = String(current.residentId || current.username || 'ahe');
           const residentIds =
-            targets.length > 0 ? targets : [String(current.username || 'ahe')];
+            targets.length > 0
+              ? targets
+              : Array.from(new Set([...companions, currentId]));
 
           const now = new Date().toISOString();
           const moved = [];

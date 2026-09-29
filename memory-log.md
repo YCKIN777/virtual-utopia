@@ -1732,7 +1732,14 @@ ode scripts/start-all.mjs stop|status。**关键坑：detached 子进程必须 c
 - **自检清单**：✔ 前端 vite build（容器 --no-cache）✔ 浏览器实测（去壳/登录/对话/约伴）✔ npc-locations ahe→pavilion ✔ 轮询 52 次 200 ✔ detectGatherScene 单测 8+6 例全过 ✔ memory 三件套 ✔ git bd6c6b8
 - **遗留**：① gather_move 缺省 withResidentIds 语义（多人同行待前端约伴按钮或模型传 id）；② 聚点=前端坐标（非真实建筑），「去谁家」=该居民常待场景（用户已接受）；③ 语音 https 麦克风权限待公网实测；④ chroma unhealthy healthcheck 口径。
 
-## P5.8 生活广场(plaza)约伴闭环（2026-09-28）
+## P5.9 多人同行（companions 勾选同行一起移动，2026-09-29）
+- **需求**：用户「约着我们几个一起去某处」要真的多人一起动（对话与动作一致性延续）。
+- **机制**：前端 AiChatPanel 加「同行」chips（5 居民多选，最多 4 人）→ sendStream(content, companions) → sceneClient body 带 companions → normalizeSceneRequest 透传 → graph state.companions → ① branch system prompt 注入【同行提示】（模型可见勾选者，约伴时 withResidentIds 带上）② tools context 注入 companions+residentId → gather_move 名单 = 显式名单 或 companions∪当前角色 ③ memoryGateway.after 兜底 detectGatherScene 命中时也写 companions∪对话角色。
+- **实测闭环（浏览器）**：勾选 知予+叙白 → 发「阿禾，我们一起去生活广场走走吧」→ 阿禾回复「咱们这就去生活广场！我把知予、叙白也叫上」→ npc-locations 同一时间戳 ahe+zhiyu+xubai 全部 → plaza（一次 gather_move 调用写三人）→ 3D 三人走向广场（截图 preview/p59-three-companions.png）。
+- **坑**：① 模型不知道前端勾选者（companions 不进 prompt）→ 只写对话角色——需 prompt 注入【同行提示】；② 兜底 detectGatherScene 只写 residentId——需 after 接收 companions 一并写；③ phase5 限流 429（「认证服务暂不可用」）→ docker restart virtual-utopia-phase5（本日第二次，Docker Desktop 重启后更频繁）；④ Docker Desktop 偶发未启动（npipe 找不到）→ Start-Process Docker Desktop.exe + 轮询 docker info 就绪再 build。
+- **改动文件**：后端 state.js/sceneRouter.js/graphOrchestrator.js/nodes.js/tools/index.js/memoryGateway.js/personas.js；前端 sceneClient.js/aiChatStore.js/AiChatPanel.vue。
+- **遗留**：① 「去谁家」仍映射为该居民常待场景聚点（非 plot 级宅院，用户已接受）；② 语音 https 麦克风权限待公网实测；③ chroma unhealthy healthcheck 口径；④ 多人同行上限 4 人（前端限制）。
+
 - **背景**：用户实测「约了到生活广场还是没有动作，只能聊天」——生活广场不在约伴场景表。
 - **补三处**：backend/src/ai/tools/index.js（gather_move enum+描述+sceneIds 加 plaza）、backend/src/ai/memory/memoryGateway.js（GATHER_SCENES 加 ['广场','生活广场','plaza']）、frontend/src/virtual-utopia/data/residents.js（SCENE_GATHER_POINTS 加 plaza {x:0,z:22.6} 广场中心）。detectGatherScene 单测：「去生活广场玩吧」→plaza、「到广场集合」→plaza、犹豫句仍 null。
 - **模型不认识广场（第一版补丁后仍拒绝）**：阿禾回「生活广场这名字我这儿没对上号……你看是想去凉亭坐坐，还是去谁家串个门」——模型认为广场不在 yard 辖区且试图改约。**personas.js 两版强化**：最终版明确「plaza 是全镇公共聚会地，任何居民都可响应前往，不要以不在辖区为由拒绝或改约别处；严格尊重访客指定的聚会地点（说去广场就去广场）；不要只嘴上答应而不行动」。

@@ -106,7 +106,7 @@ export const createMemoryGateway = ({ db, enabled = true, llmClient } = {}) => {
   /**
    * 写入阶段：落库本轮对话 + 异步提炼（fire-and-forget，不阻塞响应）。
    */
-  const after = ({ userId, conversationId, sceneId, residentId, userContent, reply }) => {
+  const after = ({ userId, conversationId, sceneId, residentId, userContent, reply, companions = [] }) => {
     if (!userId || !userContent) {
       return;
     }
@@ -125,12 +125,16 @@ export const createMemoryGateway = ({ db, enabled = true, llmClient } = {}) => {
       try {
         const sceneId = detectGatherScene(reply);
         if (sceneId) {
-          worldState.set({
-            key: `npc:${residentId}`,
-            kind: 'npc',
-            payload: { sceneId, updatedAt: new Date().toISOString() },
-          });
-          console.log(`[memory-gateway] 约伴自动移动: ${residentId} -> ${sceneId}`);
+          const ids = Array.from(new Set([residentId, ...(Array.isArray(companions) ? companions : [])]));
+          const now = new Date().toISOString();
+          for (const id of ids) {
+            worldState.set({
+              key: `npc:${id}`,
+              kind: 'npc',
+              payload: { sceneId, updatedAt: now },
+            });
+          }
+          console.log(`[memory-gateway] 约伴自动移动: ${ids.join('、')} -> ${sceneId}`);
         }
       } catch (error) {
         console.error('[memory-gateway] 约伴自动移动失败:', error?.message);

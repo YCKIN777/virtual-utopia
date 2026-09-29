@@ -35,6 +35,7 @@ export const SceneStateAnnotation = Annotation.Root({
   // P4: 当前请求的用户上下文（{ userId, role, username }，来自 HTTP body.user），
   // execute_tools 节点执行工具前写入 AsyncLocalStorage，供工具 getContext 读取。
   userContext: Annotation({ default: () => null }),
+  companions: Annotation({ default: () => [] }),
   // P4: 长记忆召回结果（{ memories, worldStates }），route 节点注入、branch 拼入系统提示。
   memoryContext: Annotation({ default: () => null }),
   toolCalls: Annotation({ default: () => [] }),

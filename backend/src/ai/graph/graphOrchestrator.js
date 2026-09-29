@@ -135,6 +135,7 @@ export const createSceneGraphOrchestrator = ({
       sceneName: request.sceneName,
       inputContent: request.input.content,
       requestHistory: request.history,
+      companions: request.companions ?? [],
     };
 
     if (tools) {
@@ -161,6 +162,8 @@ export const createSceneGraphOrchestrator = ({
         residentId: finalState.branchAgent?.id,
         userContent: request.input.content,
         reply: finalState.reply,
+        // P5.9：同行者名单，供约伴兜底移动
+        companions: finalState.companions ?? [],
       });
     }
   };

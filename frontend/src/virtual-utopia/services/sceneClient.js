@@ -88,6 +88,7 @@ export async function sendMessageStream({
   sessionId,
   input,
   history = [],
+  companions = [],
   onStatus,
   onToken,
   onDone,
@@ -102,6 +103,7 @@ export async function sendMessageStream({
         sessionId,
         input,
         history,
+        companions,
       }),
     });
   } catch (error) {
