@@ -62,8 +62,13 @@ backend/scripts/patch-*.mjs
 # 探测/诊断产物（不入库）
 probe-*.txt
 probe-*.mjs
-*-check.txt
+*-check*.txt
 cpolar-*.txt
 cpolar-*.log
+cpolar-run.log.*
 *.pid
 security-audit.txt
+
+# 工具目录与大备份（不入库）
+/backup/
+/cloudflared/
