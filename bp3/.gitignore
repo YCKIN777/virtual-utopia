@@ -1,6 +1,0 @@
-node_modules/
-dist/
-data/*.sqlite
-data/*.sqlite-*
-playwright-report/
-test-results/

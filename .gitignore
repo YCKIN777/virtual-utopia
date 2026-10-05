@@ -78,3 +78,10 @@ diag-*.txt
 
 # 旧交付目录（本地保留，不入库）
 /virtual-utopia-bp2-full-delivery/
+
+# 历史大目录（本地保留，不入库）
+/artifacts/
+/deliverables/
+/bp3/
+/database/
+/migrations/
