@@ -72,3 +72,6 @@ security-audit.txt
 # 工具目录与大备份（不入库）
 /backup/
 /cloudflared/
+/cpolar/
+cpolar-tunnel.err
+diag-*.txt
