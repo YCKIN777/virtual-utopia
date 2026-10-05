@@ -53,3 +53,17 @@ cpolar-tunnel-result.txt
 # P5.7：后端 PID 文件与一次性补丁脚本（不入库）
 backend/*.pid
 backend/scripts/patch-*.mjs
+
+# 2026-10-05 发布整理：根目录旧版编排与打包产物不入库（本地保留）
+/docker-compose.yml
+/Dockerfile
+/virtual-utopia-bp2-v1.0-archive.zip
+
+# 探测/诊断产物（不入库）
+probe-*.txt
+probe-*.mjs
+*-check.txt
+cpolar-*.txt
+cpolar-*.log
+*.pid
+security-audit.txt
